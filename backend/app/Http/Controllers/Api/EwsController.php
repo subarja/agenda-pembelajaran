@@ -13,6 +13,7 @@ use App\Models\Note;
 use App\Models\Recommendation;
 use App\Models\Student;
 use App\Models\StudentAttendance;
+use App\Services\CharacterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -177,6 +178,12 @@ class EwsController extends Controller
         $catatan   = $this->calcCatatan($student->id);
         $nilai     = $this->calcNilai($student->id);
         $level     = $this->determineLevel($kehadiran, $karakter, $catatan, $nilai);
+
+        // Cek ambang & buat rekomendasi jika terlewat (jaring pengaman untuk data lama/seeder)
+        app(CharacterService::class)->checkThresholdsAndRecommend(
+            $student->loadMissing(['schoolClass', 'user']),
+            $karakter['score']
+        );
 
         EwsStatus::updateOrCreate(
             ['student_id' => $student->id, 'academic_year_id' => $ayId],

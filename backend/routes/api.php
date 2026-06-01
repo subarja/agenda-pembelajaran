@@ -107,6 +107,21 @@ Route::middleware('auth:sanctum')->group(function () {
         // EWS Guru
         Route::get('teacher-ews',                 [TeacherEwsController::class, 'index']);
 
+        // Sinkronisasi rekomendasi untuk semua siswa (jalankan sekali untuk data lama)
+        Route::post('sync-recommendations',        function () {
+            $service  = app(\App\Services\CharacterService::class);
+            $students = \App\Models\Student::with(['schoolClass', 'user'])->get();
+            $count    = 0;
+            foreach ($students as $student) {
+                $score = $service->calculateNetScore($student);
+                $before = \App\Models\Recommendation::where('student_id', $student->id)->count();
+                $service->checkThresholdsAndRecommend($student, $score);
+                $after = \App\Models\Recommendation::where('student_id', $student->id)->count();
+                $count += ($after - $before);
+            }
+            return response()->json(['message' => "Sinkronisasi selesai. {$count} rekomendasi baru dibuat.", 'total_siswa' => $students->count()]);
+        });
+
         // Tahun Ajaran
         Route::get('academic-years',              [AcademicYearController::class, 'index']);
         Route::post('academic-years',             [AcademicYearController::class, 'store']);

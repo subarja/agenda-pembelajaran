@@ -42,7 +42,7 @@ class CharacterService
             );
     }
 
-    private function checkThresholdsAndRecommend(Student $student, int $netScore): void
+    public function checkThresholdsAndRecommend(Student $student, int $netScore): void
     {
         $thresholds = ActionThreshold::where('aktif', true)->get();
 
