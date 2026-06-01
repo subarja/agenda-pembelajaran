@@ -20,12 +20,13 @@ import ForgotPasswordPage from '@/pages/ForgotPasswordPage'
 import ResetPasswordPage from '@/pages/ResetPasswordPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  // Cek token langsung dari localStorage sebagai fallback untuk Zustand rehydration race
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated || !!s.token)
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
 }
 
 function GuestRoute({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated || !!s.token)
   return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>
 }
 
