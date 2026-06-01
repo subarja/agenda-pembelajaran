@@ -183,10 +183,10 @@ function AdminDashboard() {
           </CardHeader>
           <CardContent className="space-y-2">
             {[
-              { label: 'Kelola Guru',         path: '/admin', state: 0 },
-              { label: 'Kelola Siswa',        path: '/admin', state: 1 },
-              { label: 'Kelola Jadwal',       path: '/admin', state: 4 },
-              { label: 'Struktur Karakter',   path: '/admin', state: 5 },
+              { label: 'EWS Guru (Kepatuhan Agenda)', path: '/ews-guru', state: 0 },
+              { label: 'Kelola Guru',              path: '/admin',    state: 0 },
+              { label: 'Kelola Siswa',             path: '/admin',    state: 1 },
+              { label: 'Kelola Jadwal',            path: '/admin',    state: 4 },
             ].map((item) => (
               <button
                 key={item.label}

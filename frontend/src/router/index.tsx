@@ -18,6 +18,7 @@ import AdminPage from '@/pages/AdminPage'
 import StudentRekapPage from '@/pages/StudentRekapPage'
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage'
 import ResetPasswordPage from '@/pages/ResetPasswordPage'
+import TeacherEwsPage from '@/pages/TeacherEwsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // Cek token langsung dari localStorage sebagai fallback untuk Zustand rehydration race
@@ -59,6 +60,7 @@ export default function AppRouter() {
 
         <Route path="laporan"                   element={<LaporanPage />} />
         <Route path="admin"                     element={<AdminPage />} />
+        <Route path="ews-guru"                  element={<TeacherEwsPage />} />
         <Route path="pengaturan"                element={<PlaceholderPage title="Pengaturan" />} />
         <Route path="profil"                    element={<ProfilePage />} />
       </Route>

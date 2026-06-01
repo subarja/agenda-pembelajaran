@@ -10,6 +10,7 @@ use App\Models\AgendaStudentScore;
 use App\Models\CharacterInput;
 use App\Models\EwsStatus;
 use App\Models\Note;
+use App\Models\Recommendation;
 use App\Models\Student;
 use App\Models\StudentAttendance;
 use Illuminate\Http\JsonResponse;
@@ -57,18 +58,26 @@ class EwsController extends Controller
         // Kalkulasi + upsert EWS
         $results = $students->map(fn ($s) => $this->buildStudentEws($s, $ay->id));
 
-        // Filter by level setelah kalkulasi
-        if ($request->filled('level')) {
-            $results = $results->filter(fn ($r) => $r['level'] === $request->level)->values();
-        }
-
-        // Ringkasan per level
+        // Ringkasan per level (sebelum filter)
         $summary = [
             'hijau'  => $results->where('level', 'hijau')->count(),
             'kuning' => $results->where('level', 'kuning')->count(),
             'oranye' => $results->where('level', 'oranye')->count(),
             'merah'  => $results->where('level', 'merah')->count(),
         ];
+
+        // Filter by level
+        if ($request->filled('level')) {
+            $results = $results->filter(fn ($r) => $r['level'] === $request->level)->values();
+        }
+
+        // Urutkan: merah → oranye → kuning → hijau, lalu warning_count DESC, lalu kehadiran ASC
+        $levelOrder = ['merah' => 0, 'oranye' => 1, 'kuning' => 2, 'hijau' => 3];
+        $results = $results->sortBy([
+            fn ($a, $b) => ($levelOrder[$a['level']] ?? 9) <=> ($levelOrder[$b['level']] ?? 9),
+            fn ($a, $b) => $b['warning_count'] <=> $a['warning_count'],
+            fn ($a, $b) => $a['kehadiran_score'] <=> $b['kehadiran_score'],
+        ])->values();
 
         return response()->json([
             'data' => $results,
@@ -119,6 +128,23 @@ class EwsController extends Controller
                 'tanggal'  => $i->created_at->format('Y-m-d H:i'),
             ]);
 
+        // Rekomendasi tindakan berdasarkan ambang poin
+        $rekomendasi = Recommendation::where('student_id', $student->id)
+            ->with(['threshold', 'assignedTo'])
+            ->orderByRaw("CASE status WHEN 'pending' THEN 0 WHEN 'proses' THEN 1 ELSE 2 END")
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($r) => [
+                'id'             => $r->uuid,
+                'rekomendasi'    => $r->threshold->rekomendasi,
+                'sifat'          => $r->threshold->sifat->value,
+                'akumulasi'      => $r->akumulasi_saat_trigger,
+                'status'         => $r->status->value,
+                'ditugaskan_ke'  => $r->assignedTo?->nama,
+                'hasil'          => $r->hasil_tindak_lanjut,
+                'dibuat_pada'    => $r->created_at->format('Y-m-d'),
+            ]);
+
         return response()->json([
             'data' => [
                 'student' => [
@@ -137,6 +163,7 @@ class EwsController extends Controller
                     'nilai'     => $nilai,
                 ],
                 'recent_karakter' => $recentKarakter,
+                'rekomendasi'     => $rekomendasi,
             ],
         ]);
     }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\AcademicYearController;
+use App\Http\Controllers\Api\Admin\TeacherEwsController;
 use App\Http\Controllers\Api\Admin\CharacterAdminController;
 use App\Http\Controllers\Api\Admin\ClassAdminController;
 use App\Http\Controllers\Api\Admin\ScheduleAdminController;
@@ -102,6 +103,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ── Admin (hanya admin & wakasek) ─────────────────────────────────────────
     Route::middleware('role:admin,wakasek')->prefix('admin')->group(function () {
+
+        // EWS Guru
+        Route::get('teacher-ews',                 [TeacherEwsController::class, 'index']);
 
         // Tahun Ajaran
         Route::get('academic-years',              [AcademicYearController::class, 'index']);
