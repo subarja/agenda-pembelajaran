@@ -1,0 +1,100 @@
+# Agenda Pembelajaran — CLAUDE.md
+
+## Identitas Proyek
+
+**Nama:** Aplikasi Agenda Pembelajaran Kelas
+**Subtitle:** Terintegrasi dengan Penilaian Karakter Berbasis Poin & Sistem Peringatan Dini Performa Siswa
+**Institusi:** SMK Negeri 2 Cimahi
+**Versi Dokumen:** RPD v2.1 (Mei 2026)
+
+## Pemangku Kepentingan
+
+| Peran | Nama / Unit | Tanggung Jawab |
+|---|---|---|
+| **Product Owner** | Kusman Subarja, S.Pd., M.T. (Wakasek Kurikulum) | Visi produk, prioritas fitur, persetujuan rilis |
+| Sponsor | Kepala SMKN 2 Cimahi | Dukungan kebijakan, anggaran, validasi strategis |
+| End User Primer | Guru, Wali Kelas, Siswa | Pengguna harian |
+| End User Sekunder | Wakasek Kurikulum, BK, Orang Tua | Konsumen laporan & EWS |
+| Tim Teknis | Developer / Vendor | Implementasi, deployment, pemeliharaan |
+
+## Filosofi & Prinsip Pengembangan
+
+> *"Setiap detik administratif yang dihemat dari guru adalah investasi untuk kualitas pembelajaran."*
+
+Tiga prinsip utama yang menjadi kompas pengembangan:
+
+1. **Hemat waktu guru** — pengisian agenda inti (di luar absensi & penilaian karakter) wajib selesai **≤ 2 menit**. Tidak ada upload foto, tidak ada bidang wajib yang berulang.
+2. **Karakter sebagai aset kolektif** — seluruh guru yang mengajar menjadi observer karakter. Penilaian terstandar melalui poin objektif (+/−), bukan persepsi subjektif.
+3. **Data berbicara untuk manajemen** — sistem otomatis mengkorelasikan kehadiran, catatan KBM, nilai aktivitas, dan poin karakter, lalu memunculkan peringatan dini (EWS).
+
+## Visi Produk
+
+> *"Menjadi platform agenda pembelajaran yang menyederhanakan administrasi guru di bawah 2 menit, mengubah seluruh guru menjadi mitra pembina karakter, dan memberi manajemen sekolah peringatan dini berbasis data sebelum masalah membesar."*
+
+## Stack Teknologi yang Direkomendasikan
+
+| Layer | Pilihan Utama | Alternatif |
+|---|---|---|
+| Frontend | React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui | Vue 3 + Nuxt 3 |
+| State Management | TanStack Query + Zustand | Redux Toolkit |
+| Mobile/PWA | Vite PWA Plugin (offline-first) | Next.js PWA |
+| Backend | Laravel 11 (PHP 8.3) atau Node.js + NestJS | Django REST Framework |
+| Database | PostgreSQL 16 + Redis (cache & queue) | MySQL 8 / MariaDB |
+| Queue/Worker | Laravel Queue (Redis driver) / BullMQ | RabbitMQ |
+| Auth | Laravel Sanctum / NextAuth.js (JWT + Refresh) | Keycloak |
+| Generate PDF | Puppeteer (HTML→PDF) | Dompdf, mPDF |
+| Generate Excel | PhpSpreadsheet / ExcelJS | openpyxl |
+| Hosting | VPS Indonesia (Biznet Gio / IDCloudHost) | DigitalOcean, Vultr |
+| Container | Docker + Docker Compose | Bare metal |
+| CI/CD | GitHub Actions / GitLab CI | Jenkins |
+| Monitoring | Uptime Kuma + Sentry + Grafana | New Relic, Datadog |
+
+## Arsitektur
+
+Three-tier (presentation → application → data) dengan RESTful API dan JWT stateless.
+Komponen khas v2.0: **Character Aggregation Engine** dan **EWS Correlation Engine** berjalan asinkron via worker/queue agar UI tetap responsif.
+
+## Modul Utama (In-Scope)
+
+- Autentikasi multi-peran (Admin, Guru, Wali Kelas, Siswa, Wakasek, BK, Orang Tua)
+- **Tujuan Pembelajaran (TP)** — input sekali, dipakai berulang; guru cukup multi-select saat isi agenda
+- **Agenda Pembelajaran** — pilih TP + catatan resume KBM + nilai aktivitas kelas
+- **Kehadiran** Guru & Siswa per sesi
+- **Penilaian Karakter Berbasis Poin** — CRUD induk/sub-karakter, bobot, ambang; semua guru bisa beri apresiasi (+) atau catat pelanggaran (−)
+- **Rekomendasi Tindakan Otomatis** berdasarkan ambang poin
+- **EWS (Early Warning System)** di dashboard manajemen
+- Laporan dengan ekspor **PDF & Excel**
+- Dashboard analitik **mobile-first PWA**
+
+## Out-of-Scope (v2.0)
+
+- Upload/dokumentasi foto KBM (dihapus demi efisiensi waktu guru)
+- Modul penilaian rapor lengkap
+- Integrasi Dapodik langsung (endpoint disiapkan, implementasi versi berikutnya)
+- Modul keuangan/SPP
+- Aplikasi native iOS/Android (cukup PWA)
+- Modul e-learning / LMS
+
+## Target KPI Utama
+
+| Metrik | Target |
+|---|---|
+| Waktu pengisian agenda inti | ≤ 2 menit |
+| Waktu pengisian absensi 1 kelas | ≤ 90 detik |
+| Waktu input 1 poin karakter | ≤ 20 detik |
+| Guru aktif mingguan | ≥ 90% |
+| Uptime sistem | ≥ 99,5% |
+| SUS Score kepuasan pengguna | ≥ 80 |
+| FCP di HP 4G | ≤ 2,5 detik |
+| Kasus EWS yang ditindaklanjuti | ≥ 75% dari total trigger |
+
+## Timeline
+
+- **MVP:** 4 bulan dari kick-off
+- **Versi 2.0 lengkap:** 7 bulan dari kick-off
+
+## Batasan & Kendala
+
+- Anggaran terbatas — prioritaskan teknologi open-source dan hosting hemat biaya
+- Wajib patuh **UU Pelindungan Data Pribadi No. 27/2022** dan Permendikbud terkait
+- Sumber daya developer terbatas — prioritisasi fitur ketat
