@@ -131,19 +131,34 @@ class EwsController extends Controller
 
         // Rekomendasi tindakan berdasarkan ambang poin
         $rekomendasi = Recommendation::where('student_id', $student->id)
-            ->with(['threshold', 'assignedTo'])
-            ->orderByRaw("CASE status WHEN 'pending' THEN 0 WHEN 'proses' THEN 1 ELSE 2 END")
+            ->with(['threshold', 'suggestedHandlers', 'handlingSessions.handler', 'verifiedBy'])
+            ->orderByRaw("CASE status WHEN 'pending' THEN 0 WHEN 'proses' THEN 1 WHEN 'menunggu_verifikasi' THEN 2 ELSE 3 END")
             ->orderByDesc('created_at')
             ->get()
             ->map(fn ($r) => [
-                'id'             => $r->uuid,
-                'rekomendasi'    => $r->threshold->rekomendasi,
-                'sifat'          => $r->threshold->sifat->value,
-                'akumulasi'      => $r->akumulasi_saat_trigger,
-                'status'         => $r->status->value,
-                'ditugaskan_ke'  => $r->assignedTo?->nama,
-                'hasil'          => $r->hasil_tindak_lanjut,
-                'dibuat_pada'    => $r->created_at->format('Y-m-d'),
+                'id'               => $r->uuid,
+                'rekomendasi'      => $r->threshold->rekomendasi,
+                'sifat'            => $r->threshold->sifat->value,
+                'akumulasi'        => $r->akumulasi_saat_trigger,
+                'status'           => $r->status->value,
+                'catatan_admin'    => $r->catatan_admin,
+                'dibuat_pada'      => $r->created_at->format('Y-m-d'),
+                'verified_by'      => $r->verifiedBy?->nama,
+                'verified_at'      => $r->verified_at?->format('Y-m-d'),
+                'suggested_handlers' => $r->suggestedHandlers->map(fn ($u) => [
+                    'id'   => $u->uuid,
+                    'nama' => $u->nama,
+                    'role' => $u->role->value,
+                ]),
+                'handling_sessions' => $r->handlingSessions->map(fn ($s) => [
+                    'id'           => $s->uuid,
+                    'tanggal'      => $s->tanggal->format('Y-m-d'),
+                    'catatan'      => $s->catatan,
+                    'link_dokumen' => $s->link_dokumen,
+                    'link_foto'    => $s->link_foto,
+                    'handled_by'   => $s->handler->nama,
+                    'created_at'   => $s->created_at->format('Y-m-d H:i'),
+                ]),
             ]);
 
         return response()->json([

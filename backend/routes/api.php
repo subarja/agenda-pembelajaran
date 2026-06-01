@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\RecommendationController;
 use App\Http\Controllers\Api\StudentRekapController;
 use App\Http\Controllers\Api\TeacherAttendanceController;
 use App\Http\Controllers\Api\PasswordResetController;
@@ -94,6 +95,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('reports/ews',               [ReportController::class, 'ews']);
     Route::get('reports/agenda',            [ReportController::class, 'agenda']);
     Route::get('reports/jurnal',            [ReportController::class, 'jurnal']);
+
+    // ── Rekomendasi & Penanganan ──────────────────────────────────────────────
+    Route::put('recommendations/{uuid}/admin-note',       [RecommendationController::class, 'updateAdminNote']);
+    Route::put('recommendations/{uuid}/handlers',         [RecommendationController::class, 'updateHandlers']);
+    Route::put('recommendations/{uuid}/verify',           [RecommendationController::class, 'verify']);
+    Route::put('recommendations/{uuid}/status',           [RecommendationController::class, 'updateStatus']);
+    Route::post('recommendations/{uuid}/sessions',        [RecommendationController::class, 'storeSession']);
+    Route::put('recommendations/{uuid}/sessions/{sid}',   [RecommendationController::class, 'updateSession']);
+    Route::delete('recommendations/{uuid}/sessions/{sid}',[RecommendationController::class, 'deleteSession']);
+    Route::get('students/{uuid}/handling-report',         [RecommendationController::class, 'handlingReport']);
 
     // ── Notifikasi ────────────────────────────────────────────────────────────
     Route::get('notifications',              [NotificationController::class, 'index']);
