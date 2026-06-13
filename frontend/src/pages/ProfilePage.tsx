@@ -19,13 +19,16 @@ export default function ProfilePage() {
 
   const [editNama, setEditNama]   = useState(false)
   const [editHp, setEditHp]       = useState(false)
+  const [editGelar, setEditGelar] = useState(false)
   const [editEmail, setEditEmail] = useState(false)
   const [editPwd, setEditPwd]     = useState(false)
   const [showPwd, setShowPwd]     = useState(false)
 
-  const [nama, setNama]           = useState(user?.nama ?? '')
-  const [hp, setHp]               = useState(user?.teacher?.nomor_hp ?? '')
-  const [email, setEmail]         = useState(user?.email ?? '')
+  const [nama, setNama]                   = useState(user?.nama ?? '')
+  const [hp, setHp]                       = useState(user?.teacher?.nomor_hp ?? '')
+  const [gelarDepan, setGelarDepan]       = useState(user?.teacher?.gelar_depan ?? '')
+  const [gelarBelakang, setGelarBelakang] = useState(user?.teacher?.gelar_belakang ?? '')
+  const [email, setEmail]                 = useState(user?.email ?? '')
   const [emailPwd, setEmailPwd]   = useState('')
   const [pwdLama, setPwdLama]     = useState('')
   const [pwdBaru, setPwdBaru]     = useState('')
@@ -84,6 +87,20 @@ export default function ProfilePage() {
     onError: () => flash('Gagal memperbarui nomor HP.', true),
   })
 
+  // ── Update gelar ──────────────────────────────────────────────────────────
+  const gelarMutation = useMutation({
+    mutationFn: () => api.put('/profile', { gelar_depan: gelarDepan || null, gelar_belakang: gelarBelakang || null }),
+    onSuccess: () => {
+      if (user.teacher) setAuth({
+        ...user,
+        teacher: { ...user.teacher, gelar_depan: gelarDepan || null, gelar_belakang: gelarBelakang || null },
+      }, useAuthStore.getState().token!)
+      setEditGelar(false)
+      flash('Gelar berhasil diperbarui.')
+    },
+    onError: () => flash('Gagal memperbarui gelar.', true),
+  })
+
   // ── Update email ──────────────────────────────────────────────────────────
   const emailMutation = useMutation({
     mutationFn: () => api.put('/profile/email', { email, password: emailPwd }),
@@ -135,7 +152,10 @@ export default function ProfilePage() {
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
           </div>
           <div className="text-center">
-            <p className="font-semibold">{user.nama}</p>
+            <p className="font-semibold leading-tight">
+              {[user.teacher?.gelar_depan, user.nama].filter(Boolean).join(' ')}
+              {user.teacher?.gelar_belakang ? `, ${user.teacher.gelar_belakang}` : ''}
+            </p>
             <p className="text-sm text-muted-foreground">{user.email}</p>
             <Badge variant="secondary" className="mt-1 capitalize">
               {user.role.replace(/_/g, ' ')}
@@ -161,6 +181,48 @@ export default function ProfilePage() {
           >
             <Input value={nama} onChange={(e) => setNama(e.target.value)} />
           </EditableField>
+
+          {/* Gelar (guru) */}
+          {user.teacher && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-muted-foreground">Gelar</p>
+                {!editGelar && (
+                  <button onClick={() => {
+                    setGelarDepan(user.teacher?.gelar_depan ?? '')
+                    setGelarBelakang(user.teacher?.gelar_belakang ?? '')
+                    setEditGelar(true)
+                  }} className="text-xs text-primary-600 hover:underline">Ubah</button>
+                )}
+              </div>
+              {editGelar ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Gelar Depan</p>
+                      <Input placeholder="mis: Drs., Dr., H." value={gelarDepan} onChange={(e) => setGelarDepan(e.target.value)} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Gelar Belakang</p>
+                      <Input placeholder="mis: S.Pd., M.T." value={gelarBelakang} onChange={(e) => setGelarBelakang(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" disabled={gelarMutation.isPending} onClick={() => gelarMutation.mutate()}>
+                      {gelarMutation.isPending ? 'Menyimpan...' : 'Simpan'}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditGelar(false)}>Batal</Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm font-medium">
+                  {user.teacher.gelar_depan || user.teacher.gelar_belakang
+                    ? [user.teacher.gelar_depan, user.teacher.gelar_belakang].filter(Boolean).join(' · ')
+                    : '—'}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Nomor HP (guru/wali_kelas/wakasek) */}
           {user.teacher && (

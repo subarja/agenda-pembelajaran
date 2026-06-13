@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Pencil } from 'lucide-react'
+import { Plus, Trash2, Pencil, Download, Upload, CheckCircle2, AlertCircle, X } from 'lucide-react'
 import api from '@/lib/api'
 import type { LearningObjective } from '@/features/agenda/types'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,13 @@ interface Context {
   subject_id: string; subject_nama: string; subject_kode: string
 }
 
+interface ImportResult {
+  message: string
+  inserted: number
+  updated: number
+  errors: string[]
+}
+
 const SEMESTER_OPTIONS = [
   { value: 'ganjil', label: 'Ganjil' },
   { value: 'genap',  label: 'Genap' },
@@ -21,12 +28,15 @@ const SEMESTER_OPTIONS = [
 
 export default function TujuanPembelajaranPage() {
   const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [selectedCtx, setSelectedCtx] = useState<Context | null>(null)
   const [semester, setSemester] = useState<'ganjil' | 'genap'>('ganjil')
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId]     = useState<string | null>(null)
   const [form, setForm] = useState({ kode: '', deskripsi: '', urutan: '1' })
   const [error, setError] = useState('')
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
   // Load konteks kelas+mapel dari jadwal guru
   const { data: ctxRes } = useQuery({
@@ -80,6 +90,47 @@ export default function TujuanPembelajaranPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: loKey }),
   })
 
+  const importMutation = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('class_id', selectedCtx!.class_id)
+      fd.append('subject_id', selectedCtx!.subject_id)
+      fd.append('semester', semester)
+      return api.post<ImportResult>('/learning-objectives/import', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    },
+    onSuccess: (res) => {
+      setImportResult(res.data)
+      queryClient.invalidateQueries({ queryKey: loKey })
+    },
+    onError: (e: { response?: { data?: { message?: string } } }) => {
+      setImportResult({
+        message: e.response?.data?.message ?? 'Import gagal.',
+        inserted: 0, updated: 0, errors: [],
+      })
+    },
+  })
+
+  async function downloadTemplate() {
+    const res = await api.get('/learning-objectives/template', { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data as Blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'template_tujuan_pembelajaran.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportResult(null)
+    importMutation.mutate(file)
+    e.target.value = ''
+  }
+
   function openCreate() {
     setEditId(null)
     setForm({ kode: '', deskripsi: '', urutan: String(objectives.length + 1) })
@@ -114,12 +165,12 @@ export default function TujuanPembelajaranPage() {
         )}
         <div className="space-y-2">
           {contexts.map((ctx) => {
-            const key   = `${ctx.class_id}-${ctx.subject_id}`
+            const key    = `${ctx.class_id}-${ctx.subject_id}`
             const selKey = selectedCtx ? `${selectedCtx.class_id}-${selectedCtx.subject_id}` : ''
             const isSelected = key === selKey
             return (
               <button key={key} type="button"
-                onClick={() => { setSelectedCtx(ctx); setShowForm(false) }}
+                onClick={() => { setSelectedCtx(ctx); setShowForm(false); setImportResult(null) }}
                 className={cn(
                   'w-full text-left rounded-lg border p-3 transition-colors',
                   isSelected ? 'border-primary-600 bg-primary-50' : 'border-border hover:border-primary-200',
@@ -139,7 +190,7 @@ export default function TujuanPembelajaranPage() {
           <div className="flex gap-2">
             {SEMESTER_OPTIONS.map((s) => (
               <button key={s.value} type="button"
-                onClick={() => setSemester(s.value as 'ganjil' | 'genap')}
+                onClick={() => { setSemester(s.value as 'ganjil' | 'genap'); setImportResult(null) }}
                 className={cn(
                   'flex-1 rounded-md border py-2 text-sm font-medium transition-colors',
                   semester === s.value ? 'border-primary-600 bg-primary-50 text-primary-600' : 'border-border hover:bg-muted',
@@ -150,22 +201,73 @@ export default function TujuanPembelajaranPage() {
             ))}
           </div>
 
+          {/* ── Hasil import ─────────────────────────────────────────────── */}
+          {importResult && (
+            <div className={cn(
+              'rounded-lg border p-3 text-sm',
+              importResult.errors.length > 0 && importResult.inserted + importResult.updated === 0
+                ? 'border-red-200 bg-red-50'
+                : 'border-green-200 bg-green-50',
+            )}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 font-medium">
+                  {importResult.inserted + importResult.updated > 0
+                    ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    : <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />}
+                  {importResult.message}
+                </div>
+                <button onClick={() => setImportResult(null)} className="text-muted-foreground hover:text-foreground shrink-0">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {importResult.errors.length > 0 && (
+                <ul className="mt-2 space-y-0.5 text-xs text-red-700 list-disc list-inside">
+                  {importResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+
           {/* ── List TP ─────────────────────────────────────────────────── */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
                 TP Semester {semester.charAt(0).toUpperCase() + semester.slice(1)} ({objectives.length})
               </p>
-              <Button size="sm" onClick={openCreate} disabled={showForm}>
-                <Plus className="h-3.5 w-3.5" /> Tambah TP
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" onClick={downloadTemplate} title="Download template Excel">
+                  <Download className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline ml-1">Template</span>
+                </Button>
+                <Button size="sm" variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importMutation.isPending}
+                  title="Import dari file Excel"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline ml-1">
+                    {importMutation.isPending ? 'Mengimpor...' : 'Import'}
+                  </span>
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                <Button size="sm" onClick={openCreate} disabled={showForm}>
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="ml-1">Tambah</span>
+                </Button>
+              </div>
             </div>
 
             {isLoading && <div className="h-24 rounded-lg bg-muted animate-pulse" />}
 
             {!isLoading && objectives.length === 0 && (
               <p className="text-sm text-muted-foreground py-4 text-center">
-                Belum ada TP untuk semester ini.
+                Belum ada TP untuk semester ini. Tambah manual atau import dari Excel.
               </p>
             )}
 

@@ -6,9 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\LearningObjectiveResource;
 use App\Models\LearningObjective;
 use App\Models\Schedule;
+use App\Models\SchoolClass;
+use App\Models\Subject;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use OpenSpout\Common\Entity\Row;
+use OpenSpout\Reader\XLSX\Reader as XlsxReader;
+use OpenSpout\Writer\XLSX\Writer as XlsxWriter;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class LearningObjectiveController extends Controller
 {
@@ -141,5 +147,116 @@ class LearningObjectiveController extends Controller
         $lo->delete();
 
         return response()->json(['message' => 'Tujuan Pembelajaran berhasil dihapus.']);
+    }
+
+    // ── Template Excel ──────────────────────────────────────────────────────────
+
+    public function template(): BinaryFileResponse
+    {
+        $tempFile = tempnam(sys_get_temp_dir(), 'tp_tpl_');
+        $writer   = new XlsxWriter();
+        $writer->openToFile($tempFile);
+        $writer->addRow(Row::fromValues(['kode', 'deskripsi', 'urutan']));
+        $writer->addRow(Row::fromValues(['3.1', 'Peserta didik mampu memahami konsep dasar pemrograman', '1']));
+        $writer->addRow(Row::fromValues(['3.2', 'Peserta didik mampu menerapkan konsep berorientasi objek', '2']));
+        $writer->addRow(Row::fromValues(['4.1', 'Peserta didik mampu membuat program sederhana', '3']));
+        $writer->close();
+
+        return response()->download($tempFile, 'template_tujuan_pembelajaran.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    }
+
+    // ── Import Excel ────────────────────────────────────────────────────────────
+
+    public function import(Request $request): JsonResponse
+    {
+        $teacher = $request->user()->teacher;
+        abort_if(! $teacher, 403);
+
+        $request->validate([
+            'file'       => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
+            'class_id'   => ['required', 'string'],
+            'subject_id' => ['required', 'string'],
+            'semester'   => ['required', 'in:ganjil,genap'],
+        ]);
+
+        $class   = SchoolClass::where('uuid', $request->class_id)->firstOrFail();
+        $subject = Subject::where('uuid', $request->subject_id)->firstOrFail();
+
+        $reader  = new XlsxReader();
+        $reader->open($request->file('file')->getRealPath());
+
+        $inserted = 0;
+        $updated  = 0;
+        $errors   = [];
+        $rowNum   = 0;
+
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $rowNum++;
+                if ($rowNum === 1) continue; // skip header
+
+                $values    = $row->toArray();
+                $kode      = trim((string) ($values[0] ?? ''));
+                $deskripsi = trim((string) ($values[1] ?? ''));
+                $urutan    = (isset($values[2]) && $values[2] !== '') ? (int) $values[2] : null;
+
+                if ($kode === '' && $deskripsi === '') continue;
+
+                if ($kode === '') {
+                    $errors[] = "Baris {$rowNum}: kolom kode wajib diisi.";
+                    continue;
+                }
+                if ($deskripsi === '') {
+                    $errors[] = "Baris {$rowNum}: kolom deskripsi wajib diisi.";
+                    continue;
+                }
+                if (strlen($kode) > 20) {
+                    $errors[] = "Baris {$rowNum}: kode '{$kode}' melebihi 20 karakter.";
+                    continue;
+                }
+                if (strlen($deskripsi) > 500) {
+                    $errors[] = "Baris {$rowNum}: deskripsi terlalu panjang (maks 500 karakter).";
+                    continue;
+                }
+
+                $existing = LearningObjective::where('class_id', $class->id)
+                    ->where('subject_id', $subject->id)
+                    ->where('kode', $kode)
+                    ->where('semester', $request->semester)
+                    ->first();
+
+                if ($existing) {
+                    $existing->update([
+                        'deskripsi' => $deskripsi,
+                        'urutan'    => $urutan ?? $existing->urutan,
+                    ]);
+                    $updated++;
+                } else {
+                    LearningObjective::create([
+                        'teacher_id' => $teacher->id,
+                        'class_id'   => $class->id,
+                        'subject_id' => $subject->id,
+                        'kode'       => $kode,
+                        'deskripsi'  => $deskripsi,
+                        'urutan'     => $urutan ?? ($inserted + $updated + 1),
+                        'semester'   => $request->semester,
+                        'aktif'      => true,
+                    ]);
+                    $inserted++;
+                }
+            }
+            break; // hanya sheet pertama
+        }
+
+        $reader->close();
+
+        return response()->json([
+            'message'  => "Import selesai: {$inserted} ditambahkan, {$updated} diperbarui.",
+            'inserted' => $inserted,
+            'updated'  => $updated,
+            'errors'   => $errors,
+        ]);
     }
 }

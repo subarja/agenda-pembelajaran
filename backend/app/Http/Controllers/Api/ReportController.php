@@ -182,33 +182,131 @@ class ReportController extends Controller
         $agendas = Agenda::whereHas('schedule', fn ($q) => $q->where('teacher_id', $teacher->id))
             ->whereBetween('tanggal', [$request->tanggal_mulai, $request->tanggal_akhir])
             ->with(['schedule.subject', 'schedule.schoolClass', 'learningObjectives'])
-            ->orderBy('tanggal')->get();
+            ->orderBy('tanggal')->orderBy('id')->get();
 
-        $periode  = date('d/m/Y', strtotime($request->tanggal_mulai)) . ' – ' . date('d/m/Y', strtotime($request->tanggal_akhir));
-        $guru     = $teacher->user->nama;
-        $filename = 'rekap_agenda';
+        $ay = \App\Models\AcademicYear::where('aktif', true)->first();
 
-        $rows = $agendas->map(fn ($a) => [
-            'tanggal' => $a->tanggal->format('d/m/Y'),
-            'hari'    => ucfirst($a->schedule->hari->value),
-            'kelas'   => "{$a->schedule->schoolClass->tingkat->value} {$a->schedule->schoolClass->jurusan} - {$a->schedule->schoolClass->rombel}",
-            'mapel'   => $a->schedule->subject->nama,
-            'tp'      => $a->learningObjectives->pluck('kode')->join(', '),
-            'resume'  => $a->resume_kbm,
-            'status'  => $a->status->value,
-        ]);
+        $tglMulai  = \Carbon\Carbon::parse($request->tanggal_mulai)->locale('id');
+        $tglAkhir  = \Carbon\Carbon::parse($request->tanggal_akhir)->locale('id');
+
+        $bulan          = ucfirst($tglMulai->isoFormat('MMMM'));
+        $tahunPelajaran = $ay ? $ay->tahun : $tglMulai->year . '/' . ($tglMulai->year + 1);
+        $semester       = $ay ? ucfirst($ay->semester->value) : 'Ganjil';
+
+        $mapelSet = $agendas->map(fn ($a) => $a->schedule->subject->nama)->unique()->sort()->join(', ');
+        $kelasSet = $agendas->map(fn ($a) =>
+            $a->schedule->schoolClass->tingkat->value . ' ' .
+            $a->schedule->schoolClass->jurusan . ' - ' .
+            $a->schedule->schoolClass->rombel
+        )->unique()->sort()->join('; ');
+
+        $periode = $tglMulai->isoFormat('D MMMM') . ' - ' . $tglAkhir->isoFormat('D MMMM YYYY');
+
+        $guru               = $teacher->user->nama;
+        $nip                = $teacher->nip ?? '—';
+        $kompetensiKeahlian = $teacher->mapel_utama ?? $mapelSet;
+        $filename           = 'Laporan_Agenda_' . str_replace(' ', '_', $guru) . '_' . $bulan;
+
+        $rows = $agendas->map(function ($a) {
+            $los = $a->learningObjectives;
+            $tglCarbon = \Carbon\Carbon::parse($a->tanggal)->locale('id');
+
+            $jamMulai  = substr($a->schedule->jam_mulai ?? '', 0, 5);
+            $jamSelesai = substr($a->schedule->jam_selesai ?? '', 0, 5);
+            $jam = $jamMulai && $jamSelesai ? "{$jamMulai} s.d {$jamSelesai}" : '—';
+
+            return [
+                'hari_tanggal'        => ucfirst($tglCarbon->isoFormat('dddd, D MMMM YYYY')),
+                'jam'                 => $jam,
+                'kelas'               => $a->schedule->schoolClass->tingkat->value . ' ' .
+                                         $a->schedule->schoolClass->jurusan . ' - ' .
+                                         $a->schedule->schoolClass->rombel,
+                'mapel'               => $a->schedule->subject->nama,
+                'tujuan_pembelajaran' => $los->pluck('deskripsi')->join('; '),
+                'tp_kode'             => $los->pluck('kode')->join(', '),
+                'kegiatan_pembelajaran' => $a->resume_kbm ?? '',
+                'keterangan'          => '',
+            ];
+        });
 
         if ($request->format === 'pdf') {
-            return Pdf::loadView('reports.agenda', compact('rows','periode','guru'))
-                ->setPaper('a4','landscape')->download("{$filename}.pdf");
+            $kopSuratPath = 'file://' . public_path('images/kop_surat.jpg');
+            return Pdf::loadView('reports.agenda', [
+                'rows'                => $rows,
+                'guru'                => $guru,
+                'nip'                 => $nip,
+                'kompetensi_keahlian' => $kompetensiKeahlian,
+                'mata_pelajaran'      => $mapelSet ?: $kompetensiKeahlian,
+                'kelas_diampu'        => $kelasSet,
+                'semester'            => $semester,
+                'periode'             => $periode,
+                'bulan'               => $bulan,
+                'tahun_pelajaran'     => $tahunPelajaran,
+                'tanggal_ttd'         => $tglAkhir->isoFormat('D MMMM YYYY'),
+                'kopSuratPath'        => $kopSuratPath,
+            ])->setPaper('a4', 'landscape')->download("{$filename}.pdf");
         }
 
-        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows,$guru,$periode) {
-            $w->addRow(Row::fromValues(["Rekap Agenda — {$guru} | Periode: {$periode}"]));
-            $w->addRow(Row::fromValues(['No','Tanggal','Hari','Kelas','Mata Pelajaran','TP Dicapai','Resume KBM','Status']));
-            foreach ($rows as $i => $r) {
-                $w->addRow(Row::fromValues([$i+1,$r['tanggal'],$r['hari'],$r['kelas'],$r['mapel'],$r['tp'],$r['resume']??'',$r['status']]));
+        // ── Excel ─────────────────────────────────────────────────────────────
+        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use (
+            $rows, $guru, $nip, $kompetensiKeahlian, $mapelSet, $kelasSet,
+            $semester, $periode, $bulan, $tahunPelajaran, $tglAkhir
+        ) {
+            // Kop surat (teks)
+            $w->addRow(Row::fromValues(['PEMERINTAH DAERAH PROVINSI JAWA BARAT']));
+            $w->addRow(Row::fromValues(['DINAS PENDIDIKAN']));
+            $w->addRow(Row::fromValues(['CABANG DINAS PENDIDIKAN WILAYAH VII']));
+            $w->addRow(Row::fromValues(['SEKOLAH MENENGAH KEJURUAN NEGERI 2 CIMAHI']));
+            $w->addRow(Row::fromValues(['Jalan Kamarung No.69 RT 02/RW 05 Kel. Citeureup Kec. Cimahi Utara Kota Cimahi 40512']));
+            $w->addRow(Row::fromValues(['Telp/fax. (022) 87805857  Email: info@smkn2cmi.sch.id  Web: www.smkn2cimahi.sch.id']));
+            $w->addRow(Row::fromValues(['']));
+
+            // Judul
+            $w->addRow(Row::fromValues(["KEGIATAN BELAJAR MENGAJAR BULAN " . strtoupper($bulan)]));
+            $w->addRow(Row::fromValues(["TAHUN PELAJARAN {$tahunPelajaran}"]));
+            $w->addRow(Row::fromValues(['']));
+
+            // Identitas guru
+            $w->addRow(Row::fromValues(['Nama Guru', ':', $guru]));
+            $w->addRow(Row::fromValues(['NIP', ':', $nip]));
+            $w->addRow(Row::fromValues(['Kompetensi Keahlian', ':', $kompetensiKeahlian]));
+            $w->addRow(Row::fromValues(['Mata Pelajaran', ':', $mapelSet ?: $kompetensiKeahlian]));
+            $w->addRow(Row::fromValues(['Kelas Diampu', ':', $kelasSet]));
+            $w->addRow(Row::fromValues(['Semester', ':', $semester]));
+            $w->addRow(Row::fromValues(['Periode Laporan', ':', $periode]));
+            $w->addRow(Row::fromValues(['']));
+
+            // Header tabel
+            $w->addRow(Row::fromValues(['No', 'Hari / Tanggal', 'Jam Ke', 'Kelas', 'Tujuan Pembelajaran', 'Kegiatan Pembelajaran', 'Keterangan']));
+
+            // Data baris
+            foreach ($rows->values() as $i => $r) {
+                $w->addRow(Row::fromValues([
+                    $i + 1,
+                    $r['hari_tanggal'],
+                    $r['jam'],
+                    $r['kelas'],
+                    $r['tujuan_pembelajaran'] ?: '—',
+                    $r['kegiatan_pembelajaran'] ?: '—',
+                    $r['keterangan'],
+                ]));
             }
+
+            // TTD
+            $w->addRow(Row::fromValues(['']));
+            $tanggalTtd = $tglAkhir->isoFormat('D MMMM YYYY');
+            $w->addRow(Row::fromValues(['', '', '', '', '', "Cimahi, {$tanggalTtd}"]));
+            $w->addRow(Row::fromValues(['', '', '', '', '', "Guru Mapel " . ($mapelSet ?: $kompetensiKeahlian)]));
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValues(['', '', '', '', '', $guru]));
+            $w->addRow(Row::fromValues(['', '', '', '', '', "NIP. {$nip}"]));
+            $w->addRow(Row::fromValues(['']));
+
+            // Waktu cetak
+            $waktuCetak = now('Asia/Jakarta')->isoFormat('D MMMM YYYY, [Pkl.] HH.mm') . ' WIB';
+            $w->addRow(Row::fromValues(["Waktu Cetak: {$waktuCetak}"]));
         });
     }
 

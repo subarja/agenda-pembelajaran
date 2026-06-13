@@ -15,7 +15,8 @@ class ScheduleAdminController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $schedules = Schedule::with(['schoolClass', 'subject', 'teacher.user'])
+        $perPage = (int) $request->get('per_page', 50);
+        $paginator = Schedule::with(['schoolClass', 'subject', 'teacher.user'])
             ->when($request->class_id, fn ($q, $c) =>
                 $q->whereHas('schoolClass', fn ($sc) => $sc->where('uuid', $c))
             )
@@ -23,12 +24,26 @@ class ScheduleAdminController extends Controller
                 $q->whereHas('teacher', fn ($tc) => $tc->where('uuid', $t))
             )
             ->when($request->hari, fn ($q, $h) => $q->where('hari', $h))
+            ->when($request->search, fn ($q, $s) =>
+                $q->where(fn ($inner) =>
+                    $inner->whereHas('subject', fn ($m) => $m->where('nama', 'ilike', "%$s%"))
+                          ->orWhereHas('teacher.user', fn ($u) => $u->where('nama', 'ilike', "%$s%"))
+                          ->orWhereHas('schoolClass', fn ($sc) => $sc->where('jurusan', 'ilike', "%$s%"))
+                )
+            )
             ->orderByRaw("CASE hari WHEN 'senin' THEN 1 WHEN 'selasa' THEN 2 WHEN 'rabu' THEN 3 WHEN 'kamis' THEN 4 WHEN 'jumat' THEN 5 WHEN 'sabtu' THEN 6 END")
             ->orderBy('jam_mulai')
-            ->get()
-            ->map(fn ($s) => $this->format($s));
+            ->paginate($perPage);
 
-        return response()->json(['data' => $schedules]);
+        return response()->json([
+            'data' => $paginator->map(fn ($s) => $this->format($s)),
+            'meta' => [
+                'total'        => $paginator->total(),
+                'current_page' => $paginator->currentPage(),
+                'last_page'    => $paginator->lastPage(),
+                'per_page'     => $paginator->perPage(),
+            ],
+        ]);
     }
 
     public function store(Request $request): JsonResponse

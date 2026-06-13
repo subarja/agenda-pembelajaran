@@ -5,9 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Enums\RecommendationStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Models\AgendaStudentScore;
+use App\Models\CharacterInput;
 use App\Models\HandlingSession;
+use App\Models\Note;
 use App\Models\Recommendation;
 use App\Models\Student;
+use App\Models\StudentAttendance;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -90,10 +94,13 @@ class RecommendationController extends Controller
         $this->authorizeWaliKelasOrAbove($request, $rec);
 
         $data = $request->validate([
-            'tanggal'       => ['required', 'date'],
-            'catatan'       => ['required', 'string', 'max:3000'],
-            'link_dokumen'  => ['nullable', 'url', 'max:500'],
-            'link_foto'     => ['nullable', 'url', 'max:500'],
+            'tanggal'              => ['required', 'date'],
+            'catatan'              => ['required', 'string', 'max:3000'],
+            'link_dokumen'         => ['nullable', 'url', 'max:500'],
+            'link_foto'            => ['nullable', 'url', 'max:500'],
+            'links'                => ['nullable', 'array', 'max:5'],
+            'links.*.url'          => ['required_with:links', 'url', 'max:500'],
+            'links.*.keterangan'   => ['required_with:links', 'string', 'max:200'],
         ]);
 
         $session = HandlingSession::create([
@@ -103,6 +110,7 @@ class RecommendationController extends Controller
             'catatan'           => $data['catatan'],
             'link_dokumen'      => $data['link_dokumen'] ?? null,
             'link_foto'         => $data['link_foto'] ?? null,
+            'links'             => $data['links'] ?? null,
         ]);
 
         // Otomatis update status rekomendasi ke proses jika masih pending
@@ -127,10 +135,13 @@ class RecommendationController extends Controller
         abort_if($session->handled_by !== $request->user()->id, 403, 'Anda hanya bisa mengubah catatan sendiri.');
 
         $data = $request->validate([
-            'tanggal'      => ['sometimes', 'date'],
-            'catatan'      => ['sometimes', 'string', 'max:3000'],
-            'link_dokumen' => ['nullable', 'url', 'max:500'],
-            'link_foto'    => ['nullable', 'url', 'max:500'],
+            'tanggal'            => ['sometimes', 'date'],
+            'catatan'            => ['sometimes', 'string', 'max:3000'],
+            'link_dokumen'       => ['nullable', 'url', 'max:500'],
+            'link_foto'          => ['nullable', 'url', 'max:500'],
+            'links'              => ['nullable', 'array', 'max:5'],
+            'links.*.url'        => ['required_with:links', 'url', 'max:500'],
+            'links.*.keterangan' => ['required_with:links', 'string', 'max:200'],
         ]);
 
         $session->update($data);
@@ -194,17 +205,40 @@ class RecommendationController extends Controller
             ->orderBy('created_at')
             ->get();
 
+        $ews = $this->calcEwsForReport($student->id);
+
         $data = [
             'student'   => $student,
             'recs'      => $recs,
             'wali'      => $student->schoolClass?->waliKelas,
             'generated' => now('Asia/Jakarta')->format('d M Y H:i'),
             'report_id' => strtoupper(\Illuminate\Support\Str::random(8)),
+            'ews'       => $ews,
         ];
 
         return Pdf::loadView('reports.handling', $data)
             ->setPaper('a4', 'portrait')
             ->download("Riwayat_Penanganan_{$student->user->nama}.pdf");
+    }
+
+    private function calcEwsForReport(int $studentId): array
+    {
+        $total     = \App\Models\StudentAttendance::where('student_id', $studentId)->count();
+        $hadir     = \App\Models\StudentAttendance::where('student_id', $studentId)->where('status', 'hadir')->count();
+        $kehadiran = $total > 0 ? round(($hadir / $total) * 100, 1) : 100.0;
+
+        $inputs   = \App\Models\CharacterInput::where('student_id', $studentId)->with('subitem')->get();
+        $karakter = $inputs->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot));
+
+        $catatan = \App\Models\Note::where('target_type', \App\Models\Student::class)->where('target_id', $studentId)->count();
+
+        $nilaiAvg = \App\Models\AgendaStudentScore::where('student_id', $studentId)->avg('nilai');
+        $nilai    = $nilaiAvg !== null ? round($nilaiAvg, 1) : null;
+
+        $w     = ($kehadiran < 80 ? 1 : 0) + ($karakter < 0 ? 1 : 0) + ($catatan >= 3 ? 1 : 0) + ($nilai !== null && $nilai < 70 ? 1 : 0);
+        $level = match (true) { $w >= 3 => 'merah', $w === 2 => 'oranye', $w === 1 => 'kuning', default => 'hijau' };
+
+        return compact('kehadiran', 'karakter', 'catatan', 'nilai', 'level');
     }
 
     // ── Helper: format sesi ───────────────────────────────────────────────────
@@ -217,6 +251,7 @@ class RecommendationController extends Controller
             'catatan'      => $s->catatan,
             'link_dokumen' => $s->link_dokumen,
             'link_foto'    => $s->link_foto,
+            'links'        => $s->links ?? [],
             'handled_by'   => $s->handler->nama,
             'created_at'   => $s->created_at->format('Y-m-d H:i'),
         ];

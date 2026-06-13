@@ -19,6 +19,7 @@ export interface User {
   foto_url?: string | null
   teacher?: TeacherProfile | null
   student?: StudentProfile | null
+  linked_student?: LinkedStudentProfile | null
 }
 
 export interface TeacherProfile {
@@ -26,10 +27,20 @@ export interface TeacherProfile {
   nip: string | null
   mapel_utama: string | null
   nomor_hp: string | null
+  gelar_depan: string | null
+  gelar_belakang: string | null
 }
 
 export interface StudentProfile {
   id: string
+  nis: string
+  nisn: string | null
+  kelas: { tingkat: string; jurusan: string; rombel: string } | null
+}
+
+export interface LinkedStudentProfile {
+  id: string
+  nama: string | null
   nis: string
   nisn: string | null
   kelas: { tingkat: string; jurusan: string; rombel: string } | null

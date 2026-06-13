@@ -52,6 +52,8 @@ class StudentRekapController extends Controller
 
         if ($role === 'siswa' && $user->student?->id === $student->id) return;
 
+        if ($role === 'orang_tua' && $user->linked_student_id === $student->id) return;
+
         abort(403, 'Anda tidak memiliki akses ke rekap siswa ini.');
     }
 

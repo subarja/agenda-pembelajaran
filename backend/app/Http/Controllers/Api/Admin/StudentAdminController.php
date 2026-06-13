@@ -32,7 +32,7 @@ class StudentAdminController extends Controller
 
         return response()->json([
             'data' => $q->map(fn ($s) => $this->format($s)),
-            'meta' => ['total' => $q->total(), 'current_page' => $q->currentPage(), 'last_page' => $q->lastPage()],
+            'meta' => ['total' => $q->total(), 'current_page' => $q->currentPage(), 'last_page' => $q->lastPage(), 'per_page' => $q->perPage()],
         ]);
     }
 

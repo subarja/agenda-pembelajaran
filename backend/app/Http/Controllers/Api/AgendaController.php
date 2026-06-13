@@ -8,6 +8,7 @@ use App\Models\Agenda;
 use App\Models\AgendaStudentScore;
 use App\Models\LearningObjective;
 use App\Models\Schedule;
+use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\TeacherAttendance;
 use Illuminate\Http\JsonResponse;
@@ -15,19 +16,59 @@ use Illuminate\Http\Request;
 
 class AgendaController extends Controller
 {
+    public function myClasses(Request $request): JsonResponse
+    {
+        $teacher = $request->user()->teacher;
+
+        if (! $teacher) {
+            return response()->json(['data' => []]);
+        }
+
+        $classIds = Schedule::where('teacher_id', $teacher->id)
+            ->distinct()
+            ->pluck('class_id');
+
+        $classes = SchoolClass::whereIn('id', $classIds)
+            ->orderBy('tingkat')
+            ->orderBy('jurusan')
+            ->orderBy('rombel')
+            ->get()
+            ->map(fn ($c) => [
+                'label' => "{$c->tingkat->value} {$c->jurusan} - {$c->rombel}",
+            ]);
+
+        return response()->json(['data' => $classes]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $teacher = $request->user()->teacher;
 
         if (! $teacher) {
-            return response()->json(['data' => [], 'meta' => ['total' => 0]]);
+            return response()->json(['data' => [], 'meta' => ['total' => 0, 'current_page' => 1, 'last_page' => 1]]);
         }
 
-        $agendas = Agenda::whereHas('schedule', fn ($q) => $q->where('teacher_id', $teacher->id))
+        $query = Agenda::whereHas('schedule', fn ($q) => $q->where('teacher_id', $teacher->id))
             ->with(['schedule.subject', 'schedule.schoolClass', 'learningObjectives', 'studentScores.student.user'])
             ->orderByDesc('tanggal')
-            ->orderByDesc('created_at')
-            ->paginate(20);
+            ->orderByDesc('created_at');
+
+        if ($request->filled('kelas')) {
+            $kelas = $request->kelas;
+            $query->whereHas('schedule.schoolClass', function ($q) use ($kelas) {
+                $q->whereRaw("CONCAT(tingkat, ' ', jurusan, ' - ', rombel) ILIKE ?", ["%{$kelas}%"]);
+            });
+        }
+
+        if ($request->filled('tanggal_dari')) {
+            $query->whereDate('tanggal', '>=', $request->tanggal_dari);
+        }
+
+        if ($request->filled('tanggal_sampai')) {
+            $query->whereDate('tanggal', '<=', $request->tanggal_sampai);
+        }
+
+        $agendas = $query->paginate(15);
 
         return response()->json([
             'data' => AgendaResource::collection($agendas->items()),
@@ -35,6 +76,7 @@ class AgendaController extends Controller
                 'total'        => $agendas->total(),
                 'current_page' => $agendas->currentPage(),
                 'last_page'    => $agendas->lastPage(),
+                'per_page'     => $agendas->perPage(),
             ],
         ]);
     }

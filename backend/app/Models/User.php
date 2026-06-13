@@ -18,8 +18,8 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, HasUuid, Notifiable, SoftDeletes;
 
     protected $fillable = [
-        'nama', 'email', 'password', 'role', 'status',
-        'created_by', 'updated_by',
+        'nama', 'email', 'password', 'role', 'status', 'nomor_hp',
+        'linked_student_id', 'created_by', 'updated_by',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -42,6 +42,12 @@ class User extends Authenticatable
     public function student(): HasOne
     {
         return $this->hasOne(Student::class);
+    }
+
+    // Untuk orang_tua: siswa yang dipantau
+    public function linkedStudent(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Student::class, 'linked_student_id');
     }
 
     public function managedClasses(): HasMany
@@ -71,6 +77,7 @@ class User extends Authenticatable
             UserRole::WaliKelas,
             UserRole::Wakasek => $this->load('teacher'),
             UserRole::Siswa   => $this->load(['student', 'student.schoolClass']),
+            UserRole::OrangTua => $this->load(['linkedStudent', 'linkedStudent.schoolClass']),
             default           => $this,
         };
     }

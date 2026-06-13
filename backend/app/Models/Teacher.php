@@ -14,9 +14,17 @@ class Teacher extends Model
     use HasAuditTrail, HasUuid, SoftDeletes;
 
     protected $fillable = [
-        'user_id', 'nip', 'mapel_utama', 'nomor_hp',
+        'user_id', 'gelar_depan', 'gelar_belakang',
+        'nip', 'nuptk', 'mapel_utama', 'nomor_hp',
         'created_by', 'updated_by',
     ];
+
+    public function getNamaLengkapAttribute(): string
+    {
+        $nama = $this->user->nama ?? '';
+        $full = $this->gelar_depan ? $this->gelar_depan . ' ' . $nama : $nama;
+        return $this->gelar_belakang ? $full . ', ' . $this->gelar_belakang : $full;
+    }
 
     public function user(): BelongsTo
     {

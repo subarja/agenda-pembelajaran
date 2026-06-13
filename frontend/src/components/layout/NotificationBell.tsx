@@ -34,7 +34,9 @@ const TYPE_COLOR: Record<string, string> = {
 
 export default function NotificationBell() {
   const [open, setOpen]         = useState(false)
+  const [pos, setPos]           = useState({ top: 0, left: 0, openUp: false })
   const containerRef            = useRef<HTMLDivElement>(null)
+  const buttonRef               = useRef<HTMLButtonElement>(null)
   const navigate                = useNavigate()
   const qc                      = useQueryClient()
 
@@ -74,6 +76,22 @@ export default function NotificationBell() {
   const unreadCount = data?.unread_count ?? 0
   const notifications = data?.data ?? []
 
+  function calcPos() {
+    if (!buttonRef.current) return
+    const rect       = buttonRef.current.getBoundingClientRect()
+    const vw         = window.innerWidth
+    const vh         = window.innerHeight
+    const PANEL_W    = Math.min(400, vw - 16)
+    const PANEL_H    = Math.min(520, vh - 80)
+    const spaceBelow = vh - rect.bottom
+    const openUp     = spaceBelow < PANEL_H && rect.top > PANEL_H / 2
+    setPos({
+      top:  openUp ? Math.max(8, rect.top - PANEL_H - 8) : rect.bottom + 8,
+      left: Math.max(8, (vw - PANEL_W) / 2),
+      openUp,
+    })
+  }
+
   function handleClick(n: AppNotification) {
     if (!n.read) markRead.mutate(n.id)
     if (n.url) {
@@ -85,7 +103,8 @@ export default function NotificationBell() {
   return (
     <div ref={containerRef} className="relative">
       <button
-        onClick={() => { setOpen(o => !o); if (!open) refetch() }}
+        ref={buttonRef}
+        onClick={() => { calcPos(); setOpen(o => !o); if (!open) refetch() }}
         className="relative rounded-full p-2 hover:bg-accent transition-colors"
         aria-label={`Notifikasi${unreadCount > 0 ? ` (${unreadCount} belum dibaca)` : ''}`}
       >
@@ -98,14 +117,25 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border bg-card shadow-lg z-50 overflow-hidden">
+        <div
+          className="fixed max-w-[calc(100vw-1rem)] rounded-2xl border bg-card shadow-2xl z-[200] flex flex-col"
+          style={{ top: pos.top, left: pos.left, width: 400 }}
+        >
           {/* Header */}
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <h3 className="font-semibold text-sm">Notifikasi</h3>
+          <div className="flex items-center justify-between border-b px-5 py-4">
+            <div className="flex items-center gap-2">
+              <Bell className="h-4 w-4 text-primary" />
+              <h3 className="font-semibold text-base">Notifikasi</h3>
+              {unreadCount > 0 && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
             {unreadCount > 0 && (
               <button
                 onClick={() => markAll.mutate()}
-                className="flex items-center gap-1 text-xs text-primary hover:underline"
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-primary hover:bg-primary/10 transition-colors"
               >
                 <CheckCheck className="h-3.5 w-3.5" />
                 Tandai semua dibaca
@@ -114,11 +144,12 @@ export default function NotificationBell() {
           </div>
 
           {/* List */}
-          <div className="max-h-80 overflow-y-auto">
+          <div className="overflow-y-auto" style={{ maxHeight: Math.min(460, window.innerHeight - 160) }}>
             {notifications.length === 0 ? (
-              <div className="flex flex-col items-center py-8 text-center">
-                <Bell className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">Tidak ada notifikasi</p>
+              <div className="flex flex-col items-center gap-2 py-12 text-center">
+                <Bell className="h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm font-medium text-muted-foreground">Tidak ada notifikasi</p>
+                <p className="text-xs text-muted-foreground/60">Notifikasi baru akan muncul di sini</p>
               </div>
             ) : (
               notifications.map((n) => {
@@ -127,41 +158,67 @@ export default function NotificationBell() {
                 return (
                   <div
                     key={n.id}
-                    className={`flex gap-3 px-4 py-3 hover:bg-muted/50 transition-colors border-b last:border-0 ${!n.read ? 'bg-primary/5' : ''}`}
+                    className={`group relative border-b last:border-0 transition-colors ${
+                      !n.read ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/50'
+                    }`}
                   >
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${color}`}>
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleClick(n)}>
-                      <p className={`text-sm font-medium leading-snug ${!n.read ? 'font-semibold' : ''}`}>
-                        {n.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{n.created_at}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-col gap-1">
-                      {!n.read && (
+                    {/* Unread indicator */}
+                    {!n.read && (
+                      <span className="absolute left-0 top-0 bottom-0 w-1 rounded-l-sm bg-primary" />
+                    )}
+
+                    <div className="flex gap-3 px-5 py-4 cursor-pointer" onClick={() => handleClick(n)}>
+                      {/* Icon */}
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${color}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm leading-snug ${!n.read ? 'font-semibold text-foreground' : 'font-medium text-foreground/90'}`}>
+                          {n.title}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                          {n.body}
+                        </p>
+                        <p className="mt-1.5 text-xs text-muted-foreground/70">{n.created_at}</p>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex shrink-0 flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {!n.read && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); markRead.mutate(n.id) }}
+                            className="rounded-md p-1.5 hover:bg-accent"
+                            title="Tandai dibaca"
+                          >
+                            <Check className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        )}
                         <button
-                          onClick={(e) => { e.stopPropagation(); markRead.mutate(n.id) }}
-                          className="rounded p-1 hover:bg-accent"
-                          title="Tandai dibaca"
+                          onClick={(e) => { e.stopPropagation(); del.mutate(n.id) }}
+                          className="rounded-md p-1.5 hover:bg-red-100"
+                          title="Hapus"
                         >
-                          <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
                         </button>
-                      )}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); del.mutate(n.id) }}
-                        className="rounded p-1 hover:bg-red-100"
-                        title="Hapus"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      </button>
+                      </div>
                     </div>
                   </div>
                 )
               })
             )}
           </div>
+
+          {/* Footer */}
+          {notifications.length > 0 && (
+            <div className="border-t px-5 py-3 text-center">
+              <p className="text-xs text-muted-foreground">
+                {notifications.length} notifikasi
+                {unreadCount > 0 ? `, ${unreadCount} belum dibaca` : ' · semua sudah dibaca'}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

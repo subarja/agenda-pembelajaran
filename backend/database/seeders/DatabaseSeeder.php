@@ -7,6 +7,7 @@ use App\Enums\UserStatus;
 use App\Models\AcademicYear;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Models\Subject;
 use App\Models\Teacher;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -32,7 +33,7 @@ class DatabaseSeeder extends Seeder
             'status'   => UserStatus::Aktif,
         ]);
 
-        // ── Wakasek Kurikulum (Product Owner) ──────────────────────────────────
+        // ── Wakasek Kurikulum ──────────────────────────────────────────────────
         $wakasek = User::create([
             'nama'     => 'Kusman Subarja, S.Pd., M.T.',
             'email'    => 'kusman@smkn2cimahi.sch.id',
@@ -46,10 +47,10 @@ class DatabaseSeeder extends Seeder
             'mapel_utama' => 'Rekayasa Perangkat Lunak',
         ]);
 
-        // ── Guru ───────────────────────────────────────────────────────────────
+        // ── Guru utama (akun mudah untuk demo) ────────────────────────────────
         $guru = User::create([
             'nama'     => 'Budi Santoso, S.Kom.',
-            'email'    => 'budi@smkn2cimahi.sch.id',
+            'email'    => 'guru@smkn2cimahi.sch.id',
             'password' => Hash::make('password'),
             'role'     => UserRole::Guru,
             'status'   => UserStatus::Aktif,
@@ -63,7 +64,7 @@ class DatabaseSeeder extends Seeder
         // ── Wali Kelas ─────────────────────────────────────────────────────────
         $wali = User::create([
             'nama'     => 'Siti Rahayu, S.Pd.',
-            'email'    => 'siti@smkn2cimahi.sch.id',
+            'email'    => 'walikelas@smkn2cimahi.sch.id',
             'password' => Hash::make('password'),
             'role'     => UserRole::WaliKelas,
             'status'   => UserStatus::Aktif,
@@ -72,6 +73,14 @@ class DatabaseSeeder extends Seeder
             'user_id'     => $wali->id,
             'nip'         => '198506202012012003',
             'mapel_utama' => 'Basis Data',
+        ]);
+
+        // ── Mata Pelajaran dasar ───────────────────────────────────────────────
+        $rpl = Subject::create([
+            'kode'     => 'RPL-001',
+            'nama'     => 'Pemrograman Web',
+            'kelompok' => 'produktif',
+            'aktif'    => true,
         ]);
 
         // ── Kelas ──────────────────────────────────────────────────────────────
@@ -83,20 +92,74 @@ class DatabaseSeeder extends Seeder
             'academic_year_id' => $ay->id,
         ]);
 
-        // ── Siswa ──────────────────────────────────────────────────────────────
+        // ── Siswa utama (akun mudah untuk demo) ───────────────────────────────
         $siswaUser = User::create([
             'nama'     => 'Ahmad Fauzi',
-            'email'    => 'ahmad@smkn2cimahi.sch.id',
+            'email'    => 'siswa@smkn2cimahi.sch.id',
             'password' => Hash::make('password'),
             'role'     => UserRole::Siswa,
             'status'   => UserStatus::Aktif,
         ]);
         Student::create([
-            'user_id'   => $siswaUser->id,
-            'nis'       => '2324001',
-            'nisn'      => '0012345678',
-            'class_id'  => $kelas->id,
-            'angkatan'  => 2023,
+            'user_id'  => $siswaUser->id,
+            'nis'      => '2324001',
+            'nisn'     => '0012345678',
+            'class_id' => $kelas->id,
+            'angkatan' => 2023,
+        ]);
+
+        // ── Tambahan siswa awal XI RPL A ───────────────────────────────────────
+        $siswaLain = [
+            ['nama' => 'Budi Prasetyo',  'nis' => '2324002', 'nisn' => '0012345679', 'email' => 'budi2324002@smkn2cimahi.sch.id'],
+            ['nama' => 'Citra Dewi',     'nis' => '2324003', 'nisn' => '0012345680', 'email' => 'citra2324003@smkn2cimahi.sch.id'],
+            ['nama' => 'Dani Hermawan',  'nis' => '2324004', 'nisn' => '0012345681', 'email' => 'dani2324004@smkn2cimahi.sch.id'],
+            ['nama' => 'Eka Putri',      'nis' => '2324005', 'nisn' => '0012345682', 'email' => 'eka2324005@smkn2cimahi.sch.id'],
+            ['nama' => 'Fani Wijaya',    'nis' => '2324006', 'nisn' => '0012345683', 'email' => 'fani2324006@smkn2cimahi.sch.id'],
+        ];
+        foreach ($siswaLain as $s) {
+            $u = User::create([
+                'nama'     => $s['nama'],
+                'email'    => $s['email'],
+                'password' => Hash::make('password'),
+                'role'     => UserRole::Siswa,
+                'status'   => UserStatus::Aktif,
+            ]);
+            Student::create([
+                'user_id'  => $u->id,
+                'nis'      => $s['nis'],
+                'nisn'     => $s['nisn'],
+                'class_id' => $kelas->id,
+                'angkatan' => 2023,
+            ]);
+        }
+
+        // ── BK (Bimbingan Konseling) ───────────────────────────────────────────
+        User::create([
+            'nama'     => 'Bimbingan Konseling',
+            'email'    => 'bk@smkn2cimahi.sch.id',
+            'password' => Hash::make('password'),
+            'role'     => UserRole::BK,
+            'status'   => UserStatus::Aktif,
+        ]);
+
+        // ── Orang Tua (linked ke Ahmad Fauzi, dibuat setelah student tersedia) ─
+        // Dihubungkan di FullDemoSeeder agar student ID sudah ada
+
+        // ── Data karakter, kelas tambahan, siswa, agenda, EWS ─────────────────
+        $this->call([
+            CharacterSeeder::class,
+            FullDemoSeeder::class,
+        ]);
+
+        // ── Orang Tua demo (linked ke siswa utama Ahmad Fauzi) ────────────────
+        $siswaUtama = Student::where('nis', '2324001')->first();
+        User::create([
+            'nama'               => 'Orang Tua Ahmad',
+            'email'              => 'orangtua@smkn2cimahi.sch.id',
+            'password'           => Hash::make('password'),
+            'role'               => UserRole::OrangTua,
+            'status'             => UserStatus::Aktif,
+            'linked_student_id'  => $siswaUtama?->id,
         ]);
     }
 }

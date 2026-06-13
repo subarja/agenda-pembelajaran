@@ -16,9 +16,12 @@ export const agendaApi = {
       params: { class_id: classId },
     }),
 
-  getAgendas: (page = 1) =>
-    api.get<{ data: Agenda[]; meta: { total: number; current_page: number; last_page: number } }>(
-      '/agendas', { params: { page } },
+  getMyClasses: () =>
+    api.get<{ data: { label: string }[] }>('/agendas/my-classes'),
+
+  getAgendas: (params: { page?: number; kelas?: string; tanggal_dari?: string; tanggal_sampai?: string } = {}) =>
+    api.get<{ data: Agenda[]; meta: { total: number; current_page: number; last_page: number; per_page: number } }>(
+      '/agendas', { params },
     ),
 
   getAgenda: (id: string) =>

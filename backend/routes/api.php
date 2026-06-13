@@ -1,14 +1,19 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\AcademicYearController;
+use App\Http\Controllers\Api\Admin\AscXmlImportController;
+use App\Http\Controllers\Api\Admin\DapodikImportController;
 use App\Http\Controllers\Api\Admin\TeacherEwsController;
 use App\Http\Controllers\Api\Admin\CharacterAdminController;
 use App\Http\Controllers\Api\Admin\ClassAdminController;
+use App\Http\Controllers\Api\Admin\ImportController;
 use App\Http\Controllers\Api\Admin\ScheduleAdminController;
 use App\Http\Controllers\Api\Admin\StudentAdminController;
 use App\Http\Controllers\Api\Admin\SubjectAdminController;
 use App\Http\Controllers\Api\Admin\TeacherAdminController;
+use App\Http\Controllers\Api\Admin\UserAdminController;
 use App\Http\Controllers\Api\AgendaController;
+use App\Http\Controllers\Api\DailyAttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\EwsController;
@@ -49,7 +54,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('profile/email',       [ProfileController::class, 'updateEmail']);
 
     // ── Jadwal ────────────────────────────────────────────────────────────────
-    Route::get('schedules/today',     [ScheduleController::class, 'today']);
+    Route::get('schedules/today',         [ScheduleController::class, 'today']);
+    Route::get('schedules/today-student', [ScheduleController::class, 'todayStudent']);
 
     // ── Siswa ─────────────────────────────────────────────────────────────────
     Route::get('students',                                        [StudentController::class, 'index']);
@@ -58,20 +64,28 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ── Tujuan Pembelajaran ───────────────────────────────────────────────────
     Route::get('learning-objectives/my-contexts', [LearningObjectiveController::class, 'myContexts']);
+    Route::get('learning-objectives/template',    [LearningObjectiveController::class, 'template']);
+    Route::post('learning-objectives/import',     [LearningObjectiveController::class, 'import']);
     Route::get('learning-objectives',             [LearningObjectiveController::class, 'index']);
     Route::post('learning-objectives',            [LearningObjectiveController::class, 'store']);
     Route::put('learning-objectives/{uuid}',      [LearningObjectiveController::class, 'update']);
     Route::delete('learning-objectives/{uuid}',   [LearningObjectiveController::class, 'destroy']);
 
     // ── Agenda ────────────────────────────────────────────────────────────────
+    Route::get('agendas/my-classes',  [AgendaController::class, 'myClasses']);
     Route::get('agendas',             [AgendaController::class, 'index']);
     Route::post('agendas',            [AgendaController::class, 'store']);
     Route::get('agendas/{uuid}',      [AgendaController::class, 'show']);
     Route::put('agendas/{uuid}',      [AgendaController::class, 'update']);
 
-    // ── Presensi ──────────────────────────────────────────────────────────────
+    // ── Presensi per-Sesi KBM ────────────────────────────────────────────────
     Route::get('agendas/{uuid}/presensi',  [PresensiController::class, 'index']);
     Route::post('agendas/{uuid}/presensi', [PresensiController::class, 'bulkStore']);
+
+    // ── Presensi Harian Wali Kelas ────────────────────────────────────────────
+    Route::get('daily-attendance',         [DailyAttendanceController::class, 'index']);
+    Route::post('daily-attendance',        [DailyAttendanceController::class, 'bulkStore']);
+    Route::get('daily-attendance/rekap',   [DailyAttendanceController::class, 'rekap']);
 
     // ── Kehadiran Guru ────────────────────────────────────────────────────────
     Route::get('teacher-attendance',       [TeacherAttendanceController::class, 'index']);
@@ -86,6 +100,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ── EWS ───────────────────────────────────────────────────────────────────
     Route::get('ews',                      [EwsController::class, 'index']);
     Route::get('ews/{uuid}',               [EwsController::class, 'show']);
+    Route::get('ews/{uuid}/pdf',           [EwsController::class, 'dimensionPdf']);
 
     // ── Laporan ───────────────────────────────────────────────────────────────
     Route::get('reports/classes',           [ReportController::class, 'classes']);
@@ -185,5 +200,33 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('action-thresholds',          [CharacterAdminController::class, 'storeThreshold']);
         Route::put('action-thresholds/{uuid}',    [CharacterAdminController::class, 'updateThreshold']);
         Route::delete('action-thresholds/{uuid}', [CharacterAdminController::class, 'destroyThreshold']);
+
+        // Pengguna (admin, bk, orang_tua)
+        Route::get('users',              [UserAdminController::class, 'index']);
+        Route::post('users',             [UserAdminController::class, 'store']);
+        Route::put('users/{uuid}',       [UserAdminController::class, 'update']);
+        Route::delete('users/{uuid}',    [UserAdminController::class, 'destroy']);
+
+        // Import aSc Timetables XML
+        Route::post('import/asc-xml',         [AscXmlImportController::class, 'import']);
+
+        // Import Dapodik Excel (guru & siswa)
+        Route::post('import/dapodik-guru',    [DapodikImportController::class, 'importGuru']);
+        Route::post('import/dapodik-siswa',   [DapodikImportController::class, 'importSiswa']);
+
+        // Template download
+        Route::get('template/{entity}',  [ImportController::class, 'template']);
+
+        // Import Excel
+        Route::post('import/teachers',              [ImportController::class, 'importTeachers']);
+        Route::post('import/students',              [ImportController::class, 'importStudents']);
+        Route::post('import/classes',               [ImportController::class, 'importClasses']);
+        Route::post('import/subjects',              [ImportController::class, 'importSubjects']);
+        Route::post('import/schedules',             [ImportController::class, 'importSchedules']);
+        Route::post('import/character-categories',  [ImportController::class, 'importCharacterCategories']);
+        Route::post('import/character-subitems',    [ImportController::class, 'importCharacterSubitems']);
+        Route::post('import/thresholds',            [ImportController::class, 'importThresholds']);
+        Route::post('import/wali-kelas',            [ImportController::class, 'importWaliKelas']);
+        Route::get('export/wali-kelas',             [ImportController::class, 'exportWaliKelas']);
     });
 });

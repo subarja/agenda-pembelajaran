@@ -18,19 +18,25 @@ class ProfileController extends Controller
         return response()->json(['data' => new UserResource($request->user()->loadProfileRelation())]);
     }
 
-    // PUT /profile — nama & nomor_hp
+    // PUT /profile — nama, nomor_hp, gelar (guru)
     public function update(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'nama'     => ['sometimes', 'string', 'max:150'],
-            'nomor_hp' => ['nullable', 'string', 'max:20'],
+            'nama'           => ['sometimes', 'string', 'max:150'],
+            'nomor_hp'       => ['nullable', 'string', 'max:20'],
+            'gelar_depan'    => ['nullable', 'string', 'max:50'],
+            'gelar_belakang' => ['nullable', 'string', 'max:100'],
         ]);
 
         $user = $request->user();
         if (isset($data['nama'])) $user->update(['nama' => $data['nama']]);
 
-        if ($user->teacher && array_key_exists('nomor_hp', $data)) {
-            $user->teacher->update(['nomor_hp' => $data['nomor_hp']]);
+        if ($user->teacher) {
+            $teacherFields = [];
+            if (array_key_exists('nomor_hp', $data))       $teacherFields['nomor_hp']       = $data['nomor_hp'];
+            if (array_key_exists('gelar_depan', $data))    $teacherFields['gelar_depan']    = $data['gelar_depan'] ?: null;
+            if (array_key_exists('gelar_belakang', $data)) $teacherFields['gelar_belakang'] = $data['gelar_belakang'] ?: null;
+            if (! empty($teacherFields)) $user->teacher->update($teacherFields);
         }
 
         return response()->json([

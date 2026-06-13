@@ -14,12 +14,15 @@ class HandlingSession extends Model
 
     protected $fillable = [
         'recommendation_id', 'handled_by',
-        'tanggal', 'catatan', 'link_dokumen', 'link_foto',
+        'tanggal', 'catatan', 'link_dokumen', 'link_foto', 'links',
     ];
 
     protected function casts(): array
     {
-        return ['tanggal' => 'date'];
+        return [
+            'tanggal' => 'date',
+            'links'   => 'array',
+        ];
     }
 
     public function recommendation(): BelongsTo

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\EwsLevel;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\AcademicYear;
 use App\Models\AgendaStudentScore;
 use App\Models\CharacterInput;
@@ -47,6 +48,12 @@ class EwsController extends Controller
             UserRole::Guru => $query->whereHas('schoolClass.schedules', fn ($q) =>
                 $q->whereHas('teacher', fn ($q2) => $q2->where('user_id', $user->id)),
             ),
+            UserRole::Siswa => $query->whereHas(
+                'user', fn ($q) => $q->where('id', $user->id),
+            ),
+            UserRole::OrangTua => $user->linked_student_id
+                ? $query->where('id', $user->linked_student_id)
+                : $query->whereRaw('1=0'), // tidak ada anak → empty
             default => null, // admin, wakasek, BK: semua siswa
         };
 
@@ -93,6 +100,20 @@ class EwsController extends Controller
             ->with(['user:id,nama', 'schoolClass'])
             ->firstOrFail();
 
+        $user = $request->user();
+
+        // Batasi akses siswa & orang tua
+        if ($user->role === UserRole::Siswa) {
+            $own = Student::where('user_id', $user->id)->first();
+            if (! $own || $own->id !== $student->id) {
+                return response()->json(['message' => 'Akses ditolak.'], 403);
+            }
+        } elseif ($user->role === UserRole::OrangTua) {
+            if (! $user->linked_student_id || $user->linked_student_id !== $student->id) {
+                return response()->json(['message' => 'Akses ditolak.'], 403);
+            }
+        }
+
         $ay = AcademicYear::where('aktif', true)->first();
 
         $kehadiran = $this->calcKehadiran($student->id);
@@ -115,11 +136,10 @@ class EwsController extends Controller
             );
         }
 
-        // Riwayat karakter terbaru
-        $recentKarakter = CharacterInput::where('student_id', $student->id)
+        // Semua riwayat karakter (lengkap)
+        $allKarakter = CharacterInput::where('student_id', $student->id)
             ->with(['subitem.category', 'teacher.user'])
             ->orderByDesc('created_at')
-            ->limit(10)
             ->get()
             ->map(fn ($i) => [
                 'kategori' => $i->subitem->category->nama,
@@ -128,6 +148,48 @@ class EwsController extends Controller
                 'guru'     => $i->teacher->user->nama,
                 'tanggal'  => $i->created_at->format('Y-m-d H:i'),
             ]);
+
+        // Detail ketidakhadiran (semua selain hadir)
+        $absences = StudentAttendance::where('student_id', $student->id)
+            ->where('status', '!=', 'hadir')
+            ->with(['agenda.schedule.subject', 'agenda.schedule.schoolClass'])
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($a) => [
+                'tanggal' => $a->agenda->tanggal->format('Y-m-d'),
+                'status'  => $a->status->value,
+                'mapel'   => $a->agenda->schedule->subject->nama ?? '—',
+                'kelas'   => $a->agenda->schedule->schoolClass
+                    ? "{$a->agenda->schedule->schoolClass->tingkat->value} {$a->agenda->schedule->schoolClass->jurusan} - {$a->agenda->schedule->schoolClass->rombel}"
+                    : '—',
+            ]);
+
+        // Semua catatan KBM siswa ini
+        $allCatatan = Note::where('target_type', Student::class)
+            ->where('target_id', $student->id)
+            ->with('createdBy:id,nama')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($n) => [
+                'tanggal'       => $n->created_at->format('Y-m-d'),
+                'kategori'      => $n->kategori->value,
+                'isi'           => $n->isi,
+                'tindak_lanjut' => $n->tindak_lanjut,
+                'dicatat_oleh'  => $n->createdBy?->nama ?? '—',
+            ]);
+
+        // Semua nilai per sesi
+        $allNilai = AgendaStudentScore::where('student_id', $student->id)
+            ->with(['agenda.schedule.subject'])
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($n) => [
+                'tanggal' => $n->agenda->tanggal->format('Y-m-d'),
+                'mapel'   => $n->agenda->schedule->subject->nama ?? '—',
+                'nilai'   => $n->nilai,
+            ]);
+
+        $recentKarakter = $allKarakter->take(10);
 
         // Rekomendasi tindakan berdasarkan ambang poin
         $rekomendasi = Recommendation::where('student_id', $student->id)
@@ -156,6 +218,7 @@ class EwsController extends Controller
                     'catatan'      => $s->catatan,
                     'link_dokumen' => $s->link_dokumen,
                     'link_foto'    => $s->link_foto,
+                    'links'        => $s->links ?? [],
                     'handled_by'   => $s->handler->nama,
                     'created_at'   => $s->created_at->format('Y-m-d H:i'),
                 ]),
@@ -178,10 +241,97 @@ class EwsController extends Controller
                     'catatan'   => $catatan,
                     'nilai'     => $nilai,
                 ],
-                'recent_karakter' => $recentKarakter,
-                'rekomendasi'     => $rekomendasi,
+                'recent_karakter'  => $recentKarakter,
+                'detail_kehadiran' => $absences,
+                'detail_karakter'  => $allKarakter,
+                'detail_catatan'   => $allCatatan,
+                'detail_nilai'     => $allNilai,
+                'rekomendasi'      => $rekomendasi,
             ],
         ]);
+    }
+
+    // ── PDF dimensi — GET /ews/{uuid}/pdf?dim=kehadiran|karakter|catatan|nilai ─
+
+    public function dimensionPdf(Request $request, string $uuid)
+    {
+        $dim = $request->query('dim', 'kehadiran');
+        abort_unless(in_array($dim, ['kehadiran', 'karakter', 'catatan', 'nilai']), 404);
+
+        $student = Student::where('uuid', $uuid)
+            ->with(['user:id,nama', 'schoolClass'])
+            ->firstOrFail();
+
+        $generated = now('Asia/Jakarta')->format('d M Y H:i');
+        $namaFile  = "EWS_{$dim}_{$student->user->nama}";
+        $kelas     = $student->schoolClass
+            ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
+            : '—';
+
+        if ($dim === 'kehadiran') {
+            $kehadiran = $this->calcKehadiran($student->id);
+            $rows = StudentAttendance::where('student_id', $student->id)
+                ->where('status', '!=', 'hadir')
+                ->with(['agenda.schedule.subject', 'agenda.schedule.schoolClass'])
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(fn ($a) => [
+                    'tanggal' => $a->agenda->tanggal->format('d/m/Y'),
+                    'status'  => strtoupper($a->status->value),
+                    'mapel'   => $a->agenda->schedule->subject->nama ?? '—',
+                ]);
+            return Pdf::loadView('reports.dim_kehadiran', compact('student','kelas','kehadiran','rows','generated'))
+                ->setPaper('a4','portrait')->download("{$namaFile}.pdf");
+        }
+
+        if ($dim === 'karakter') {
+            $karakter = $this->calcKarakter($student->id);
+            $rows = CharacterInput::where('student_id', $student->id)
+                ->with(['subitem.category', 'teacher.user'])
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(fn ($i) => [
+                    'tanggal'  => $i->created_at->format('d/m/Y'),
+                    'kategori' => $i->subitem->category->nama,
+                    'subitem'  => $i->subitem->deskripsi,
+                    'poin'     => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot),
+                    'guru'     => $i->teacher->user->nama,
+                ]);
+            return Pdf::loadView('reports.dim_karakter', compact('student','kelas','karakter','rows','generated'))
+                ->setPaper('a4','portrait')->download("{$namaFile}.pdf");
+        }
+
+        if ($dim === 'catatan') {
+            $catatanStat = $this->calcCatatan($student->id);
+            $rows = Note::where('target_type', Student::class)
+                ->where('target_id', $student->id)
+                ->with('createdBy:id,nama')
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(fn ($n) => [
+                    'tanggal'       => $n->created_at->format('d/m/Y'),
+                    'kategori'      => $n->kategori->value,
+                    'isi'           => $n->isi,
+                    'tindak_lanjut' => $n->tindak_lanjut,
+                    'oleh'          => $n->createdBy?->nama ?? '—',
+                ]);
+            return Pdf::loadView('reports.dim_catatan', compact('student','kelas','catatanStat','rows','generated'))
+                ->setPaper('a4','portrait')->download("{$namaFile}.pdf");
+        }
+
+        // nilai
+        $nilaiStat = $this->calcNilai($student->id);
+        $rows = AgendaStudentScore::where('student_id', $student->id)
+            ->with(['agenda.schedule.subject'])
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($n) => [
+                'tanggal' => $n->agenda->tanggal->format('d/m/Y'),
+                'mapel'   => $n->agenda->schedule->subject->nama ?? '—',
+                'nilai'   => $n->nilai,
+            ]);
+        return Pdf::loadView('reports.dim_nilai', compact('student','kelas','nilaiStat','rows','generated'))
+            ->setPaper('a4','portrait')->download("{$namaFile}.pdf");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

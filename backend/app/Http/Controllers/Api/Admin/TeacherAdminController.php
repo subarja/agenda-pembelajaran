@@ -26,20 +26,22 @@ class TeacherAdminController extends Controller
 
         return response()->json([
             'data' => $q->map(fn ($t) => $this->format($t)),
-            'meta' => ['total' => $q->total(), 'current_page' => $q->currentPage(), 'last_page' => $q->lastPage()],
+            'meta' => ['total' => $q->total(), 'current_page' => $q->currentPage(), 'last_page' => $q->lastPage(), 'per_page' => $q->perPage()],
         ]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'nama'        => ['required', 'string', 'max:100'],
-            'email'       => ['required', 'email', 'unique:users,email'],
-            'nip'         => ['required', 'string', 'max:20', 'unique:teachers,nip'],
-            'mapel_utama' => ['required', 'string', 'max:100'],
-            'role'        => ['required', 'in:guru,wali_kelas,wakasek,bk'],
-            'nomor_hp'    => ['nullable', 'string', 'max:20'],
-            'password'    => ['nullable', 'string', 'min:8'],
+            'nama'           => ['required', 'string', 'max:100'],
+            'email'          => ['required', 'email', 'unique:users,email'],
+            'nip'            => ['required', 'string', 'max:20', 'unique:teachers,nip'],
+            'mapel_utama'    => ['required', 'string', 'max:100'],
+            'role'           => ['required', 'in:guru,wali_kelas,wakasek,bk'],
+            'nomor_hp'       => ['nullable', 'string', 'max:20'],
+            'password'       => ['nullable', 'string', 'min:8'],
+            'gelar_depan'    => ['nullable', 'string', 'max:50'],
+            'gelar_belakang' => ['nullable', 'string', 'max:100'],
         ]);
 
         $teacher = DB::transaction(function () use ($data) {
@@ -52,9 +54,11 @@ class TeacherAdminController extends Controller
                 'nomor_hp' => $data['nomor_hp'] ?? null,
             ]);
             return Teacher::create([
-                'user_id'     => $user->id,
-                'nip'         => $data['nip'],
-                'mapel_utama' => $data['mapel_utama'],
+                'user_id'        => $user->id,
+                'nip'            => $data['nip'],
+                'mapel_utama'    => $data['mapel_utama'],
+                'gelar_depan'    => $data['gelar_depan'] ?? null,
+                'gelar_belakang' => $data['gelar_belakang'] ?? null,
             ]);
         });
 
@@ -66,14 +70,16 @@ class TeacherAdminController extends Controller
         $teacher = Teacher::where('uuid', $uuid)->with('user')->firstOrFail();
 
         $data = $request->validate([
-            'nama'        => ['sometimes', 'string', 'max:100'],
-            'email'       => ['sometimes', 'email', 'unique:users,email,' . $teacher->user_id],
-            'nip'         => ['sometimes', 'string', 'max:20', 'unique:teachers,nip,' . $teacher->id],
-            'mapel_utama' => ['sometimes', 'string', 'max:100'],
-            'role'        => ['sometimes', 'in:guru,wali_kelas,wakasek,bk'],
-            'nomor_hp'    => ['nullable', 'string', 'max:20'],
-            'status'      => ['sometimes', 'in:aktif,nonaktif'],
-            'password'    => ['nullable', 'string', 'min:8'],
+            'nama'           => ['sometimes', 'string', 'max:100'],
+            'email'          => ['sometimes', 'email', 'unique:users,email,' . $teacher->user_id],
+            'nip'            => ['sometimes', 'string', 'max:20', 'unique:teachers,nip,' . $teacher->id],
+            'mapel_utama'    => ['sometimes', 'string', 'max:100'],
+            'role'           => ['sometimes', 'in:guru,wali_kelas,wakasek,bk'],
+            'nomor_hp'       => ['nullable', 'string', 'max:20'],
+            'status'         => ['sometimes', 'in:aktif,nonaktif'],
+            'password'       => ['nullable', 'string', 'min:8'],
+            'gelar_depan'    => ['nullable', 'string', 'max:50'],
+            'gelar_belakang' => ['nullable', 'string', 'max:100'],
         ]);
 
         DB::transaction(function () use ($teacher, $data) {
@@ -88,10 +94,19 @@ class TeacherAdminController extends Controller
             if (! empty($userFields)) $teacher->user->update($userFields);
 
             $teacherFields = array_filter([
-                'nip'         => $data['nip'] ?? null,
-                'mapel_utama' => $data['mapel_utama'] ?? null,
-            ]);
-            if (! empty($teacherFields)) $teacher->update($teacherFields);
+                'nip'            => $data['nip'] ?? null,
+                'mapel_utama'    => $data['mapel_utama'] ?? null,
+                'gelar_depan'    => array_key_exists('gelar_depan', $data) ? ($data['gelar_depan'] ?: null) : null,
+                'gelar_belakang' => array_key_exists('gelar_belakang', $data) ? ($data['gelar_belakang'] ?: null) : null,
+            ], fn ($v) => $v !== null);
+
+            // Allow explicit null for gelar fields
+            if (array_key_exists('gelar_depan', $data))    $teacherFields['gelar_depan']    = $data['gelar_depan'] ?: null;
+            if (array_key_exists('gelar_belakang', $data)) $teacherFields['gelar_belakang'] = $data['gelar_belakang'] ?: null;
+
+            if (! empty($teacherFields) || array_key_exists('gelar_depan', $data) || array_key_exists('gelar_belakang', $data)) {
+                $teacher->update($teacherFields);
+            }
         });
 
         return response()->json(['message' => 'Data guru diperbarui.', 'data' => $this->format($teacher->fresh('user'))]);
@@ -111,14 +126,16 @@ class TeacherAdminController extends Controller
     private function format(Teacher $t): array
     {
         return [
-            'id'          => $t->uuid,
-            'nama'        => $t->user->nama,
-            'email'       => $t->user->email,
-            'role'        => $t->user->role->value,
-            'status'      => $t->user->status->value,
-            'nip'         => $t->nip,
-            'mapel_utama' => $t->mapel_utama,
-            'nomor_hp'    => $t->user->nomor_hp,
+            'id'             => $t->uuid,
+            'nama'           => $t->user->nama,
+            'email'          => $t->user->email,
+            'role'           => $t->user->role->value,
+            'status'         => $t->user->status->value,
+            'nip'            => $t->nip,
+            'mapel_utama'    => $t->mapel_utama,
+            'nomor_hp'       => $t->user->nomor_hp,
+            'gelar_depan'    => $t->gelar_depan,
+            'gelar_belakang' => $t->gelar_belakang,
         ];
     }
 }

@@ -2,9 +2,19 @@ import api from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export interface AdminUser {
+  id: string; nama: string; email: string; role: string; status: string; nomor_hp: string | null
+  linked_student?: { id: string; nama: string | null; nis: string; kelas: string | null } | null
+}
+
+export interface ImportResult {
+  success_count: number; error_count: number; errors: string[]
+}
+
 export interface AdminTeacher {
   id: string; nama: string; email: string; role: string
   status: string; nip: string; mapel_utama: string; nomor_hp: string | null
+  gelar_depan: string | null; gelar_belakang: string | null
 }
 
 export interface AdminStudent {
@@ -83,7 +93,7 @@ export const adminApi = {
   deleteSubject: (id: string) => api.delete(`/admin/subjects/${id}`).then(r => r.data),
 
   // Jadwal
-  getSchedules: (params?: object) => api.get('/admin/schedules', { params }).then(r => r.data.data as AdminSchedule[]),
+  getSchedules: (params?: object) => api.get('/admin/schedules', { params }).then(r => r.data as { data: AdminSchedule[]; meta: any }),
   createSchedule: (d: object) => api.post('/admin/schedules', d).then(r => r.data),
   updateSchedule: (id: string, d: object) => api.put(`/admin/schedules/${id}`, d).then(r => r.data),
   deleteSchedule: (id: string) => api.delete(`/admin/schedules/${id}`).then(r => r.data),
@@ -105,4 +115,32 @@ export const adminApi = {
   createThreshold: (d: object) => api.post('/admin/action-thresholds', d).then(r => r.data),
   updateThreshold: (id: string, d: object) => api.put(`/admin/action-thresholds/${id}`, d).then(r => r.data),
   deleteThreshold: (id: string) => api.delete(`/admin/action-thresholds/${id}`).then(r => r.data),
+
+  // Pengguna (admin, bk, orang_tua)
+  getAdminUsers: (params?: object) => api.get('/admin/users', { params }).then(r => r.data as { data: AdminUser[]; meta: any }),
+  createAdminUser: (d: object) => api.post('/admin/users', d).then(r => r.data),
+  updateAdminUser: (id: string, d: object) => api.put(`/admin/users/${id}`, d).then(r => r.data),
+  deleteAdminUser: (id: string) => api.delete(`/admin/users/${id}`).then(r => r.data),
+
+  // Import Excel
+  importData: (entity: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/admin/import/${entity}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data as ImportResult)
+  },
+
+  // Template download
+  downloadTemplate: async (entity: string) => {
+    const res = await api.get(`/admin/template/${entity}`, { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const a   = document.createElement('a')
+    a.href    = url
+    a.download = `template_${entity}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  },
 }

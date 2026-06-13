@@ -97,15 +97,18 @@ services:
       redis:
         condition: service_healthy
 
-  # ── Frontend (placeholder) ────────────────────────────────────────────────────
-  # Ganti dengan build context setelah kode frontend tersedia.
-  # Contoh Vite dev: build: { context: ./frontend, dockerfile: Dockerfile }
+  # ── Frontend React + Vite ─────────────────────────────────────────────────────
   frontend:
-    image: busybox
-    command: sh -c "echo 'Frontend placeholder — ganti dengan image/build React + Vite' && sleep infinity"
-    restart: "no"
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    restart: unless-stopped
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      API_TARGET: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
     ports:
       - "5173:5173"
     depends_on:
@@ -115,3 +118,4 @@ volumes:
   db_data:
   redis_data:
   backend_vendor:
+  frontend_node_modules:

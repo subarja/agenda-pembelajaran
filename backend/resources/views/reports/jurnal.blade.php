@@ -4,16 +4,12 @@
 <meta charset="UTF-8">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
+body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 1cm 2cm 1cm 2cm; }
 
-/* KOP SEKOLAH */
-.kop { display: flex; align-items: center; border-bottom: 3px double #1f4e79; padding-bottom: 10px; margin-bottom: 12px; }
-.kop-logo { width: 70px; height: 70px; background: #1f4e79; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.kop-logo span { color: white; font-size: 20pt; font-weight: bold; }
-.kop-text { margin-left: 14px; }
-.kop-text .sekolah { font-size: 16pt; font-weight: bold; letter-spacing: 0.5px; color: #1f4e79; }
-.kop-text .alamat { font-size: 8.5pt; color: #555; margin-top: 2px; }
-.kop-text .alamat span { margin-right: 12px; }
+/* KOP SURAT */
+.kop { text-align: center; margin-bottom: 8px; }
+.kop img { display: inline-block; max-width: 100%; height: auto; }
+.kop-garis { border-top: 3px solid #000; border-bottom: 1px solid #000; margin-bottom: 12px; }
 
 /* JUDUL */
 .judul { text-align: center; margin: 14px 0 10px; }
@@ -46,35 +42,27 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
 .ringkasan td:nth-child(2) { width: 10px; }
 .ringkasan td:last-child { font-weight: bold; }
 
-/* TTD */
+/* TTD — table-based agar berjajar di DomPDF */
 .ttd { margin-top: 10px; }
-.ttd h3 { font-size: 10pt; color: #555; margin-bottom: 12px; font-style: italic; }
-.ttd-wrap { display: flex; gap: 0; width: 100%; }
-.ttd-box { flex: 1; text-align: center; padding: 0 12px; }
-.ttd-box .label { font-size: 9.5pt; color: #555; margin-bottom: 4px; }
-.ttd-box .role { font-size: 10pt; font-weight: bold; margin-bottom: 60px; }
-.ttd-box .line { border-top: 1px solid #333; padding-top: 4px; font-size: 9.5pt; }
-.ttd-box .nip { font-size: 9pt; color: #777; }
+.ttd-lokasi { font-size: 10pt; color: #555; margin-bottom: 12px; font-style: italic; }
+.ttd-cell { text-align: center; padding: 0 12px; vertical-align: top; }
+.ttd-cell .label { font-size: 9.5pt; color: #555; margin-bottom: 4px; }
+.ttd-cell .role { font-size: 10pt; font-weight: bold; margin-bottom: 55px; }
+.ttd-cell .nama { display: inline-block; border-top: 1px solid #333; padding-top: 4px; font-size: 9.5pt; min-width: 140px; }
+.ttd-cell .nip { font-size: 9pt; color: #777; }
 
-/* WATERMARK / FOOTER */
-.footer { margin-top: 14px; border-top: 1px solid #e2e8f0; padding-top: 6px; font-size: 8.5pt; color: #aaa; display: flex; justify-content: space-between; }
+/* FOOTER */
+.footer-table { width: 100%; border-collapse: collapse; margin-top: 14px; border-top: 1px solid #e2e8f0; }
+.footer-table td { font-size: 8.5pt; color: #aaa; padding-top: 6px; }
 </style>
 </head>
 <body>
 
-{{-- KOP SEKOLAH --}}
+{{-- KOP SURAT --}}
 <div class="kop">
-  <div class="kop-logo"><span>S2</span></div>
-  <div class="kop-text">
-    <div class="sekolah">SMK NEGERI 2 CIMAHI</div>
-    <div class="alamat">
-      <span>Jl. Kamarung No. 69, Cimahi Utara</span>
-      <span>Telp. (022) 6629812</span>
-      <span>smkn2cimahi.sch.id</span>
-      <span>info@smkn2cimahi.sch.id</span>
-    </div>
-  </div>
+  <img src="file://{{ public_path('images/kop_surat.jpg') }}" alt="Kop SMKN 2 Cimahi">
 </div>
+<div class="kop-garis"></div>
 
 {{-- JUDUL --}}
 <div class="judul">
@@ -181,36 +169,40 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
   </table>
 </div>
 
-{{-- BLOK TTD --}}
+{{-- BLOK TTD — 3 penanda tangan berjajar --}}
 <div class="ttd">
-  <h3>Cimahi, {{ now('Asia/Jakarta')->isoFormat('D MMMM YYYY') }}</h3>
-  <div class="ttd-wrap">
-    <div class="ttd-box">
-      <div class="label">Dibuat oleh,</div>
-      <div class="role">Guru Mata Pelajaran</div>
-      <div class="line">{{ $guru }}</div>
-      <div class="nip">NIP. {{ $nip }}</div>
-    </div>
-    <div class="ttd-box">
-      <div class="label">Mengetahui,</div>
-      <div class="role">Wakasek Bid. Kurikulum</div>
-      <div class="line">Kusman Subarja, S.Pd., M.T.</div>
-      <div class="nip">NIP. 197501012005011001</div>
-    </div>
-    <div class="ttd-box">
-      <div class="label">Disetujui,</div>
-      <div class="role">Kepala SMK Negeri 2 Cimahi</div>
-      <div class="line">................................</div>
-      <div class="nip">NIP. ................................</div>
-    </div>
-  </div>
+  <div class="ttd-lokasi">Cimahi, {{ now('Asia/Jakarta')->isoFormat('D MMMM YYYY') }}</div>
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td class="ttd-cell">
+        <div class="label">Dibuat oleh,</div>
+        <div class="role">Guru Mata Pelajaran</div>
+        <span class="nama">{{ $guru }}</span>
+        <div class="nip">NIP. {{ $nip }}</div>
+      </td>
+      <td class="ttd-cell">
+        <div class="label">Mengetahui,</div>
+        <div class="role">Wakasek Bid. Kurikulum</div>
+        <span class="nama">Kusman Subarja, S.Pd., M.T.</span>
+        <div class="nip">NIP. 197501012005011001</div>
+      </td>
+      <td class="ttd-cell">
+        <div class="label">Disetujui,</div>
+        <div class="role">Kepala SMK Negeri 2 Cimahi</div>
+        <span class="nama">................................</span>
+        <div class="nip">NIP. ................................</div>
+      </td>
+    </tr>
+  </table>
 </div>
 
 {{-- FOOTER --}}
-<div class="footer">
-  <span>ID Laporan: {{ $report_id }}</span>
-  <span>Dicetak: {{ now('Asia/Jakarta')->format('d M Y H:i') }} WIB &nbsp;·&nbsp; Aplikasi Agenda Pembelajaran SMKN 2 Cimahi</span>
-</div>
+<table class="footer-table">
+  <tr>
+    <td>ID Laporan: {{ $report_id }}</td>
+    <td style="text-align:right;">Dicetak: {{ now('Asia/Jakarta')->format('d M Y H:i') }} WIB &nbsp;·&nbsp; Aplikasi Agenda Pembelajaran SMKN 2 Cimahi</td>
+  </tr>
+</table>
 
 </body>
 </html>

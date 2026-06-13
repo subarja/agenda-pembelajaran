@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, BookOpen, Users, ClipboardCheck,
+  LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
 } from 'lucide-react'
 import type { UserRole } from '@/types'
@@ -14,7 +14,8 @@ const allNav: Record<string, NavItem> = {
   dashboard:  { label: 'Dashboard',      path: '/',           icon: LayoutDashboard },
   agenda:     { label: 'Agenda',         path: '/agenda',     icon: BookOpen },
   tp:         { label: 'Tujuan Pemb.',   path: '/tp',         icon: Target },
-  presensi:   { label: 'Presensi',       path: '/presensi',   icon: ClipboardCheck },
+  presensi:      { label: 'Presensi',         path: '/presensi',        icon: ClipboardCheck },
+  presensiHarian:{ label: 'Presensi Harian', path: '/presensi-harian', icon: CalendarCheck },
   karakter:   { label: 'Karakter',       path: '/karakter',   icon: Star },
   siswa:      { label: 'Siswa',          path: '/siswa',      icon: Users },
   ews:        { label: 'EWS Siswa',      path: '/ews',        icon: AlertTriangle },
@@ -35,7 +36,7 @@ export const navByRole: Record<UserRole, NavItem[]> = {
   ],
   wali_kelas: [
     allNav.dashboard, allNav.agenda, allNav.tp,
-    allNav.presensi, allNav.karakter, allNav.siswa, allNav.laporan, allNav.profil,
+    allNav.presensi, allNav.presensiHarian, allNav.karakter, allNav.ews, allNav.siswa, allNav.laporan, allNav.profil,
   ],
   wakasek: [
     allNav.dashboard, allNav.ews, allNav.ewsGuru, allNav.laporan, allNav.admin, allNav.profil,

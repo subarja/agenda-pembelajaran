@@ -4,82 +4,52 @@
 <meta charset="UTF-8">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
-
-.kop { display: flex; align-items: center; border-bottom: 3px double #1f4e79; padding-bottom: 10px; margin-bottom: 12px; }
-.kop-logo { width: 65px; height: 65px; background: #1f4e79; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.kop-logo span { color: white; font-size: 18pt; font-weight: bold; }
-.kop-text { margin-left: 14px; }
-.kop-text .sekolah { font-size: 15pt; font-weight: bold; color: #1f4e79; }
-.kop-text .alamat  { font-size: 8pt; color: #555; margin-top: 2px; }
+body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 1cm 2cm 1cm 2cm; }
 
 .judul { text-align: center; margin: 12px 0 10px; }
 .judul h2 { font-size: 13pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
 .judul p  { font-size: 9.5pt; color: #555; margin-top: 3px; }
 
 .profil-siswa { border: 1px solid #ccc; border-radius: 4px; padding: 10px 14px; margin-bottom: 14px; background: #f8fafc; }
-.profil-siswa table { width: 100%; font-size: 10.5pt; }
+.profil-siswa table { width: 100%; font-size: 10.5pt; border-collapse: collapse; }
 .profil-siswa td { padding: 2px 0; }
 .profil-siswa td:first-child { width: 140px; color: #666; }
 .profil-siswa td:nth-child(2) { width: 10px; }
 
-/* === Timeline rekomendasi === */
 .rek-block { margin-bottom: 20px; }
 .rek-header { background: #1f4e79; color: white; padding: 7px 12px; border-radius: 4px 4px 0 0; font-size: 10pt; font-weight: bold; }
 .rek-header .level { font-weight: normal; font-size: 9pt; opacity: 0.85; }
 .rek-body { border: 1px solid #c8d5e3; border-top: none; border-radius: 0 0 4px 4px; padding: 10px 12px; }
-
-.rek-info { display: flex; gap: 20px; flex-wrap: wrap; font-size: 9.5pt; color: #555; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
-.rek-info span strong { color: #1a1a1a; }
-
+.rek-info { font-size: 9.5pt; color: #555; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
+.rek-info span { margin-right: 20px; }
 .rek-teks { font-size: 10pt; font-weight: bold; color: #1f4e79; margin-bottom: 8px; }
-
 .catatan-admin { background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; font-size: 9.5pt; }
 .catatan-admin .label { font-weight: bold; color: #92400e; font-size: 8.5pt; }
-
 .handlers { margin-bottom: 8px; font-size: 9.5pt; }
 .handlers .label { font-weight: bold; color: #555; }
-
-/* Sesi penanganan */
 .sesi-list { margin-top: 8px; }
 .sesi-item { border-left: 3px solid #1f4e79; padding: 7px 10px; margin-bottom: 8px; background: #f8fafc; border-radius: 0 4px 4px 0; }
 .sesi-meta { font-size: 8.5pt; color: #666; margin-bottom: 4px; }
 .sesi-meta strong { color: #1a1a1a; }
 .sesi-catatan { font-size: 9.5pt; line-height: 1.5; }
 .sesi-links { margin-top: 4px; font-size: 8.5pt; color: #2563eb; }
-
-.status-badge {
-    display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 8.5pt; font-weight: bold;
-}
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 8.5pt; font-weight: bold; }
 .status-pending  { background: #fee2e2; color: #991b1b; }
 .status-proses   { background: #fef9c3; color: #854d0e; }
 .status-menunggu { background: #dbeafe; color: #1e40af; }
 .status-selesai  { background: #dcfce7; color: #166534; }
-
 .no-data { text-align: center; color: #94a3b8; font-style: italic; padding: 16px; font-size: 9.5pt; }
-
-/* TTD */
-.ttd-section { margin-top: 24px; border-top: 2px solid #1f4e79; padding-top: 14px; }
-.ttd-title { font-size: 10pt; font-weight: bold; color: #1f4e79; margin-bottom: 12px; }
-.ttd-grid { display: flex; gap: 0; }
-.ttd-box { flex: 1; text-align: center; padding: 0 8px; }
-.ttd-box .role { font-size: 9pt; color: #555; margin-bottom: 4px; }
-.ttd-box .jabatan { font-size: 9.5pt; font-weight: bold; margin-bottom: 50px; }
-.ttd-box .line { border-top: 1px solid #333; padding-top: 4px; font-size: 9pt; }
-.ttd-box .nip { font-size: 8.5pt; color: #777; }
-
-.footer { margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 6px; font-size: 8pt; color: #aaa; display: flex; justify-content: space-between; }
+.warn-txt { color: #dc2626; font-size: 8pt; }
+.ok-txt   { color: #16a34a; font-size: 8pt; }
 </style>
 </head>
 <body>
 
-<div class="kop">
-  <div class="kop-logo"><span>S2</span></div>
-  <div class="kop-text">
-    <div class="sekolah">SMK NEGERI 2 CIMAHI</div>
-    <div class="alamat">Jl. Kamarung No. 69, Cimahi Utara &nbsp;·&nbsp; (022) 6629812 &nbsp;·&nbsp; smkn2cimahi.sch.id</div>
-  </div>
+{{-- KOP SURAT --}}
+<div style="text-align:center; margin-bottom:8px;">
+  <img src="file://{{ public_path('images/kop_surat.jpg') }}" style="display:inline-block; max-width:100%; height:auto;" alt="Kop SMKN 2 Cimahi">
 </div>
+<div style="border-top:3px solid #000; border-bottom:1px solid #000; margin-bottom:12px;"></div>
 
 <div class="judul">
   <h2>Riwayat Penanganan Siswa Bermasalah</h2>
@@ -98,26 +68,94 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
     </tr>
     <tr>
       <td>Kelas</td><td>:</td>
-      <td>{{ $student->schoolClass ? $student->schoolClass->tingkat->value . ' ' . $student->schoolClass->jurusan . ' - ' . $student->schoolClass->rombel : '—' }}</td>
+      <td>{{ $student->schoolClass ? $student->schoolClass->tingkat->value . ' ' . $student->schoolClass->jurusan . ' - ' . $student->schoolClass->rombel : '-' }}</td>
       <td></td>
       <td style="color:#666">Wali Kelas</td><td>:</td>
-      <td>{{ $wali?->nama ?? '—' }}</td>
+      <td>{{ $wali?->nama ?? '-' }}</td>
     </tr>
     <tr>
       <td>Tanggal Cetak</td><td>:</td>
-      <td colspan="5">{{ $generated }}</td>
+      <td colspan="5">{{ $generated }} WIB</td>
     </tr>
   </table>
 </div>
 
+{{-- Rekap EWS 4 Dimensi (table layout, DomPDF safe) --}}
+@if(isset($ews))
+@php
+  $levelColor = match($ews['level']) { 'merah'=>'#dc2626','oranye'=>'#ea580c','kuning'=>'#ca8a04',default=>'#16a34a' };
+  $levelLabel = match($ews['level']) { 'merah'=>'Kritis','oranye'=>'Waspada','kuning'=>'Perhatian',default=>'Normal' };
+@endphp
+<div style="margin-bottom: 16px; border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden;">
+  <table style="width: 100%; border-collapse: collapse; background: #f8fafc;">
+    <tr>
+      <td colspan="4" style="padding: 7px 12px; border-bottom: 1px solid #cbd5e1;">
+        <span style="font-size: 10pt; font-weight: bold; color: #1f4e79;">Rekap Early Warning System</span>
+        &nbsp;&nbsp;
+        <span style="background: {{ $levelColor }}; color: white; font-size: 8.5pt; font-weight: bold; padding: 2px 9px; border-radius: 3px;">
+          {{ strtoupper($ews['level']) }} &mdash; {{ $levelLabel }}
+        </span>
+      </td>
+    </tr>
+    <tr style="background: white;">
+      <td style="width: 25%; text-align: center; padding: 10px 6px; border-right: 1px solid #e2e8f0;">
+        <div style="font-size: 17pt; font-weight: bold; color: {{ $ews['kehadiran'] < 80 ? '#dc2626' : '#16a34a' }};">
+          {{ $ews['kehadiran'] }}%
+        </div>
+        <div style="font-size: 8.5pt; color: #64748b; margin-top: 2px;">Kehadiran</div>
+        @if($ews['kehadiran'] < 80)
+          <div class="warn-txt">Peringatan: &lt; 80%</div>
+        @else
+          <div class="ok-txt">Baik</div>
+        @endif
+      </td>
+      <td style="width: 25%; text-align: center; padding: 10px 6px; border-right: 1px solid #e2e8f0;">
+        <div style="font-size: 17pt; font-weight: bold; color: {{ $ews['karakter'] < 0 ? '#dc2626' : '#16a34a' }};">
+          {{ $ews['karakter'] >= 0 ? '+' : '' }}{{ $ews['karakter'] }}
+        </div>
+        <div style="font-size: 8.5pt; color: #64748b; margin-top: 2px;">Poin Karakter</div>
+        @if($ews['karakter'] < 0)
+          <div class="warn-txt">Peringatan: negatif</div>
+        @else
+          <div class="ok-txt">Baik</div>
+        @endif
+      </td>
+      <td style="width: 25%; text-align: center; padding: 10px 6px; border-right: 1px solid #e2e8f0;">
+        <div style="font-size: 17pt; font-weight: bold; color: {{ $ews['catatan'] >= 3 ? '#dc2626' : '#1a1a1a' }};">
+          {{ $ews['catatan'] }}x
+        </div>
+        <div style="font-size: 8.5pt; color: #64748b; margin-top: 2px;">Catatan KBM</div>
+        @if($ews['catatan'] >= 3)
+          <div class="warn-txt">Peringatan: &gt;= 3 catatan</div>
+        @else
+          <div class="ok-txt">Baik</div>
+        @endif
+      </td>
+      <td style="width: 25%; text-align: center; padding: 10px 6px;">
+        <div style="font-size: 17pt; font-weight: bold; color: {{ $ews['nilai'] !== null && $ews['nilai'] < 70 ? '#dc2626' : '#1a1a1a' }};">
+          {{ $ews['nilai'] !== null ? $ews['nilai'] : '-' }}
+        </div>
+        <div style="font-size: 8.5pt; color: #64748b; margin-top: 2px;">Rata-rata Nilai</div>
+        @if($ews['nilai'] !== null && $ews['nilai'] < 70)
+          <div class="warn-txt">Peringatan: &lt; 70</div>
+        @elseif($ews['nilai'] !== null)
+          <div class="ok-txt">Baik</div>
+        @else
+          <div style="font-size: 8pt; color: #94a3b8;">Belum ada data</div>
+        @endif
+      </td>
+    </tr>
+  </table>
+</div>
+@endif
+
 {{-- Timeline rekomendasi --}}
 @forelse($recs as $i => $rek)
 <div class="rek-block">
-  {{-- Header --}}
   <div class="rek-header">
     Rekomendasi #{{ $i + 1 }}
-    &nbsp;·&nbsp; Dibuat: {{ $rek->created_at->format('d M Y') }}
-    &nbsp;·&nbsp;
+    &nbsp;&middot;&nbsp; Dibuat: {{ $rek->created_at->format('d M Y') }}
+    &nbsp;&middot;&nbsp;
     @php
       $statusLabel = match($rek->status->value) {
         'pending'             => 'Belum Ditangani',
@@ -131,7 +169,6 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
   </div>
 
   <div class="rek-body">
-    {{-- Info poin --}}
     <div class="rek-info">
       <span>Akumulasi poin saat trigger: <strong>{{ $rek->akumulasi_saat_trigger }}</strong></span>
       @if($rek->verifiedBy)
@@ -139,10 +176,8 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
       @endif
     </div>
 
-    {{-- Rekomendasi sistem --}}
     <div class="rek-teks">{{ $rek->threshold->rekomendasi }}</div>
 
-    {{-- Penangan yang disarankan --}}
     @if($rek->suggestedHandlers->count() > 0)
     <div class="handlers">
       <span class="label">Penangan yang disarankan:</span>
@@ -150,7 +185,6 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
     </div>
     @endif
 
-    {{-- Catatan admin --}}
     @if($rek->catatan_admin)
     <div class="catatan-admin">
       <div class="label">Catatan dari Admin/Wakasek:</div>
@@ -158,7 +192,6 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
     </div>
     @endif
 
-    {{-- Sesi penanganan --}}
     <div class="sesi-list">
       @if($rek->handlingSessions->count() > 0)
         <div style="font-size:9.5pt; font-weight:bold; color:#1f4e79; margin-bottom:6px;">
@@ -167,15 +200,22 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
         @foreach($rek->handlingSessions as $j => $sesi)
         <div class="sesi-item">
           <div class="sesi-meta">
-            Sesi {{ $j + 1 }} &nbsp;·&nbsp;
-            <strong>{{ $sesi->tanggal->format('d M Y') }}</strong> &nbsp;·&nbsp;
+            Sesi {{ $j + 1 }} &nbsp;&middot;&nbsp;
+            <strong>{{ $sesi->tanggal->format('d M Y') }}</strong> &nbsp;&middot;&nbsp;
             Oleh: <strong>{{ $sesi->handler->nama }}</strong>
           </div>
           <div class="sesi-catatan">{{ $sesi->catatan }}</div>
-          @if($sesi->link_dokumen || $sesi->link_foto)
+          @php
+            $allLinks = collect();
+            if($sesi->link_foto)    $allLinks->push(['url'=>$sesi->link_foto,    'keterangan'=>'Foto']);
+            if($sesi->link_dokumen) $allLinks->push(['url'=>$sesi->link_dokumen, 'keterangan'=>'Dokumen']);
+            foreach(($sesi->links ?? []) as $lnk) { $allLinks->push($lnk); }
+          @endphp
+          @if($allLinks->count() > 0)
           <div class="sesi-links">
-            @if($sesi->link_dokumen)<span>📄 Dokumen: {{ $sesi->link_dokumen }}</span><br>@endif
-            @if($sesi->link_foto)<span>🖼 Foto: {{ $sesi->link_foto }}</span>@endif
+            @foreach($allLinks as $lnk)
+              <span>[Link] {{ $lnk['keterangan'] }}: {{ $lnk['url'] }}</span><br>
+            @endforeach
           </div>
           @endif
         </div>
@@ -192,42 +232,39 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; }
 </div>
 @endforelse
 
-{{-- Blok TTD --}}
-<div class="ttd-section">
-  <div class="ttd-title">Pengesahan Dokumen</div>
-  <div class="ttd-grid">
-    <div class="ttd-box">
-      <div class="role">Wali Kelas</div>
-      <div class="jabatan">Wali Kelas</div>
-      <div class="line">{{ $wali?->nama ?? '................................' }}</div>
-      @php $waliTeacher = $wali ? App\Models\Teacher::where('user_id', $wali->id)->first() : null; @endphp
-      <div class="nip">NIP. {{ $waliTeacher?->nip ?? '................................' }}</div>
-    </div>
-    <div class="ttd-box">
-      <div class="role">Orang Tua / Wali Murid</div>
-      <div class="jabatan">Orang Tua/Wali</div>
-      <div class="line">{{ $student->wali_nama ?? '................................' }}</div>
-      <div class="nip">No. HP: {{ $student->wali_kontak ?? '................................' }}</div>
-    </div>
-    <div class="ttd-box">
-      <div class="role">Guru BK</div>
-      <div class="jabatan">Koordinator BK</div>
-      <div class="line">................................</div>
-      <div class="nip">NIP. ................................</div>
-    </div>
-    <div class="ttd-box">
-      <div class="role">Mengetahui</div>
-      <div class="jabatan">Wakil Kepala Sekolah Bid. Kurikulum</div>
-      <div class="line">Kusman Subarja, S.Pd., M.T.</div>
-      <div class="nip">NIP. 197501012005011001</div>
-    </div>
-  </div>
+{{-- TTD Wali Kelas (kiri, table-based) --}}
+@php $waliTeacher = $wali ? \App\Models\Teacher::where('user_id', $wali->id)->first() : null; @endphp
+<div style="margin-top: 24px; border-top: 2px solid #1f4e79; padding-top: 14px;">
+  <div style="font-size: 10pt; font-weight: bold; color: #1f4e79; margin-bottom: 14px;">Validasi Dokumen</div>
+  <table style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td style="width: 220px; text-align: center; vertical-align: top;">
+        <div style="font-size: 9pt; color: #555; margin-bottom: 2px;">Wali Kelas</div>
+        <div style="font-size: 9.5pt; font-weight: bold; margin-bottom: 50px;">Wali Kelas</div>
+        <div style="border-top: 1px solid #333; padding-top: 4px; font-size: 9pt;">
+          {{ $wali?->nama ?? '................................' }}
+        </div>
+        <div style="font-size: 8.5pt; color: #777;">NIP. {{ $waliTeacher?->nip ?? '................................' }}</div>
+      </td>
+      <td style="text-align:center; vertical-align:top; padding:0 8px;">
+        <div style="font-size:9pt; color:#555; margin-bottom:2px;">Wakasek Bid. Kurikulum</div>
+        <div style="font-size:9.5pt; font-weight:bold; margin-bottom:50px;">Wakasek Bid. Kurikulum</div>
+        <div style="border-top:1px solid #333; padding-top:4px; font-size:9pt; display:inline-block; min-width:140px;">Kusman Subarja, S.Pd., M.T.</div>
+        <div style="font-size:8.5pt; color:#777;">NIP. 197501012005011001</div>
+      </td>
+    </tr>
+  </table>
 </div>
 
-<div class="footer">
-  <span>ID Laporan: {{ $report_id }}</span>
-  <span>Dicetak: {{ $generated }} WIB &nbsp;·&nbsp; Sistem Agenda Pembelajaran SMKN 2 Cimahi</span>
-</div>
+{{-- Footer (table-based) --}}
+<table style="width: 100%; border-collapse: collapse; margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 6px;">
+  <tr>
+    <td style="font-size: 8pt; color: #aaa; padding-top: 6px;">ID Laporan: {{ $report_id }}</td>
+    <td style="font-size: 8pt; color: #aaa; text-align: right; padding-top: 6px;">
+      Dicetak: {{ $generated }} WIB &nbsp;&middot;&nbsp; Sistem Agenda Pembelajaran SMKN 2 Cimahi
+    </td>
+  </tr>
+</table>
 
 </body>
 </html>

@@ -9,6 +9,8 @@ import AgendaPage from '@/pages/AgendaPage'
 import AgendaFormPage from '@/pages/AgendaFormPage'
 import PresensiPage from '@/pages/PresensiPage'
 import PresensiFormPage from '@/pages/PresensiFormPage'
+import PresensiHarianPage from '@/pages/PresensiHarianPage'
+import AgendaDetailPage from '@/pages/AgendaDetailPage'
 import KarakterPage from '@/pages/KarakterPage'
 import EwsPage from '@/pages/EwsPage'
 import EwsDetailPage from '@/pages/EwsDetailPage'
@@ -43,12 +45,13 @@ export default function AppRouter() {
 
         <Route path="agenda"                    element={<AgendaPage />} />
         <Route path="agenda/baru"               element={<AgendaFormPage />} />
-        <Route path="agenda/:id"                element={<PlaceholderPage title="Detail Agenda" />} />
+        <Route path="agenda/:id"                element={<AgendaDetailPage />} />
 
         <Route path="tp"                        element={<TujuanPembelajaranPage />} />
 
         <Route path="presensi"                  element={<PresensiPage />} />
         <Route path="presensi/:agendaId"        element={<PresensiFormPage />} />
+        <Route path="presensi-harian"           element={<PresensiHarianPage />} />
 
         <Route path="karakter"                  element={<KarakterPage />} />
 

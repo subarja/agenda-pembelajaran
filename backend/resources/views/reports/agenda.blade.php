@@ -1,46 +1,180 @@
-@extends('reports.layout')
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: Arial, sans-serif;
+    font-size: 11pt;
+    color: #1a1a1a;
+    margin: 1cm 2cm 1cm 2cm;
+}
 
-@section('title', 'Rekap Agenda Pembelajaran')
+/* KOP SURAT */
+.kop { margin-bottom: 10px; text-align: center; }
+.kop img { display: inline-block; max-width: 100%; height: auto; }
+.kop-garis { border-top: 3px solid #000; border-bottom: 1px solid #000; margin-top: 4px; }
 
-@section('meta')
-  <span><strong>Guru:</strong> {{ $guru }}</span>
-  <span><strong>Periode:</strong> {{ $periode }}</span>
-  <span><strong>Total Sesi:</strong> {{ count($rows) }}</span>
-@endsection
+/* JUDUL */
+.judul { margin: 14px 0 12px; }
+.judul h2 { font-size: 12pt; font-weight: bold; text-transform: uppercase; }
+.judul h3 { font-size: 11pt; font-weight: bold; text-transform: uppercase; }
 
-@section('content')
-<table>
+/* IDENTITAS GURU */
+.identitas { margin-bottom: 14px; }
+.identitas table { font-size: 10.5pt; border-collapse: collapse; }
+.identitas td { padding: 1px 0; vertical-align: top; }
+.identitas td:first-child { width: 155px; }
+.identitas td:nth-child(2) { width: 12px; }
+
+/* TABEL AGENDA */
+.tabel-agenda { width: 100%; border-collapse: collapse; font-size: 10pt; margin-bottom: 14px; }
+.tabel-agenda th {
+    background: #fff;
+    color: #000;
+    padding: 5px 6px;
+    text-align: center;
+    font-size: 10pt;
+    font-weight: bold;
+    border: 1px solid #000;
+}
+.tabel-agenda td {
+    padding: 4px 6px;
+    border: 1px solid #000;
+    vertical-align: top;
+}
+.tabel-agenda .no   { text-align: center; width: 24px; }
+.tabel-agenda .tgl  { width: 110px; }
+.tabel-agenda .jam  { width: 56px; text-align: center; }
+.tabel-agenda .kls  { width: 100px; }
+.tabel-agenda .ket  { width: 60px; }
+
+/* TTD — gunakan table agar DomPDF render benar */
+.ttd-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 10.5pt; }
+.ttd-spacer { }
+/* Setiap sel = 1 penanda tangan; berjajar otomatis jika >1 */
+.ttd-cell { text-align: center; padding: 0 8px; vertical-align: top; }
+.ttd-cell .ttd-nama {
+    display: inline-block;
+    font-weight: bold;
+    border-top: 1px solid #000;
+    padding-top: 3px;
+    margin-top: 55px;
+    min-width: 160px;
+}
+.ttd-cell .ttd-nip { font-size: 10pt; }
+
+/* FOOTER */
+.footer-table { width: 100%; border-collapse: collapse; margin-top: 10px; border-top: 1px solid #ccc; padding-top: 6px; }
+.footer-waktu { font-size: 9pt; color: #555; padding-top: 6px; }
+</style>
+</head>
+<body>
+
+{{-- KOP SURAT --}}
+<div class="kop">
+  <img src="{{ $kopSuratPath }}" alt="Kop Surat SMKN 2 Cimahi">
+  <div class="kop-garis"></div>
+</div>
+
+{{-- JUDUL --}}
+<div class="judul">
+  <h2>Kegiatan Belajar Mengajar Bulan {{ $bulan }}</h2>
+  <h3>Tahun Pelajaran {{ $tahun_pelajaran }}</h3>
+</div>
+
+{{-- IDENTITAS GURU --}}
+<div class="identitas">
+  <table>
+    <tr>
+      <td>Nama Guru</td><td>:</td>
+      <td>{{ $guru }}</td>
+    </tr>
+    <tr>
+      <td>NIP</td><td>:</td>
+      <td>{{ $nip }}</td>
+    </tr>
+    <tr>
+      <td>Kompetensi Keahlian</td><td>:</td>
+      <td>{{ $kompetensi_keahlian }}</td>
+    </tr>
+    <tr>
+      <td>Mata Pelajaran</td><td>:</td>
+      <td>{{ $mata_pelajaran }}</td>
+    </tr>
+    <tr>
+      <td>Kelas Diampu</td><td>:</td>
+      <td>{{ $kelas_diampu }}</td>
+    </tr>
+    <tr>
+      <td>Semester</td><td>:</td>
+      <td>{{ $semester }}</td>
+    </tr>
+    <tr>
+      <td>Periode Laporan</td><td>:</td>
+      <td>{{ $periode }}</td>
+    </tr>
+  </table>
+</div>
+
+{{-- TABEL AGENDA --}}
+<table class="tabel-agenda">
   <thead>
     <tr>
-      <th style="width:20px">No</th>
-      <th>Tanggal</th>
-      <th>Hari</th>
-      <th>Kelas</th>
-      <th>Mata Pelajaran</th>
-      <th>TP Dicapai</th>
-      <th>Resume KBM</th>
-      <th class="text-center">Status</th>
+      <th class="no">No</th>
+      <th class="tgl">Hari / Tanggal</th>
+      <th class="jam">Jam Ke</th>
+      <th class="kls">Kelas</th>
+      <th>Tujuan Pembelajaran</th>
+      <th>Kegiatan Pembelajaran</th>
+      <th class="ket">Keterangan</th>
     </tr>
   </thead>
   <tbody>
-    @foreach($rows as $i => $r)
+    @forelse($rows as $i => $r)
     <tr>
-      <td class="text-center">{{ $i + 1 }}</td>
-      <td>{{ $r['tanggal'] }}</td>
-      <td>{{ $r['hari'] }}</td>
-      <td>{{ $r['kelas'] }}</td>
-      <td>{{ $r['mapel'] }}</td>
-      <td style="font-size:9px">{{ $r['tp'] ?: '—' }}</td>
-      <td style="font-size:9px; max-width:180px">{{ $r['resume'] ?: '—' }}</td>
-      <td class="text-center">
-        <span style="background:{{ $r['status'] === 'submitted' ? '#dcfce7' : '#fef9c3' }};
-              color:{{ $r['status'] === 'submitted' ? '#166534' : '#854d0e' }};
-              padding:1px 6px; border-radius:9999px; font-size:9px; font-weight:600">
-          {{ $r['status'] === 'submitted' ? 'Selesai' : 'Draft' }}
-        </span>
+      <td class="no">{{ $i + 1 }}</td>
+      <td class="tgl">{{ $r['hari_tanggal'] }}</td>
+      <td class="jam">{{ $r['jam'] }}</td>
+      <td class="kls" style="font-size:9.5pt">{{ $r['kelas'] }}</td>
+      <td style="font-size:9.5pt">{{ $r['tujuan_pembelajaran'] ?: '—' }}</td>
+      <td style="font-size:9.5pt">{{ $r['kegiatan_pembelajaran'] ?: '—' }}</td>
+      <td class="ket">{{ $r['keterangan'] ?? '' }}</td>
+    </tr>
+    @empty
+    <tr>
+      <td colspan="7" style="text-align:center; color:#aaa; padding:20px">
+        Tidak ada agenda dalam periode ini.
       </td>
     </tr>
-    @endforeach
+    @endforelse
   </tbody>
 </table>
-@endsection
+
+{{-- TANDA TANGAN
+     Pola: 1 baris tabel — kolom kosong (spacer) + kolom-kolom penanda tangan berjajar.
+     Tambah <td class="ttd-cell"> baru jika ada >1 penanda tangan. --}}
+<table class="ttd-table">
+  <tr>
+    <td class="ttd-spacer" style="width:55%"></td>
+    {{-- Penanda tangan 1: Guru Mata Pelajaran --}}
+    <td class="ttd-cell">
+      <div>Cimahi, {{ $tanggal_ttd }}</div>
+      <div>Guru Mapel {{ $mata_pelajaran }}</div>
+      <span class="ttd-nama">{{ $guru }}</span>
+      <div class="ttd-nip">NIP. {{ $nip }}</div>
+    </td>
+    {{-- Tambahkan <td class="ttd-cell"> di sini jika ada penanda tangan tambahan --}}
+  </tr>
+</table>
+
+{{-- FOOTER --}}
+<table class="footer-table">
+  <tr>
+    <td class="footer-waktu">Waktu Cetak: {{ now('Asia/Jakarta')->isoFormat('D MMMM YYYY, [Pkl.] HH.mm') }} WIB</td>
+  </tr>
+</table>
+
+</body>
+</html>

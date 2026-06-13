@@ -22,10 +22,12 @@ class UserResource extends JsonResource
                 : null,
 
             'teacher' => $this->whenLoaded('teacher', fn () => [
-                'id'          => $this->teacher->uuid,
-                'nip'         => $this->teacher->nip,
-                'mapel_utama' => $this->teacher->mapel_utama,
-                'nomor_hp'    => $this->teacher->nomor_hp,
+                'id'             => $this->teacher->uuid,
+                'nip'            => $this->teacher->nip,
+                'mapel_utama'    => $this->teacher->mapel_utama,
+                'nomor_hp'       => $this->teacher->nomor_hp,
+                'gelar_depan'    => $this->teacher->gelar_depan,
+                'gelar_belakang' => $this->teacher->gelar_belakang,
             ]),
 
             'student' => $this->whenLoaded('student', fn () => [
@@ -40,6 +42,20 @@ class UserResource extends JsonResource
                     ]
                     : null,
             ]),
+
+            'linked_student' => $this->whenLoaded('linkedStudent', fn () => $this->linkedStudent ? [
+                'id'    => $this->linkedStudent->uuid,
+                'nama'  => $this->linkedStudent->user?->nama,
+                'nis'   => $this->linkedStudent->nis,
+                'nisn'  => $this->linkedStudent->nisn,
+                'kelas' => $this->linkedStudent->schoolClass
+                    ? [
+                        'tingkat' => $this->linkedStudent->schoolClass->tingkat->value,
+                        'jurusan' => $this->linkedStudent->schoolClass->jurusan,
+                        'rombel'  => $this->linkedStudent->schoolClass->rombel,
+                    ]
+                    : null,
+            ] : null),
         ];
     }
 }
