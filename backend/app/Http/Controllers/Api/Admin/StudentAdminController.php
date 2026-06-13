@@ -18,16 +18,21 @@ class StudentAdminController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $q = Student::with(['user', 'schoolClass'])
+        $q = Student::query()
+            ->join('users', 'users.id', '=', 'students.user_id')
+            ->select('students.*')
+            ->with(['user', 'schoolClass'])
             ->when($request->search, fn ($q, $s) =>
-                $q->whereHas('user', fn ($u) => $u->where('nama', 'ilike', "%$s%"))
-                  ->orWhere('nis', 'ilike', "%$s%")
-                  ->orWhere('nisn', 'ilike', "%$s%")
+                $q->where(fn ($inner) =>
+                    $inner->where('users.nama', 'ilike', "%$s%")
+                          ->orWhere('students.nis', 'ilike', "%$s%")
+                          ->orWhere('students.nisn', 'ilike', "%$s%")
+                )
             )
             ->when($request->class_id, fn ($q, $c) =>
                 $q->whereHas('schoolClass', fn ($sc) => $sc->where('uuid', $c))
             )
-            ->orderByDesc('id')
+            ->orderByDesc('students.id')
             ->paginate(30);
 
         return response()->json([

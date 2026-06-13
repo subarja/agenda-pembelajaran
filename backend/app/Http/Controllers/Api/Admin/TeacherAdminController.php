@@ -16,12 +16,17 @@ class TeacherAdminController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $q = Teacher::with('user')
+        $q = Teacher::query()
+            ->join('users', 'users.id', '=', 'teachers.user_id')
+            ->select('teachers.*')
+            ->with('user')
             ->when($request->search, fn ($q, $s) =>
-                $q->whereHas('user', fn ($u) => $u->where('nama', 'ilike', "%$s%"))
-                  ->orWhere('nip', 'ilike', "%$s%")
+                $q->where(fn ($inner) =>
+                    $inner->where('users.nama', 'ilike', "%$s%")
+                          ->orWhere('teachers.nip', 'ilike', "%$s%")
+                )
             )
-            ->orderByDesc('id')
+            ->orderByDesc('teachers.id')
             ->paginate(20);
 
         return response()->json([
