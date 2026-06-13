@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ChevronRight, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ChevronRight, RefreshCw, ChevronLeft } from 'lucide-react'
 import { ewsApi } from '@/features/ews/api'
 import type { EwsLevel } from '@/features/ews/types'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,18 +15,33 @@ const LEVEL_CONFIG: Record<EwsLevel, { label: string; bg: string; text: string; 
 }
 
 const LEVELS: EwsLevel[] = ['merah', 'oranye', 'kuning', 'hijau']
+const PER_PAGE_OPTIONS = [25, 50, 100, 'semua'] as const
+type PerPage = 25 | 50 | 100 | 'semua'
 
 export default function EwsPage() {
   const navigate = useNavigate()
   const [filterLevel, setFilterLevel] = useState<EwsLevel | null>(null)
+  const [perPage, setPerPage]         = useState<PerPage>(25)
+  const [page, setPage]               = useState(1)
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['ews', filterLevel],
     queryFn: () => ewsApi.getEws(filterLevel ? { level: filterLevel } : {}),
   })
 
-  const students = data?.data.data ?? []
-  const summary  = data?.data.meta.summary
+  const allStudents = data?.data.data ?? []
+  const summary     = data?.data.meta.summary
+
+  // Reset halaman saat filter atau per-page berubah
+  useEffect(() => { setPage(1) }, [filterLevel, perPage])
+
+  const totalItems = allStudents.length
+  const totalPages = perPage === 'semua' ? 1 : Math.ceil(totalItems / perPage)
+  const displayed  = perPage === 'semua'
+    ? allStudents
+    : allStudents.slice((page - 1) * perPage, page * perPage)
+
+  const safePage = Math.min(page, Math.max(1, totalPages))
 
   return (
     <div className="space-y-5">
@@ -46,7 +61,7 @@ export default function EwsPage() {
       {summary && (
         <div className="grid grid-cols-4 gap-2">
           {LEVELS.map((level) => {
-            const cfg = LEVEL_CONFIG[level]
+            const cfg   = LEVEL_CONFIG[level]
             const count = summary[level] ?? 0
             return (
               <button
@@ -68,22 +83,54 @@ export default function EwsPage() {
         </div>
       )}
 
-      {/* ── Filter chips ───────────────────────────────────────────────── */}
-      {filterLevel && (
+      {/* ── Filter + per-page bar ───────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Filter:</span>
-          <button
-            onClick={() => setFilterLevel(null)}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium',
-              LEVEL_CONFIG[filterLevel].bg,
-              LEVEL_CONFIG[filterLevel].text,
-            )}
-          >
-            {LEVEL_CONFIG[filterLevel].label} ×
-          </button>
+          {filterLevel && (
+            <>
+              <span className="text-xs text-muted-foreground">Filter:</span>
+              <button
+                onClick={() => setFilterLevel(null)}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium',
+                  LEVEL_CONFIG[filterLevel].bg,
+                  LEVEL_CONFIG[filterLevel].text,
+                )}
+              >
+                {LEVEL_CONFIG[filterLevel].label} ×
+              </button>
+            </>
+          )}
         </div>
-      )}
+
+        {/* Pilihan per-halaman */}
+        {totalItems > 0 && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Tampilkan:</span>
+            <div className="flex rounded-md border border-input overflow-hidden">
+              {PER_PAGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setPerPage(opt as PerPage)}
+                  className={cn(
+                    'px-2.5 py-1 text-xs transition-colors',
+                    perPage === opt
+                      ? 'bg-primary text-primary-foreground font-medium'
+                      : 'hover:bg-muted',
+                  )}
+                >
+                  {opt === 'semua' ? 'Semua' : opt}
+                </button>
+              ))}
+            </div>
+            <span className="text-muted-foreground">
+              {perPage === 'semua'
+                ? `${totalItems} data`
+                : `${Math.min((page - 1) * perPage + 1, totalItems)}–${Math.min(page * perPage, totalItems)} dari ${totalItems}`}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* ── Daftar siswa ───────────────────────────────────────────────── */}
       {isLoading && (
@@ -94,18 +141,20 @@ export default function EwsPage() {
         </div>
       )}
 
-      {!isLoading && students.length === 0 && (
+      {!isLoading && totalItems === 0 && (
         <div className="flex flex-col items-center py-16 text-center">
           <AlertTriangle className="h-10 w-10 text-muted-foreground mb-3" />
           <p className="text-sm font-medium">Tidak ada data EWS</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {filterLevel ? `Tidak ada siswa dengan level ${LEVEL_CONFIG[filterLevel].label}` : 'Belum ada siswa atau tahun ajaran aktif.'}
+            {filterLevel
+              ? `Tidak ada siswa dengan level ${LEVEL_CONFIG[filterLevel].label}`
+              : 'Belum ada siswa atau tahun ajaran aktif.'}
           </p>
         </div>
       )}
 
       <div className="space-y-2">
-        {students.map((s) => {
+        {displayed.map((s) => {
           const cfg = LEVEL_CONFIG[s.level]
           return (
             <Card
@@ -115,10 +164,7 @@ export default function EwsPage() {
             >
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
-                  {/* Level dot */}
                   <div className={cn('h-3 w-3 shrink-0 rounded-full', cfg.dot)} />
-
-                  {/* Student info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold truncate">{s.nama}</p>
@@ -130,14 +176,8 @@ export default function EwsPage() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">{s.nis}{s.kelas && ` · ${s.kelas}`}</p>
-
-                    {/* Mini metrics */}
                     <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                      <Metric
-                        label="Kehadiran"
-                        value={`${s.kehadiran_score}%`}
-                        warn={s.kehadiran_score < 80}
-                      />
+                      <Metric label="Kehadiran" value={`${s.kehadiran_score}%`} warn={s.kehadiran_score < 80} />
                       <Metric
                         label="Karakter"
                         value={`${s.karakter_score >= 0 ? '+' : ''}${s.karakter_score}`}
@@ -151,7 +191,6 @@ export default function EwsPage() {
                       )}
                     </div>
                   </div>
-
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                 </div>
               </CardContent>
@@ -159,6 +198,43 @@ export default function EwsPage() {
           )
         })}
       </div>
+
+      {/* ── Navigasi halaman ───────────────────────────────────────────── */}
+      {perPage !== 'semua' && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-1">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs disabled:opacity-40 hover:bg-muted"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" /> Prev
+          </button>
+
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-muted-foreground">Hal.</span>
+            <input
+              type="number"
+              min={1}
+              max={totalPages}
+              value={safePage}
+              onChange={(e) => {
+                const v = Number(e.target.value)
+                if (v >= 1 && v <= totalPages) setPage(v)
+              }}
+              className="w-12 rounded-md border border-input bg-background px-2 py-1 text-center text-xs"
+            />
+            <span className="text-muted-foreground">dari {totalPages}</span>
+          </div>
+
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs disabled:opacity-40 hover:bg-muted"
+          >
+            Next <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

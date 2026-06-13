@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw, Users } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, RefreshCw, Users } from 'lucide-react'
 import api from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,13 +21,18 @@ interface TeacherEws {
   last_login: string; last_login_date: string | null; last_login_raw: string | null
 }
 
+const PER_PAGE_OPTIONS = [25, 50, 100, 'semua'] as const
+type PerPage = 25 | 50 | 100 | 'semua'
+
 export default function TeacherEwsPage() {
-  const today = new Date().toISOString().slice(0, 10)
+  const today     = new Date().toISOString().slice(0, 10)
   const thirtyAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
 
-  const [mulai, setMulai]         = useState(thirtyAgo)
-  const [akhir, setAkhir]         = useState(today)
-  const [filterLevel, setFilter]  = useState<string | null>(null)
+  const [mulai, setMulai]        = useState(thirtyAgo)
+  const [akhir, setAkhir]        = useState(today)
+  const [filterLevel, setFilter] = useState<string | null>(null)
+  const [perPage, setPerPage]    = useState<PerPage>(25)
+  const [page, setPage]          = useState(1)
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['teacher-ews', mulai, akhir],
@@ -35,8 +40,18 @@ export default function TeacherEwsPage() {
   })
 
   const teachers: TeacherEws[] = data?.data ?? []
-  const summary = data?.meta?.summary ?? {}
+  const summary  = data?.meta?.summary ?? {}
   const filtered = filterLevel ? teachers.filter(t => t.level === filterLevel) : teachers
+
+  useEffect(() => { setPage(1) }, [filterLevel, perPage, mulai, akhir])
+
+  const totalItems = filtered.length
+  const totalPages = perPage === 'semua' ? 1 : Math.ceil(totalItems / perPage)
+  const displayed  = perPage === 'semua'
+    ? filtered
+    : filtered.slice((page - 1) * perPage, page * perPage)
+
+  const safePage = Math.min(page, Math.max(1, totalPages))
 
   return (
     <div className="space-y-5">
@@ -109,18 +124,61 @@ export default function TeacherEwsPage() {
         <span className="text-green-700 font-medium">Hijau ≥90%</span>
       </div>
 
+      {/* ── Kontrol per-halaman + info ─────────────────────────────────── */}
+      {!isLoading && totalItems > 0 && (
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          {filterLevel ? (
+            <button
+              onClick={() => setFilter(null)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium',
+                LEVEL_CONFIG[filterLevel]?.bg,
+                LEVEL_CONFIG[filterLevel]?.text,
+              )}
+            >
+              {LEVEL_CONFIG[filterLevel]?.label ?? filterLevel} ×
+            </button>
+          ) : <span />}
+
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Tampilkan:</span>
+            <div className="flex rounded-md border border-input overflow-hidden">
+              {PER_PAGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setPerPage(opt as PerPage)}
+                  className={cn(
+                    'px-2.5 py-1 text-xs transition-colors',
+                    perPage === opt
+                      ? 'bg-primary text-primary-foreground font-medium'
+                      : 'hover:bg-muted',
+                  )}
+                >
+                  {opt === 'semua' ? 'Semua' : opt}
+                </button>
+              ))}
+            </div>
+            <span>
+              {perPage === 'semua'
+                ? `${totalItems} data`
+                : `${Math.min((page - 1) * perPage + 1, totalItems)}–${Math.min(page * perPage, totalItems)} dari ${totalItems}`}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Daftar guru */}
       {isLoading ? (
         <div className="space-y-2">
-          {[1,2,3,4].map(i => <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />)}
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : displayed.length === 0 ? (
         <p className="text-center text-sm text-muted-foreground py-12">Tidak ada data.</p>
       ) : (
         <div className="space-y-2">
-          {filtered.map(t => {
-            const cfg = LEVEL_CONFIG[t.level] ?? LEVEL_CONFIG['n/a']
-            const pct = t.pct_terisi
+          {displayed.map(t => {
+            const cfg      = LEVEL_CONFIG[t.level] ?? LEVEL_CONFIG['n/a']
+            const pct      = t.pct_terisi
             const loginLama = t.last_login_raw
               ? new Date(t.last_login_raw) < new Date(Date.now() - 7 * 86400000)
               : true
@@ -131,7 +189,6 @@ export default function TeacherEwsPage() {
                   <div className="flex items-start gap-3">
                     <div className={cn('mt-1 h-3 w-3 shrink-0 rounded-full', cfg.dot)} />
                     <div className="flex-1 min-w-0">
-                      {/* Baris 1: nama + level */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-sm">{t.nama}</p>
                         <Badge className={cn('text-xs', cfg.bg, cfg.text)}>{cfg.label}</Badge>
@@ -141,7 +198,6 @@ export default function TeacherEwsPage() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{t.mapel_utama} · NIP: {t.nip}</p>
 
-                      {/* Progress bar */}
                       {t.total_jadwal > 0 && (
                         <div className="mt-2">
                           <div className="flex justify-between text-xs text-muted-foreground mb-1">
@@ -153,7 +209,7 @@ export default function TeacherEwsPage() {
                           <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                             <div
                               className={cn('h-full rounded-full transition-all',
-                                t.level === 'merah'  ? 'bg-red-500' :
+                                t.level === 'merah'  ? 'bg-red-500'    :
                                 t.level === 'oranye' ? 'bg-orange-500' :
                                 t.level === 'kuning' ? 'bg-yellow-500' : 'bg-green-500'
                               )}
@@ -177,7 +233,6 @@ export default function TeacherEwsPage() {
                         <p className="text-xs text-muted-foreground mt-1 italic">Tidak memiliki jadwal mengajar aktif.</p>
                       )}
 
-                      {/* Last login */}
                       <div className={cn(
                         'flex items-center gap-1.5 mt-2 text-xs',
                         loginLama ? 'text-red-600' : 'text-muted-foreground'
@@ -198,6 +253,43 @@ export default function TeacherEwsPage() {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {/* ── Navigasi halaman ───────────────────────────────────────────── */}
+      {perPage !== 'semua' && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-1">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs disabled:opacity-40 hover:bg-muted"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" /> Prev
+          </button>
+
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-muted-foreground">Hal.</span>
+            <input
+              type="number"
+              min={1}
+              max={totalPages}
+              value={safePage}
+              onChange={(e) => {
+                const v = Number(e.target.value)
+                if (v >= 1 && v <= totalPages) setPage(v)
+              }}
+              className="w-12 rounded-md border border-input bg-background px-2 py-1 text-center text-xs"
+            />
+            <span className="text-muted-foreground">dari {totalPages}</span>
+          </div>
+
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs disabled:opacity-40 hover:bg-muted"
+          >
+            Next <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
     </div>
