@@ -15,8 +15,7 @@ class ScheduleAdminController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->get('per_page', 50);
-        $paginator = Schedule::with(['schoolClass', 'subject', 'teacher.user'])
+        $query = Schedule::with(['schoolClass', 'subject', 'teacher.user'])
             ->when($request->class_id, fn ($q, $c) =>
                 $q->whereHas('schoolClass', fn ($sc) => $sc->where('uuid', $c))
             )
@@ -32,9 +31,19 @@ class ScheduleAdminController extends Controller
                 )
             )
             ->orderByRaw("CASE hari WHEN 'senin' THEN 1 WHEN 'selasa' THEN 2 WHEN 'rabu' THEN 3 WHEN 'kamis' THEN 4 WHEN 'jumat' THEN 5 WHEN 'sabtu' THEN 6 END")
-            ->orderBy('jam_mulai')
-            ->paginate($perPage);
+            ->orderBy('jam_mulai');
 
+        $perPageRaw = $request->get('per_page', 25);
+        if ($perPageRaw === 'all') {
+            $items = $query->get();
+            $n     = $items->count();
+            return response()->json([
+                'data' => $items->map(fn ($s) => $this->format($s)),
+                'meta' => ['total' => $n, 'current_page' => 1, 'last_page' => 1, 'per_page' => $n ?: 1],
+            ]);
+        }
+
+        $paginator = $query->paginate(min((int) $perPageRaw, 1000));
         return response()->json([
             'data' => $paginator->map(fn ($s) => $this->format($s)),
             'meta' => [

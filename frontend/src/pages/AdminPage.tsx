@@ -176,10 +176,16 @@ function ImportModal({
 
 // ── Pagination controls ───────────────────────────────────────────────────────
 type PaginationMeta = { total: number; current_page: number; last_page: number; per_page?: number }
+type PerPageOpt = 25 | 50 | 100 | 'semua'
+const PER_PAGE_OPTS: PerPageOpt[] = [25, 50, 100, 'semua']
 
-function Pagination({ meta, page, onPage }: { meta: PaginationMeta; page: number; onPage: (p: number) => void }) {
+function Pagination({
+  meta, page, onPage, perPage, onPerPage,
+}: {
+  meta: PaginationMeta; page: number; onPage: (p: number) => void
+  perPage?: PerPageOpt; onPerPage?: (pp: PerPageOpt) => void
+}) {
   const [inputVal, setInputVal] = useState(String(page))
-
   useEffect(() => { setInputVal(String(page)) }, [page])
 
   function commit() {
@@ -188,37 +194,48 @@ function Pagination({ meta, page, onPage }: { meta: PaginationMeta; page: number
     else setInputVal(String(page))
   }
 
-  if (!meta || meta.last_page <= 1) return null
-  const perPage = meta.per_page ?? 20
-  const from = (page - 1) * perPage + 1
-  const to   = Math.min(page * perPage, meta.total)
+  const pp    = typeof perPage === 'number' ? perPage : (meta.per_page ?? 25)
+  const from  = perPage === 'semua' ? 1 : (page - 1) * pp + 1
+  const to    = perPage === 'semua' ? meta.total : Math.min(page * pp, meta.total)
+  const showNav = meta.last_page > 1 && perPage !== 'semua'
+
+  if (!onPerPage && !showNav) return null
 
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
       <span>{from}–{to} dari {meta.total} data</span>
-      <div className="flex items-center gap-1">
-        <button
-          className="rounded border px-2 py-1 disabled:opacity-40 hover:bg-muted"
-          disabled={page <= 1}
-          onClick={() => onPage(page - 1)}
-        >← Sblm</button>
-        <span className="px-1">Hal</span>
-        <input
-          type="number"
-          min={1}
-          max={meta.last_page}
-          value={inputVal}
-          onChange={e => setInputVal(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') commit() }}
-          onBlur={commit}
-          className="w-12 rounded border px-1 py-0.5 text-center focus:outline-none focus:ring-1 focus:ring-ring"
-        />
-        <span className="px-1">/ {meta.last_page}</span>
-        <button
-          className="rounded border px-2 py-1 disabled:opacity-40 hover:bg-muted"
-          disabled={page >= meta.last_page}
-          onClick={() => onPage(page + 1)}
-        >Selanj →</button>
+      <div className="flex items-center gap-3 flex-wrap justify-end">
+        {onPerPage && (
+          <div className="flex items-center gap-1.5">
+            <span>Tampilkan:</span>
+            <div className="flex rounded-md border border-input overflow-hidden">
+              {PER_PAGE_OPTS.map(opt => (
+                <button
+                  key={opt}
+                  onClick={() => onPerPage(opt)}
+                  className={`px-2 py-0.5 text-xs transition-colors ${perPage === opt ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-muted'}`}
+                >
+                  {opt === 'semua' ? 'Semua' : opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {showNav && (
+          <div className="flex items-center gap-1">
+            <button className="rounded border px-2 py-1 disabled:opacity-40 hover:bg-muted" disabled={page <= 1} onClick={() => onPage(page - 1)}>← Sblm</button>
+            <span className="px-1">Hal</span>
+            <input
+              type="number" min={1} max={meta.last_page} value={inputVal}
+              onChange={e => setInputVal(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') commit() }}
+              onBlur={commit}
+              className="w-12 rounded border px-1 py-0.5 text-center focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <span className="px-1">/ {meta.last_page}</span>
+            <button className="rounded border px-2 py-1 disabled:opacity-40 hover:bg-muted" disabled={page >= meta.last_page} onClick={() => onPage(page + 1)}>Selanj →</button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -246,15 +263,16 @@ function GuruTab() {
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState<PerPageOpt>(25)
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   const debouncedQ = useDebounce(q, 350)
-  useEffect(() => { setPage(1) }, [debouncedQ])
+  useEffect(() => { setPage(1) }, [debouncedQ, perPage])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-teachers', debouncedQ, page],
-    queryFn: () => adminApi.getTeachers({ search: debouncedQ || undefined, page }),
+    queryKey: ['admin-teachers', debouncedQ, page, perPage],
+    queryFn: () => adminApi.getTeachers({ search: debouncedQ || undefined, page, per_page: perPage === 'semua' ? 'all' : perPage }),
   })
 
   function toggleSort(col: string) {
@@ -329,7 +347,7 @@ function GuruTab() {
             <tbody>
               {rows.map((t, i) => (
                 <tr key={t.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{(page - 1) * (data?.meta?.per_page ?? 20) + i + 1}</td>
+                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{perPage === 'semua' ? i + 1 : (page - 1) * (data?.meta?.per_page ?? 25) + i + 1}</td>
                   <td className="px-3 py-2 font-medium">{t.nama}</td>
                   <td className="px-3 py-2 text-muted-foreground">{t.nip}</td>
                   <td className="px-3 py-2">{t.mapel_utama}</td>
@@ -350,7 +368,7 @@ function GuruTab() {
           </table>
         </div>
       )}
-      {data?.meta && <Pagination meta={data.meta} page={page} onPage={setPage} />}
+      {data?.meta && <Pagination meta={data.meta} page={page} onPage={setPage} perPage={perPage} onPerPage={(pp) => { setPerPage(pp); setPage(1) }} />}
 
       {modal && (
         <Modal title={modal === 'add' ? 'Tambah Guru' : 'Edit Guru'} onClose={() => setModal(null)}>
@@ -407,17 +425,17 @@ function SiswaTab() {
   const [search, setSearch] = useState('')
   const [filterKelas, setFilterKelas] = useState('')
   const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState<PerPageOpt>(25)
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   const debouncedSearch = useDebounce(search, 350)
 
-  // Reset ke halaman 1 saat filter berubah
-  useEffect(() => { setPage(1) }, [debouncedSearch, filterKelas])
+  useEffect(() => { setPage(1) }, [debouncedSearch, filterKelas, perPage])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-students', debouncedSearch, filterKelas, page],
-    queryFn: () => adminApi.getStudents({ search: debouncedSearch || undefined, class_id: filterKelas || undefined, page }),
+    queryKey: ['admin-students', debouncedSearch, filterKelas, page, perPage],
+    queryFn: () => adminApi.getStudents({ search: debouncedSearch || undefined, class_id: filterKelas || undefined, page, per_page: perPage === 'semua' ? 'all' : perPage }),
   })
   const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
 
@@ -500,7 +518,7 @@ function SiswaTab() {
             <tbody>
               {rows.map((s, i) => (
                 <tr key={s.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{(page - 1) * (data?.meta?.per_page ?? 30) + i + 1}</td>
+                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{perPage === 'semua' ? i + 1 : (page - 1) * (data?.meta?.per_page ?? 25) + i + 1}</td>
                   <td className="px-3 py-2 font-medium">{s.nama}</td>
                   <td className="px-3 py-2 text-muted-foreground">{s.nis}</td>
                   <td className="px-3 py-2">{s.kelas?.label ?? <span className="text-muted-foreground italic">—</span>}</td>
@@ -519,7 +537,7 @@ function SiswaTab() {
           </table>
         </div>
       )}
-      {data?.meta && <Pagination meta={data.meta} page={page} onPage={setPage} />}
+      {data?.meta && <Pagination meta={data.meta} page={page} onPage={setPage} perPage={perPage} onPerPage={(pp) => { setPerPage(pp); setPage(1) }} />}
 
       {modal && (
         <Modal title={modal === 'add' ? 'Tambah Siswa' : 'Edit Siswa'} onClose={() => setModal(null)}>
@@ -580,18 +598,18 @@ function KelasTab() {
       setDlWaliLoading(false)
     }
   }
-  const KELAS_PER_PAGE = 20
   const [form, setForm] = useState({ tingkat: 'XI', jurusan: '', rombel: '', wali_kelas_id: '' })
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState<PerPageOpt>(25)
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   const { data, isLoading } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
   const { data: teachers } = useQuery({ queryKey: ['admin-teachers'], queryFn: () => adminApi.getTeachers() })
 
-  useEffect(() => { setPage(1) }, [q])
+  useEffect(() => { setPage(1) }, [q, perPage])
 
   function toggleSort(col: string) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -615,11 +633,13 @@ function KelasTab() {
     })
   }, [data, q, sortCol, sortDir])
 
-  const rows = useMemo(() => allRows.slice((page - 1) * KELAS_PER_PAGE, page * KELAS_PER_PAGE), [allRows, page])
+  const pp = typeof perPage === 'number' ? perPage : allRows.length
+  const rows = useMemo(() => perPage === 'semua' ? allRows : allRows.slice((page - 1) * pp, page * pp), [allRows, page, perPage, pp])
   const kelasMeta = useMemo<PaginationMeta>(() => ({
     total: allRows.length, current_page: page,
-    last_page: Math.max(1, Math.ceil(allRows.length / KELAS_PER_PAGE)), per_page: KELAS_PER_PAGE,
-  }), [allRows.length, page])
+    last_page: perPage === 'semua' ? 1 : Math.max(1, Math.ceil(allRows.length / pp)),
+    per_page: pp,
+  }), [allRows.length, page, perPage, pp])
 
   const save = useMutation({
     mutationFn: (d: object) => selected ? adminApi.updateClass(selected.id, d) : adminApi.createClass(d),
@@ -675,7 +695,7 @@ function KelasTab() {
             <tbody>
               {rows.map((c, i) => (
                 <tr key={c.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{(page - 1) * KELAS_PER_PAGE + i + 1}</td>
+                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{perPage === 'semua' ? i + 1 : (page - 1) * pp + i + 1}</td>
                   <td className="px-3 py-2 font-medium">{c.label}</td>
                   <td className="px-3 py-2">{c.wali_kelas?.nama ?? '-'}</td>
                   <td className="px-3 py-2">{c.jumlah_siswa} siswa</td>
@@ -693,7 +713,7 @@ function KelasTab() {
           </table>
         </div>
       )}
-      <Pagination meta={kelasMeta} page={page} onPage={setPage} />
+      <Pagination meta={kelasMeta} page={page} onPage={setPage} perPage={perPage} onPerPage={(p) => { setPerPage(p); setPage(1) }} />
       {modal && (
         <Modal title={modal === 'add' ? 'Tambah Kelas' : 'Edit Kelas'} onClose={() => setModal(null)}>
           <Field label="Tingkat">
@@ -858,9 +878,9 @@ function MapelTab() {
     else { setSortCol(col); setSortDir('asc') }
   }
 
-  const MAPEL_PER_PAGE = 20
+  const [perPage, setPerPage] = useState<PerPageOpt>(25)
 
-  useEffect(() => { setPage(1) }, [q])
+  useEffect(() => { setPage(1) }, [q, perPage])
 
   const allRows = useMemo(() => {
     let list = [...(data ?? [])]
@@ -877,11 +897,13 @@ function MapelTab() {
     })
   }, [data, q, sortCol, sortDir])
 
-  const rows = useMemo(() => allRows.slice((page - 1) * MAPEL_PER_PAGE, page * MAPEL_PER_PAGE), [allRows, page])
+  const mpp = typeof perPage === 'number' ? perPage : allRows.length
+  const rows = useMemo(() => perPage === 'semua' ? allRows : allRows.slice((page - 1) * mpp, page * mpp), [allRows, page, perPage, mpp])
   const mapelMeta = useMemo<PaginationMeta>(() => ({
     total: allRows.length, current_page: page,
-    last_page: Math.max(1, Math.ceil(allRows.length / MAPEL_PER_PAGE)), per_page: MAPEL_PER_PAGE,
-  }), [allRows.length, page])
+    last_page: perPage === 'semua' ? 1 : Math.max(1, Math.ceil(allRows.length / mpp)),
+    per_page: mpp,
+  }), [allRows.length, page, perPage, mpp])
 
   const save = useMutation({
     mutationFn: (d: object) => selected ? adminApi.updateSubject(selected.id, d) : adminApi.createSubject(d),
@@ -930,7 +952,7 @@ function MapelTab() {
             <tbody>
               {rows.map((s, i) => (
                 <tr key={s.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{(page - 1) * MAPEL_PER_PAGE + i + 1}</td>
+                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{perPage === 'semua' ? i + 1 : (page - 1) * mpp + i + 1}</td>
                   <td className="px-3 py-2 font-mono text-xs">{s.kode}</td>
                   <td className="px-3 py-2 font-medium">{s.nama}</td>
                   <td className="px-3 py-2"><Badge className={kelompokColor[s.kelompok] || ''}>{s.kelompok.replace(/_/g, ' ')}</Badge></td>
@@ -948,7 +970,7 @@ function MapelTab() {
           </table>
         </div>
       )}
-      <Pagination meta={mapelMeta} page={page} onPage={setPage} />
+      <Pagination meta={mapelMeta} page={page} onPage={setPage} perPage={perPage} onPerPage={(p) => { setPerPage(p); setPage(1) }} />
       {modal && (
         <Modal title={modal === 'add' ? 'Tambah Mata Pelajaran' : 'Edit Mata Pelajaran'} onClose={() => setModal(null)}>
           <Field label="Kode"><input className={inputCls} placeholder="RPL-001" value={form.kode} onChange={e => setForm(f => ({ ...f, kode: e.target.value }))} /></Field>
@@ -992,17 +1014,19 @@ function JadwalTab() {
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState<PerPageOpt>(25)
 
   const debouncedQ = useDebounce(q, 350)
-  useEffect(() => { setPage(1) }, [debouncedQ, filterKelas, filterHari])
+  useEffect(() => { setPage(1) }, [debouncedQ, filterKelas, filterHari, perPage])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-schedules', filterKelas, filterHari, debouncedQ, page],
+    queryKey: ['admin-schedules', filterKelas, filterHari, debouncedQ, page, perPage],
     queryFn: () => adminApi.getSchedules({
       class_id: filterKelas || undefined,
       hari: filterHari || undefined,
       search: debouncedQ || undefined,
       page,
+      per_page: perPage === 'semua' ? 'all' : perPage,
     }),
   })
   const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
@@ -1063,7 +1087,7 @@ function JadwalTab() {
             <tbody>
               {rows.map((s, i) => (
                 <tr key={s.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{(page - 1) * (data?.meta?.per_page ?? 50) + i + 1}</td>
+                  <td className="w-10 px-3 py-2 text-center text-muted-foreground">{perPage === 'semua' ? i + 1 : (page - 1) * (data?.meta?.per_page ?? 25) + i + 1}</td>
                   <td className="px-3 py-2 capitalize font-medium">{s.hari}</td>
                   <td className="px-3 py-2 text-muted-foreground">{s.jam_mulai}–{s.jam_selesai}</td>
                   <td className="px-3 py-2">{s.kelas.label}</td>
@@ -1082,7 +1106,7 @@ function JadwalTab() {
           </table>
         </div>
       )}
-      {data?.meta && <Pagination meta={data.meta} page={page} onPage={setPage} />}
+      {data?.meta && <Pagination meta={data.meta} page={page} onPage={setPage} perPage={perPage} onPerPage={(p) => { setPerPage(p); setPage(1) }} />}
       {modal && (
         <Modal title={modal === 'add' ? 'Tambah Jadwal' : 'Edit Jadwal'} onClose={() => setModal(null)}>
           {modal === 'add' && (

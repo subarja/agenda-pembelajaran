@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FileText, FileSpreadsheet, Loader2, Info } from 'lucide-react'
+import { FileText, FileSpreadsheet, Loader2, Info, Search } from 'lucide-react'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { Label } from '@/components/ui/label'
@@ -66,26 +66,43 @@ const REPORTS: ReportMeta[] = [
 ]
 
 interface ClassItem { id: string; label: string }
+interface TeacherItem { id: string; nama: string; nip: string }
 
 export default function LaporanPage() {
   const user = useAuthStore((s) => s.user)
   const userRole = user?.role ?? ''
+  const isAdmin  = userRole === 'admin'
 
   const availableReports = REPORTS.filter((r) => r.roles.includes(userRole))
 
-  const [type, setType]       = useState<ReportType>(availableReports[0]?.id ?? 'jurnal')
-  const [classId, setClassId] = useState('')
-  const [mulai, setMulai]     = useState(() => new Date().toISOString().slice(0, 8) + '01')
-  const [akhir, setAkhir]     = useState(() => new Date().toISOString().slice(0, 10))
-  const [loading, setLoading] = useState<'pdf' | 'excel' | null>(null)
-  const [error, setError]     = useState('')
+  const [type, setType]           = useState<ReportType>(availableReports[0]?.id ?? 'jurnal')
+  const [classId, setClassId]     = useState('')
+  const [teacherId, setTeacherId] = useState('')
+  const [teacherQ, setTeacherQ]   = useState('')
+  const [mulai, setMulai]         = useState(() => new Date().toISOString().slice(0, 8) + '01')
+  const [akhir, setAkhir]         = useState(() => new Date().toISOString().slice(0, 10))
+  const [loading, setLoading]     = useState<'pdf' | 'excel' | null>(null)
+  const [error, setError]         = useState('')
 
   const selected = availableReports.find((r) => r.id === type) ?? availableReports[0]
 
-  // Untuk laporan jurnal — kelas yang diajar guru
+  // Daftar guru untuk admin
+  const { data: teachersRes } = useQuery({
+    queryKey: ['report-teachers'],
+    queryFn: () => api.get<{ data: TeacherItem[] }>('/reports/teachers'),
+    enabled: isAdmin,
+  })
+  const allTeachers = teachersRes?.data.data ?? []
+  const filteredTeachers = useMemo(() => {
+    if (!teacherQ) return allTeachers
+    const q = teacherQ.toLowerCase()
+    return allTeachers.filter(t => t.nama.toLowerCase().includes(q) || t.nip.toLowerCase().includes(q))
+  }, [allTeachers, teacherQ])
+
+  // Untuk laporan jurnal — kelas berdasarkan guru terpilih (atau guru sendiri)
   const { data: guruContextsRes } = useQuery({
-    queryKey: ['guru-contexts'],
-    queryFn: () => api.get<{ data: ClassItem[] }>('/reports/guru-contexts'),
+    queryKey: ['guru-contexts', teacherId],
+    queryFn: () => api.get<{ data: ClassItem[] }>('/reports/guru-contexts', { params: teacherId ? { teacher_id: teacherId } : undefined }),
     enabled: type === 'jurnal',
   })
   const guruClasses = guruContextsRes?.data.data ?? []
@@ -100,7 +117,14 @@ export default function LaporanPage() {
 
   const displayClasses = type === 'jurnal' ? guruClasses : allClasses
 
+  // Tipe laporan yang butuh guru (untuk admin)
+  const needsTeacher = isAdmin && (type === 'jurnal' || type === 'rekap_agenda')
+
   async function download(format: 'pdf' | 'excel') {
+    if (needsTeacher && !teacherId) {
+      setError('Pilih guru terlebih dahulu.')
+      return
+    }
     if (selected?.needsClass && !selected.allowAllClass && !classId) {
       setError('Pilih kelas terlebih dahulu.')
       return
@@ -110,12 +134,13 @@ export default function LaporanPage() {
 
     try {
       let endpoint = '/reports/agenda'
-      if (type === 'jurnal')       endpoint = '/reports/jurnal'
+      if (type === 'jurnal')            endpoint = '/reports/jurnal'
       else if (type === 'rekap_agenda') endpoint = '/reports/agenda'
-      else                         endpoint = `/reports/${type}`
+      else                              endpoint = `/reports/${type}`
 
       const params: Record<string, string> = { format }
-      if (selected?.needsClass && classId) params.class_id = classId
+      if (needsTeacher && teacherId)    params.teacher_id    = teacherId
+      if (selected?.needsClass && classId) params.class_id   = classId
       if (selected?.needsDate) { params.tanggal_mulai = mulai; params.tanggal_akhir = akhir }
 
       const res = await api.get(endpoint, { params, responseType: 'blob' })
@@ -158,7 +183,7 @@ export default function LaporanPage() {
             <button
               key={r.id}
               type="button"
-              onClick={() => { setType(r.id); setClassId(''); setError('') }}
+              onClick={() => { setType(r.id); setClassId(''); setTeacherId(''); setTeacherQ(''); setError('') }}
               className={cn(
                 'w-full text-left rounded-lg border p-3 transition-colors',
                 type === r.id
@@ -186,6 +211,38 @@ export default function LaporanPage() {
           <CardTitle className="text-base">Filter</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Pilih Guru — hanya admin untuk laporan jurnal/rekap */}
+          {needsTeacher && (
+            <div className="space-y-1.5">
+              <Label>Nama Guru</Label>
+              <div className="relative mb-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Cari nama atau NIP guru..."
+                  value={teacherQ}
+                  onChange={e => setTeacherQ(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+              <select
+                value={teacherId}
+                onChange={e => { setTeacherId(e.target.value); setClassId('') }}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">— Pilih guru —</option>
+                {filteredTeachers.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.nama}{t.nip ? ` (${t.nip})` : ''}
+                  </option>
+                ))}
+              </select>
+              {allTeachers.length > 0 && filteredTeachers.length === 0 && (
+                <p className="text-xs text-muted-foreground">Tidak ada guru yang cocok dengan pencarian.</p>
+              )}
+            </div>
+          )}
+
           {selected?.needsClass && (
             <div className="space-y-1.5">
               <Label htmlFor="kelas">{selected.classLabel ?? 'Kelas'}</Label>

@@ -32,12 +32,22 @@ class StudentAdminController extends Controller
             ->when($request->class_id, fn ($q, $c) =>
                 $q->whereHas('schoolClass', fn ($sc) => $sc->where('uuid', $c))
             )
-            ->orderByDesc('students.id')
-            ->paginate(30);
+            ->orderByDesc('students.id');
 
+        $perPageRaw = $request->get('per_page', 25);
+        if ($perPageRaw === 'all') {
+            $items = $q->get();
+            $n     = $items->count();
+            return response()->json([
+                'data' => $items->map(fn ($s) => $this->format($s)),
+                'meta' => ['total' => $n, 'current_page' => 1, 'last_page' => 1, 'per_page' => $n ?: 1],
+            ]);
+        }
+
+        $paginated = $q->paginate(min((int) $perPageRaw, 1000));
         return response()->json([
-            'data' => $q->map(fn ($s) => $this->format($s)),
-            'meta' => ['total' => $q->total(), 'current_page' => $q->currentPage(), 'last_page' => $q->lastPage(), 'per_page' => $q->perPage()],
+            'data' => $paginated->map(fn ($s) => $this->format($s)),
+            'meta' => ['total' => $paginated->total(), 'current_page' => $paginated->currentPage(), 'last_page' => $paginated->lastPage(), 'per_page' => $paginated->perPage()],
         ]);
     }
 

@@ -174,10 +174,14 @@ class ReportController extends Controller
             'tanggal_mulai' => ['required', 'date'],
             'tanggal_akhir' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
             'format'        => ['required', 'in:pdf,excel'],
+            'teacher_id'    => ['nullable', 'string'],
         ]);
 
         $teacher = $request->user()->teacher;
-        abort_if(! $teacher, 403, 'Hanya guru yang dapat mengakses rekap agenda.');
+        if (! $teacher && $request->filled('teacher_id')) {
+            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
+        }
+        abort_if(! $teacher, 403, 'Pilih guru terlebih dahulu atau gunakan akun guru.');
 
         $agendas = Agenda::whereHas('schedule', fn ($q) => $q->where('teacher_id', $teacher->id))
             ->whereBetween('tanggal', [$request->tanggal_mulai, $request->tanggal_akhir])
@@ -313,15 +317,19 @@ class ReportController extends Controller
     // ── Jurnal Mengajar (FR-128..131 / Bab XIII) ─────────────────────────────
     public function jurnal(Request $request)
     {
-        $teacher = $request->user()->teacher;
-        abort_if(! $teacher, 403, 'Hanya guru yang dapat mengakses laporan ini.');
-
         $request->validate([
             'tanggal_mulai' => ['required', 'date'],
             'tanggal_akhir' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
             'format'        => ['required', 'in:pdf,excel'],
-            'class_id'      => ['nullable', 'string'],   // null = semua kelas
+            'class_id'      => ['nullable', 'string'],
+            'teacher_id'    => ['nullable', 'string'],
         ]);
+
+        $teacher = $request->user()->teacher;
+        if (! $teacher && $request->filled('teacher_id')) {
+            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
+        }
+        abort_if(! $teacher, 403, 'Pilih guru terlebih dahulu atau gunakan akun guru.');
 
         $teacher->load('user');
         $ay = \App\Models\AcademicYear::where('aktif', true)->first();
@@ -471,9 +479,10 @@ class ReportController extends Controller
     public function guruContexts(Request $request)
     {
         $teacher = $request->user()->teacher;
+        if (! $teacher && $request->filled('teacher_id')) {
+            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->first();
+        }
         if (! $teacher) return response()->json(['data' => []]);
-
-        $ay = \App\Models\AcademicYear::where('aktif', true)->first();
 
         $classes = \App\Models\Schedule::where('teacher_id', $teacher->id)
             ->where('aktif', true)
@@ -486,6 +495,19 @@ class ReportController extends Controller
             ->values();
 
         return response()->json(['data' => $classes]);
+    }
+
+    // ── Daftar semua guru aktif (untuk laporan admin) ─────────────────────────
+    public function reportTeachers()
+    {
+        $teachers = \App\Models\Teacher::with('user')
+            ->whereHas('user', fn ($q) => $q->where('status', 'aktif'))
+            ->get()
+            ->map(fn ($t) => ['id' => $t->uuid, 'nama' => $t->user->nama, 'nip' => $t->nip ?? ''])
+            ->sortBy('nama')
+            ->values();
+
+        return response()->json(['data' => $teachers]);
     }
 
     private function streamXlsx(string $filename, callable $callback): \Symfony\Component\HttpFoundation\StreamedResponse

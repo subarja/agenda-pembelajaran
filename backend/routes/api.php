@@ -104,6 +104,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ── Laporan ───────────────────────────────────────────────────────────────
     Route::get('reports/classes',           [ReportController::class, 'classes']);
+    Route::get('reports/teachers',          [ReportController::class, 'reportTeachers']);
     Route::get('reports/guru-contexts',     [ReportController::class, 'guruContexts']);
     Route::get('reports/kehadiran',         [ReportController::class, 'kehadiran']);
     Route::get('reports/karakter',          [ReportController::class, 'karakter']);

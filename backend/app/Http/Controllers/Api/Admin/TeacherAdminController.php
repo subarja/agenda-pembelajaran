@@ -26,12 +26,22 @@ class TeacherAdminController extends Controller
                           ->orWhere('teachers.nip', 'ilike', "%$s%")
                 )
             )
-            ->orderByDesc('teachers.id')
-            ->paginate(20);
+            ->orderByDesc('teachers.id');
 
+        $perPageRaw = $request->get('per_page', 25);
+        if ($perPageRaw === 'all') {
+            $items = $q->get();
+            $n     = $items->count();
+            return response()->json([
+                'data' => $items->map(fn ($t) => $this->format($t)),
+                'meta' => ['total' => $n, 'current_page' => 1, 'last_page' => 1, 'per_page' => $n ?: 1],
+            ]);
+        }
+
+        $paginated = $q->paginate(min((int) $perPageRaw, 500));
         return response()->json([
-            'data' => $q->map(fn ($t) => $this->format($t)),
-            'meta' => ['total' => $q->total(), 'current_page' => $q->currentPage(), 'last_page' => $q->lastPage(), 'per_page' => $q->perPage()],
+            'data' => $paginated->map(fn ($t) => $this->format($t)),
+            'meta' => ['total' => $paginated->total(), 'current_page' => $paginated->currentPage(), 'last_page' => $paginated->lastPage(), 'per_page' => $paginated->perPage()],
         ]);
     }
 
