@@ -15,8 +15,15 @@ class Teacher extends Model
 
     protected $fillable = [
         'user_id', 'gelar_depan', 'gelar_belakang',
-        'nip', 'nuptk', 'mapel_utama', 'nomor_hp',
+        'nip', 'nuptk', 'mapel_utama', 'nomor_hp', 'is_bk',
+        'jk', 'tempat_lahir', 'tanggal_lahir', 'status_kepegawaian',
+        'jenis_ptk', 'agama', 'nik',
         'created_by', 'updated_by',
+    ];
+
+    protected $casts = [
+        'is_bk'         => 'boolean',
+        'tanggal_lahir' => 'date',
     ];
 
     public function getNamaLengkapAttribute(): string

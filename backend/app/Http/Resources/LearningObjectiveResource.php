@@ -10,11 +10,13 @@ class LearningObjectiveResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id'       => $this->uuid,
-            'kode'     => $this->kode,
-            'deskripsi'=> $this->deskripsi,
-            'urutan'   => $this->urutan,
-            'semester' => $this->semester->value,
+            'id'         => $this->uuid,
+            'kode'       => $this->kode,
+            'deskripsi'  => $this->deskripsi,
+            'urutan'     => $this->urutan,
+            'semester'   => $this->semester->value,
+            'updated_by' => $this->whenLoaded('updatedByUser', fn () => $this->updatedByUser?->nama),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i'),
         ];
     }
 }

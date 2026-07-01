@@ -1,21 +1,43 @@
 import { useNavigate, NavLink } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, toLocalDateStr } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
 import { authApi } from '@/features/auth/api'
-import { navByRole } from './nav-config'
+import { getNavForUser } from './nav-config'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import NotificationBell from './NotificationBell'
+import { useQueryClient } from '@tanstack/react-query'
+import api from '@/lib/api'
+import { adminApi } from '@/features/admin/api'
+import { ewsApi } from '@/features/ews/api'
+
+function usePrefetchNav() {
+  const qc = useQueryClient()
+  return (path: string) => {
+    if (path === '/ews') {
+      qc.prefetchQuery({ queryKey: ['ews', null], queryFn: () => ewsApi.getEws({}) })
+    } else if (path === '/ews-guru') {
+      const today = new Date()
+      const mulai = new Date(today); mulai.setDate(today.getDate() - 6)
+      const fmt = toLocalDateStr
+      qc.prefetchQuery({ queryKey: ['teacher-ews', fmt(mulai), fmt(today)], queryFn: () => api.get(`/admin/teacher-ews?tanggal_mulai=${fmt(mulai)}&tanggal_akhir=${fmt(today)}`).then(r => r.data) })
+    } else if (path === '/admin') {
+      qc.prefetchQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
+      qc.prefetchQuery({ queryKey: ['admin-teachers', '', 1, 25], queryFn: () => adminApi.getTeachers({ page: 1, per_page: 25 }) })
+    }
+  }
+}
 
 export default function Sidebar() {
   const user = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const navigate = useNavigate()
+  const prefetchNav = usePrefetchNav()
 
   if (!user) return null
 
-  const items = navByRole[user.role]
+  const items = getNavForUser(user)
   const initials = user.nama
     .split(' ')
     .slice(0, 2)
@@ -46,24 +68,35 @@ export default function Sidebar() {
       <Separator />
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
         {items.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            end={item.path === '/'}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-primary-50 text-primary-600'
-                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-              )
-            }
-          >
-            <item.icon className="h-4 w-4 shrink-0" />
-            {item.label}
-          </NavLink>
+          <div key={item.path}>
+            {item.sectionLabel && (
+              <div className="mt-4 mb-1 px-3 flex items-center gap-2">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground whitespace-nowrap">
+                  {item.sectionLabel}
+                </span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+            )}
+            <NavLink
+              to={item.path}
+              end={item.path === '/'}
+              onMouseEnter={() => prefetchNav(item.path)}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary-50 text-primary-600'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )
+              }
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {item.label}
+            </NavLink>
+          </div>
         ))}
       </nav>
 

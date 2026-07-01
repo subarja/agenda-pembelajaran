@@ -2,13 +2,20 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
+@php
+  $ps = $printSettings ?? null;
+  $mTop = $ps->margin_top ?? 1; $mBottom = $ps->margin_bottom ?? 1;
+  $mLeft = $ps->margin_left ?? 2; $mRight = $ps->margin_right ?? 2;
+  $kopWidth = $ps->kop_width_percent ?? 100;
+  $kopAlign = $ps->kop_position ?? 'center';
+@endphp
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 1cm 2cm 1cm 2cm; }
+body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: {{ $mTop }}cm {{ $mRight }}cm {{ $mBottom }}cm {{ $mLeft }}cm; }
 
 /* KOP SURAT */
-.kop { text-align: center; margin-bottom: 8px; }
-.kop img { display: inline-block; max-width: 100%; height: auto; }
+.kop { text-align: {{ $kopAlign }}; margin-bottom: 8px; }
+.kop img { display: inline-block; width: {{ $kopWidth }}%; height: auto; }
 .kop-garis { border-top: 3px solid #000; border-bottom: 1px solid #000; margin-bottom: 12px; }
 
 /* JUDUL */

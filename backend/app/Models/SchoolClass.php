@@ -53,4 +53,24 @@ class SchoolClass extends Model
     {
         return $this->hasMany(LearningObjective::class, 'class_id');
     }
+
+    /**
+     * Nama Program Keahlian (label lebih luas dari `jurusan`, yang sebenarnya
+     * menyimpan nama Konsentrasi Keahlian). Dicocokkan longgar terhadap tabel
+     * referensi `program_keahlians` yang diimpor dari sheet "Data Program
+     * Keahlian" — null kalau belum ada data yang cocok.
+     */
+    public function programKeahlianNama(): ?string
+    {
+        $jurusan = mb_strtolower(trim($this->jurusan));
+        if ($jurusan === '') return null;
+
+        $match = ProgramKeahlian::get()->first(function ($pk) use ($jurusan) {
+            $konsentrasi = mb_strtolower(trim($pk->konsentrasi));
+            return $konsentrasi !== ''
+                && (str_contains($konsentrasi, $jurusan) || str_contains($jurusan, $konsentrasi));
+        });
+
+        return $match?->program_keahlian;
+    }
 }

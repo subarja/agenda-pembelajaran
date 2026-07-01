@@ -15,15 +15,40 @@ class AcademicYear extends Model
 
     protected $fillable = [
         'tahun', 'semester', 'aktif',
+        'tanggal_mulai', 'tanggal_selesai',
+        'wk_kurikulum_gelar_depan', 'wk_kurikulum_nama', 'wk_kurikulum_gelar_belakang', 'wk_kurikulum_nip',
+        'kepala_sekolah_gelar_depan', 'kepala_sekolah_nama', 'kepala_sekolah_gelar_belakang', 'kepala_sekolah_nip',
         'created_by', 'updated_by',
     ];
 
     protected function casts(): array
     {
         return [
-            'semester' => Semester::class,
-            'aktif'    => 'boolean',
+            'semester'       => Semester::class,
+            'aktif'          => 'boolean',
+            'tanggal_mulai'  => 'date',
+            'tanggal_selesai'=> 'date',
         ];
+    }
+
+    public function getWkKurikulumNamaLengkapAttribute(): ?string
+    {
+        return $this->namaLengkapPejabat('wk_kurikulum');
+    }
+
+    public function getKepalaSekolahNamaLengkapAttribute(): ?string
+    {
+        return $this->namaLengkapPejabat('kepala_sekolah');
+    }
+
+    private function namaLengkapPejabat(string $prefix): ?string
+    {
+        $nama = $this->{"{$prefix}_nama"};
+        if (! $nama) return null;
+
+        $full = $this->{"{$prefix}_gelar_depan"} ? $this->{"{$prefix}_gelar_depan"} . ' ' . $nama : $nama;
+
+        return $this->{"{$prefix}_gelar_belakang"} ? $full . ', ' . $this->{"{$prefix}_gelar_belakang"} : $full;
     }
 
     public function classes(): HasMany

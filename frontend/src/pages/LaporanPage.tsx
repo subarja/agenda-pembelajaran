@@ -5,7 +5,8 @@ import api from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { cn, toLocalDateStr } from '@/lib/utils'
+import { usePdfPreview } from '@/hooks/usePdfPreview'
 
 type ReportType = 'jurnal' | 'rekap_agenda' | 'kehadiran' | 'karakter' | 'ews'
 
@@ -29,7 +30,7 @@ const REPORTS: ReportMeta[] = [
     needsDate: true,
     classLabel: 'Kelas (kosong = semua kelas diampu)',
     allowAllClass: true,
-    roles: ['guru', 'wali_kelas', 'wakasek'],
+    roles: ['guru', 'wali_kelas', 'wakasek', 'admin'],
   },
   {
     id: 'rekap_agenda',
@@ -68,19 +69,81 @@ const REPORTS: ReportMeta[] = [
 interface ClassItem { id: string; label: string }
 interface TeacherItem { id: string; nama: string; nip: string }
 
-export default function LaporanPage() {
-  const user = useAuthStore((s) => s.user)
-  const userRole = user?.role ?? ''
-  const isAdmin  = userRole === 'admin'
+function TeacherCombobox({ teachers, value, onChange }: {
+  teachers: TeacherItem[]; value: string; onChange: (id: string) => void
+}) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const selectedTeacher = teachers.find(t => t.id === value)
 
-  const availableReports = REPORTS.filter((r) => r.roles.includes(userRole))
+  const filtered = useMemo(() => {
+    if (!q) return teachers.slice(0, 30)
+    const l = q.toLowerCase()
+    return teachers.filter(t => t.nama.toLowerCase().includes(l) || t.nip?.toLowerCase().includes(l)).slice(0, 30)
+  }, [teachers, q])
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          placeholder={selectedTeacher ? selectedTeacher.nama : 'Ketik nama atau NIP guru...'}
+          value={selectedTeacher && !open ? `${selectedTeacher.nama}${selectedTeacher.nip ? ` (${selectedTeacher.nip})` : ''}` : q}
+          onFocus={() => { setOpen(true); setQ('') }}
+          onChange={e => { setQ(e.target.value); setOpen(true) }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          className="flex h-9 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        {value && (
+          <button
+            onMouseDown={e => { e.preventDefault(); onChange(''); setQ('') }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >×</button>
+        )}
+      </div>
+      {open && (
+        <div className="absolute z-10 mt-1 w-full max-h-52 overflow-y-auto rounded-md border bg-background shadow-lg">
+          <div
+            onMouseDown={e => e.preventDefault()}
+            className="py-1"
+          >
+            {filtered.length === 0 && (
+              <div className="px-3 py-2 text-xs text-muted-foreground">Tidak ada guru yang cocok.</div>
+            )}
+            {filtered.map(t => (
+              <button key={t.id}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-muted ${value === t.id ? 'bg-muted font-medium' : ''}`}
+                onMouseDown={() => { onChange(t.id); setQ(''); setOpen(false) }}>
+                {t.nama}{t.nip ? <span className="text-xs text-muted-foreground ml-1">({t.nip})</span> : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function LaporanPage() {
+  const user     = useAuthStore((s) => s.user)
+  const userRole = user?.role ?? ''
+  const kap      = user?.kapabilitas
+  const isAdmin  = userRole === 'admin'
+  const pdfPreview = usePdfPreview({ printSettings: isAdmin })
+
+  const availableReports = REPORTS.filter((r) => {
+    if (r.roles.includes(userRole)) return true
+    if (userRole === 'guru' && kap?.is_bk && r.roles.includes('bk')) return true
+    if (userRole === 'guru' && kap?.is_wali_kelas && r.roles.includes('wali_kelas')) return true
+    return false
+  })
 
   const [type, setType]           = useState<ReportType>(availableReports[0]?.id ?? 'jurnal')
   const [classId, setClassId]     = useState('')
   const [teacherId, setTeacherId] = useState('')
-  const [teacherQ, setTeacherQ]   = useState('')
-  const [mulai, setMulai]         = useState(() => new Date().toISOString().slice(0, 8) + '01')
-  const [akhir, setAkhir]         = useState(() => new Date().toISOString().slice(0, 10))
+  const [mulai, setMulai]         = useState(() => toLocalDateStr(new Date()).slice(0, 8) + '01')
+  const [akhir, setAkhir]         = useState(() => toLocalDateStr(new Date()))
   const [loading, setLoading]     = useState<'pdf' | 'excel' | null>(null)
   const [error, setError]         = useState('')
 
@@ -93,29 +156,27 @@ export default function LaporanPage() {
     enabled: isAdmin,
   })
   const allTeachers = teachersRes?.data.data ?? []
-  const filteredTeachers = useMemo(() => {
-    if (!teacherQ) return allTeachers
-    const q = teacherQ.toLowerCase()
-    return allTeachers.filter(t => t.nama.toLowerCase().includes(q) || t.nip.toLowerCase().includes(q))
-  }, [allTeachers, teacherQ])
 
-  // Untuk laporan jurnal — kelas berdasarkan guru terpilih (atau guru sendiri)
+  // Laporan yang menggunakan kelas dari jadwal guru (bukan semua kelas)
+  const useGuruClasses = type === 'jurnal' || (!isAdmin && (type === 'kehadiran' || type === 'karakter' || type === 'ews'))
+
+  // Untuk laporan jurnal/kehadiran/karakter guru — kelas berdasarkan guru terpilih (atau guru sendiri)
   const { data: guruContextsRes } = useQuery({
     queryKey: ['guru-contexts', teacherId],
     queryFn: () => api.get<{ data: ClassItem[] }>('/reports/guru-contexts', { params: teacherId ? { teacher_id: teacherId } : undefined }),
-    enabled: type === 'jurnal',
+    enabled: useGuruClasses,
   })
   const guruClasses = guruContextsRes?.data.data ?? []
 
-  // Untuk laporan lain — semua kelas
+  // Untuk laporan lain (admin) — semua kelas
   const { data: classesRes } = useQuery({
     queryKey: ['report-classes'],
     queryFn: () => api.get<{ data: ClassItem[] }>('/reports/classes'),
-    enabled: selected?.needsClass && type !== 'jurnal',
+    enabled: selected?.needsClass && !useGuruClasses,
   })
   const allClasses = classesRes?.data.data ?? []
 
-  const displayClasses = type === 'jurnal' ? guruClasses : allClasses
+  const displayClasses = useGuruClasses ? guruClasses : allClasses
 
   // Tipe laporan yang butuh guru (untuk admin)
   const needsTeacher = isAdmin && (type === 'jurnal' || type === 'rekap_agenda')
@@ -129,31 +190,32 @@ export default function LaporanPage() {
       setError('Pilih kelas terlebih dahulu.')
       return
     }
+
+    let endpoint = '/reports/agenda'
+    if (type === 'jurnal')            endpoint = '/reports/jurnal'
+    else if (type === 'rekap_agenda') endpoint = '/reports/agenda'
+    else                              endpoint = `/reports/${type}`
+
+    const params = new URLSearchParams({ format })
+    if (needsTeacher && teacherId)    params.set('teacher_id', teacherId)
+    if (selected?.needsClass && classId) params.set('class_id', classId)
+    if (selected?.needsDate) { params.set('tanggal_mulai', mulai); params.set('tanggal_akhir', akhir) }
+
+    if (format === 'pdf') {
+      setError('')
+      await pdfPreview.openPreview(`${endpoint}?${params.toString()}`, `laporan_${type}.pdf`)
+      return
+    }
+
     setError('')
     setLoading(format)
-
     try {
-      let endpoint = '/reports/agenda'
-      if (type === 'jurnal')            endpoint = '/reports/jurnal'
-      else if (type === 'rekap_agenda') endpoint = '/reports/agenda'
-      else                              endpoint = `/reports/${type}`
-
-      const params: Record<string, string> = { format }
-      if (needsTeacher && teacherId)    params.teacher_id    = teacherId
-      if (selected?.needsClass && classId) params.class_id   = classId
-      if (selected?.needsDate) { params.tanggal_mulai = mulai; params.tanggal_akhir = akhir }
-
-      const res = await api.get(endpoint, { params, responseType: 'blob' })
-
-      const ext  = format === 'pdf' ? 'pdf' : 'xlsx'
-      const mime = format === 'pdf'
-        ? 'application/pdf'
-        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      const blob = new Blob([res.data], { type: mime })
+      const res = await api.get(`${endpoint}?${params.toString()}`, { responseType: 'blob' })
+      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href     = url
-      a.download = `laporan_${type}_${Date.now()}.${ext}`
+      a.download = `laporan_${type}_${Date.now()}.xlsx`
       a.click()
       URL.revokeObjectURL(url)
     } catch {
@@ -183,7 +245,7 @@ export default function LaporanPage() {
             <button
               key={r.id}
               type="button"
-              onClick={() => { setType(r.id); setClassId(''); setTeacherId(''); setTeacherQ(''); setError('') }}
+              onClick={() => { setType(r.id); setClassId(''); setTeacherId(''); setError('') }}
               className={cn(
                 'w-full text-left rounded-lg border p-3 transition-colors',
                 type === r.id
@@ -215,31 +277,11 @@ export default function LaporanPage() {
           {needsTeacher && (
             <div className="space-y-1.5">
               <Label>Nama Guru</Label>
-              <div className="relative mb-1">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Cari nama atau NIP guru..."
-                  value={teacherQ}
-                  onChange={e => setTeacherQ(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
-              <select
+              <TeacherCombobox
+                teachers={allTeachers}
                 value={teacherId}
-                onChange={e => { setTeacherId(e.target.value); setClassId('') }}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value="">— Pilih guru —</option>
-                {filteredTeachers.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.nama}{t.nip ? ` (${t.nip})` : ''}
-                  </option>
-                ))}
-              </select>
-              {allTeachers.length > 0 && filteredTeachers.length === 0 && (
-                <p className="text-xs text-muted-foreground">Tidak ada guru yang cocok dengan pencarian.</p>
-              )}
+                onChange={(id) => { setTeacherId(id); setClassId('') }}
+              />
             </div>
           )}
 
@@ -284,8 +326,8 @@ export default function LaporanPage() {
             </div>
           )}
 
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>
+          {(error || pdfPreview.error) && (
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error || pdfPreview.error}</p>
           )}
         </CardContent>
       </Card>
@@ -293,11 +335,11 @@ export default function LaporanPage() {
       {/* Tombol unduh */}
       <div className="grid grid-cols-2 gap-3">
         <button
-          disabled={!!loading}
+          disabled={!!loading || pdfPreview.loading}
           onClick={() => download('pdf')}
           className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-4 hover:bg-red-100 transition-colors disabled:opacity-50"
         >
-          {loading === 'pdf'
+          {pdfPreview.loading
             ? <Loader2 className="h-6 w-6 text-red-500 animate-spin shrink-0" />
             : <FileText className="h-6 w-6 text-red-500 shrink-0" />}
           <div className="text-left">
@@ -307,7 +349,7 @@ export default function LaporanPage() {
         </button>
 
         <button
-          disabled={!!loading}
+          disabled={!!loading || pdfPreview.loading}
           onClick={() => download('excel')}
           className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-4 hover:bg-green-100 transition-colors disabled:opacity-50"
         >
@@ -342,6 +384,9 @@ export default function LaporanPage() {
           </div>
         </div>
       )}
+
+      {pdfPreview.modal}
+      {pdfPreview.loadingOverlay}
     </div>
   )
 }

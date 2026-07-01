@@ -20,17 +20,21 @@ use App\Models\Student;
 use App\Models\Subject;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Traits\BuildsXlsxReports;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use OpenSpout\Common\Entity\Row;
+use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Reader\XLSX\Reader as XlsxReader;
 use OpenSpout\Writer\XLSX\Writer as XlsxWriter;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ImportController extends Controller
 {
+    use BuildsXlsxReports;
+
     // ── Template download ──────────────────────────────────────────────────────
 
     public function template(string $entity): BinaryFileResponse
@@ -98,9 +102,14 @@ class ImportController extends Controller
         $tempFile = tempnam(sys_get_temp_dir(), 'tpl_');
         $writer   = new XlsxWriter();
         $writer->openToFile($tempFile);
-        $writer->addRow(Row::fromValues($cfg['headers']));
-        $writer->addRow(Row::fromValues($cfg['example']));
-        $writer->addRow(Row::fromValues($cfg['notes']));
+
+        $colCount = count($cfg['headers']);
+        $writer->getOptions()->setColumnWidthForRange(22, 1, $colCount);
+
+        $writer->addRow(Row::fromValuesWithStyle($cfg['headers'], $this->xlsxHeaderStyle()));
+        $writer->addRow(Row::fromValuesWithStyle($cfg['example'], $this->xlsxCellStyle()));
+        $italicNote = (new Style())->withFontItalic(true)->withFontColor('6B7280');
+        $writer->addRow(Row::fromValuesWithStyle($cfg['notes'], $italicNote));
         $writer->close();
 
         return response()->download($tempFile, $cfg['filename'], [
@@ -646,9 +655,12 @@ class ImportController extends Controller
         $writer   = new XlsxWriter();
         $writer->openToFile($tempFile);
 
-        // Header row
-        $writer->addRow(Row::fromValues(['kelas', 'nip_guru', 'nama_guru', 'catatan']));
+        $this->xlsxSetColumnWidths($writer, [1 => 30, 2 => 20, 3 => 26, 4 => 24]);
 
+        // Header row
+        $writer->addRow(Row::fromValuesWithStyle(['kelas', 'nip_guru', 'nama_guru', 'catatan'], $this->xlsxHeaderStyle()));
+
+        $cellStyle = $this->xlsxCellStyle();
         foreach ($classes as $class) {
             $label    = "{$class->tingkat->value} {$class->jurusan} {$class->rombel}";
             $teacher  = $class->waliKelas ? Teacher::where('user_id', $class->waliKelas->id)->first() : null;
@@ -656,7 +668,7 @@ class ImportController extends Controller
             $nama     = $class->waliKelas?->nama ?? '';
             $catatan  = $class->waliKelas ? '' : '← belum ada wali kelas';
 
-            $writer->addRow(Row::fromValues([$label, $nip, $nama, $catatan]));
+            $writer->addRow(Row::fromValuesWithStyle([$label, $nip, $nama, $catatan], $cellStyle));
         }
 
         $writer->close();

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { cn, toLocalDateStr } from '@/lib/utils'
 
 export default function AgendaFormPage() {
   const navigate = useNavigate()
@@ -18,7 +18,7 @@ export default function AgendaFormPage() {
 
   const [form, setForm] = useState<AgendaFormData>({
     schedule_id: preselected,
-    tanggal: new Date().toISOString().slice(0, 10),
+    tanggal: toLocalDateStr(new Date()),
     resume_kbm: '',
     learning_objective_ids: [],
     status: 'submitted',

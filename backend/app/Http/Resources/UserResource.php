@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\SchoolClass;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -21,6 +22,13 @@ class UserResource extends JsonResource
                 ? Storage::disk('public')->url($this->foto)
                 : null,
 
+            'current_academic_year' => $this->whenLoaded('currentAcademicYear', fn () => $this->currentAcademicYear ? [
+                'id'       => $this->currentAcademicYear->uuid,
+                'tahun'    => $this->currentAcademicYear->tahun,
+                'semester' => $this->currentAcademicYear->semester->value,
+                'label'    => $this->currentAcademicYear->tahun . ' - ' . ucfirst($this->currentAcademicYear->semester->value),
+            ] : null),
+
             'teacher' => $this->whenLoaded('teacher', fn () => [
                 'id'             => $this->teacher->uuid,
                 'nip'            => $this->teacher->nip,
@@ -28,7 +36,10 @@ class UserResource extends JsonResource
                 'nomor_hp'       => $this->teacher->nomor_hp,
                 'gelar_depan'    => $this->teacher->gelar_depan,
                 'gelar_belakang' => $this->teacher->gelar_belakang,
+                'is_bk'          => (bool) $this->teacher->is_bk,
             ]),
+
+            'kapabilitas' => $this->whenLoaded('teacher', fn () => $this->computeKapabilitas()),
 
             'student' => $this->whenLoaded('student', fn () => [
                 'id'    => $this->student->uuid,
@@ -56,6 +67,27 @@ class UserResource extends JsonResource
                     ]
                     : null,
             ] : null),
+        ];
+    }
+
+    private function computeKapabilitas(): array
+    {
+        $isBk = (bool) ($this->teacher?->is_bk ?? false);
+
+        $kelasWali = SchoolClass::where('wali_kelas_id', $this->id)
+            ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+            ->first();
+
+        $isWaliKelas   = $kelasWali !== null;
+        $waliKelasClass = $kelasWali ? [
+            'id'    => $kelasWali->uuid,
+            'label' => $kelasWali->tingkat->value . ' ' . $kelasWali->jurusan . ' - ' . $kelasWali->rombel,
+        ] : null;
+
+        return [
+            'is_bk'            => $isBk,
+            'is_wali_kelas'    => $isWaliKelas,
+            'wali_kelas_class' => $waliKelasClass,
         ];
     }
 }

@@ -20,6 +20,16 @@ export interface User {
   teacher?: TeacherProfile | null
   student?: StudentProfile | null
   linked_student?: LinkedStudentProfile | null
+  kapabilitas?: Kapabilitas | null
+  current_academic_year?: AcademicYearOption | null
+}
+
+export interface AcademicYearOption {
+  id: string
+  tahun: string
+  semester: 'ganjil' | 'genap'
+  label: string
+  aktif?: boolean
 }
 
 export interface TeacherProfile {
@@ -29,6 +39,13 @@ export interface TeacherProfile {
   nomor_hp: string | null
   gelar_depan: string | null
   gelar_belakang: string | null
+  is_bk?: boolean
+}
+
+export interface Kapabilitas {
+  is_bk: boolean
+  is_wali_kelas: boolean
+  wali_kelas_class: { id: string; label: string } | null
 }
 
 export interface StudentProfile {

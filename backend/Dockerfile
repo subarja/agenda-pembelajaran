@@ -7,6 +7,7 @@ RUN apk add --no-cache \
         libxml2-dev \
         oniguruma-dev \
         icu-dev \
+        postgresql16-client \
         $PHPIZE_DEPS \
     && docker-php-ext-install \
         pdo_pgsql \

@@ -1,18 +1,31 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { authApi } from '@/features/auth/api'
+import { useQuery } from '@tanstack/react-query'
+import { authApi, academicYearApi } from '@/features/auth/api'
 import { useAuthStore } from '@/store/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const setAuth  = useAuthStore((s) => s.setAuth)
-  const [form, setForm]     = useState({ identifier: '', password: '' })
+  const [form, setForm]     = useState({ identifier: '', password: '', academic_year_id: '' })
   const [error, setError]   = useState('')
   const [loading, setLoading] = useState(false)
+
+  const { data: years } = useQuery({
+    queryKey: ['academic-years-pilihan'],
+    queryFn: () => academicYearApi.pilihan().then((r) => r.data.data),
+  })
+
+  useEffect(() => {
+    if (!form.academic_year_id && years && years.length > 0) {
+      setForm((f) => ({ ...f, academic_year_id: years[0].id }))
+    }
+  }, [years, form.academic_year_id])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -76,15 +89,36 @@ export default function LoginPage() {
                     Lupa password?
                   </Link>
                 </div>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   required
                   autoComplete="current-password"
                   placeholder="••••••••"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="academic_year_id">Semester</Label>
+                <select
+                  id="academic_year_id"
+                  required={!!years && years.length > 0}
+                  value={form.academic_year_id}
+                  onChange={(e) => setForm({ ...form, academic_year_id: e.target.value })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {!years && <option value="">Memuat...</option>}
+                  {years?.length === 0 && <option value="">Belum ada semester</option>}
+                  {years?.map((y) => (
+                    <option key={y.id} value={y.id}>
+                      {y.label}{y.aktif ? ' (Aktif)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Semua semester dapat diakses siapa pun — pilih yang ingin dikerjakan.
+                </p>
               </div>
 
               {error && (

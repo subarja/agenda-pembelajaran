@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\AcademicYearController;
+use App\Http\Controllers\Api\Admin\PrintSettingController;
+use App\Http\Controllers\Api\AcademicYearSelectionController;
 use App\Http\Controllers\Api\Admin\AscXmlImportController;
 use App\Http\Controllers\Api\Admin\DapodikImportController;
 use App\Http\Controllers\Api\Admin\TeacherEwsController;
@@ -11,12 +13,17 @@ use App\Http\Controllers\Api\Admin\ScheduleAdminController;
 use App\Http\Controllers\Api\Admin\StudentAdminController;
 use App\Http\Controllers\Api\Admin\SubjectAdminController;
 use App\Http\Controllers\Api\Admin\TeacherAdminController;
+use App\Http\Controllers\Api\Admin\CalendarController;
+use App\Http\Controllers\Api\Admin\DatabaseBackupController;
 use App\Http\Controllers\Api\Admin\UserAdminController;
+use App\Http\Controllers\Api\EffectiveDayController;
 use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\DailyAttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CharacterController;
+use App\Http\Controllers\Api\CharacterManualNoteController;
 use App\Http\Controllers\Api\EwsController;
+use App\Http\Controllers\Api\StudentCaseNoteController;
 use App\Http\Controllers\Api\LearningObjectiveController;
 use App\Http\Controllers\Api\PresensiController;
 use App\Http\Controllers\Api\ProfileController;
@@ -37,6 +44,9 @@ Route::prefix('auth')->middleware('throttle:10,1')->group(function () {
     Route::post('/reset-password', [PasswordResetController::class, 'reset']);
 });
 
+// Daftar semester untuk dropdown di form login (publik, dibutuhkan sebelum auth)
+Route::get('academic-years/pilihan', [AcademicYearSelectionController::class, 'pilihan']);
+
 // ── Protected ─────────────────────────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -45,6 +55,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout',     [AuthController::class, 'logout']);
         Route::post('/logout-all', [AuthController::class, 'logoutAll']);
     });
+
+    // ── Tahun Ajaran — ganti semester kerja setelah login (opsional) ───────────
+    Route::post('academic-years/pilih',   [AcademicYearSelectionController::class, 'pilih']);
 
     // ── Profil ────────────────────────────────────────────────────────────────
     Route::get('profile',             [ProfileController::class, 'show']);
@@ -62,10 +75,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('students/{uuid}/rekap',                           [StudentRekapController::class, 'show']);
     Route::put('students/{uuid}/rekap/rekomendasi/{rekUuid}',     [StudentRekapController::class, 'updateRekomendasi']);
 
+    // ── Kalender & Minggu Efektif (semua role terautentikasi) ───────────────────
+    Route::get('calendar/events',                   [CalendarController::class, 'events']);
+    Route::get('effective-days/my-classes',         [EffectiveDayController::class, 'myClasses']);
+    Route::get('effective-days/my-minggu',          [EffectiveDayController::class, 'myMinggu']);
+    Route::get('effective-days/export-teacher',     [EffectiveDayController::class, 'exportTeacher']);
+    Route::get('effective-days/export-teacher-pdf', [EffectiveDayController::class, 'exportTeacherPdf']);
+    Route::get('effective-days',                    [EffectiveDayController::class, 'index']);
+
     // ── Tujuan Pembelajaran ───────────────────────────────────────────────────
     Route::get('learning-objectives/my-contexts', [LearningObjectiveController::class, 'myContexts']);
     Route::get('learning-objectives/template',    [LearningObjectiveController::class, 'template']);
     Route::post('learning-objectives/import',     [LearningObjectiveController::class, 'import']);
+    Route::get('learning-objectives/logs',        [LearningObjectiveController::class, 'logs']);
     Route::get('learning-objectives',             [LearningObjectiveController::class, 'index']);
     Route::post('learning-objectives',            [LearningObjectiveController::class, 'store']);
     Route::put('learning-objectives/{uuid}',      [LearningObjectiveController::class, 'update']);
@@ -97,7 +119,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('character-inputs',         [CharacterController::class, 'indexInputs']);
     Route::get('character-summary',        [CharacterController::class, 'summary']);
 
+    // ── Catatan Manual Karakter (guru submit, admin review) ───────────────────
+    Route::post('character-manual-notes',  [CharacterManualNoteController::class, 'store']);
+    Route::get('character-manual-notes',   [CharacterManualNoteController::class, 'index']);
+
+    // ── Catatan Kasus Siswa (BK & Wali Kelas) ─────────────────────────────────
+    Route::get('student-case-notes',                 [StudentCaseNoteController::class, 'index']);
+    Route::post('student-case-notes',                [StudentCaseNoteController::class, 'store']);
+    Route::put('student-case-notes/{uuid}',          [StudentCaseNoteController::class, 'update']);
+    Route::delete('student-case-notes/{uuid}',       [StudentCaseNoteController::class, 'destroy']);
+
     // ── EWS ───────────────────────────────────────────────────────────────────
+    Route::get('ews/export',               [EwsController::class, 'export']);
     Route::get('ews',                      [EwsController::class, 'index']);
     Route::get('ews/{uuid}',               [EwsController::class, 'show']);
     Route::get('ews/{uuid}/pdf',           [EwsController::class, 'dimensionPdf']);
@@ -132,7 +165,39 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:admin,wakasek')->prefix('admin')->group(function () {
 
         // EWS Guru
+        Route::get('teacher-ews/export',          [TeacherEwsController::class, 'export']);
         Route::get('teacher-ews',                 [TeacherEwsController::class, 'index']);
+
+        // Catatan Manual Karakter — admin review
+        Route::get('character-manual-notes',                    [CharacterManualNoteController::class, 'adminIndex']);
+        Route::put('character-manual-notes/{uuid}/review',      [CharacterManualNoteController::class, 'adminReview']);
+
+        // Tujuan Pembelajaran — admin revert
+        Route::post('learning-objectives/revert/{uuid}',        [LearningObjectiveController::class, 'adminRevert']);
+
+        // Kalender Google + Hari Efektif — admin
+        Route::get('calendar/settings',                         [CalendarController::class, 'getSettings']);
+        Route::post('calendar/settings',                        [CalendarController::class, 'saveSettings']);
+        Route::post('calendar/upload-credentials',              [CalendarController::class, 'uploadCredentials']);
+        Route::post('calendar/sync',                            [CalendarController::class, 'sync']);
+        Route::get('non-effective-days',                        [CalendarController::class, 'listNonEffective']);
+        Route::post('non-effective-days',                       [CalendarController::class, 'storeNonEffective']);
+        Route::put('non-effective-days/{id}',                   [CalendarController::class, 'updateNonEffective']);
+        Route::delete('non-effective-days/{id}',                [CalendarController::class, 'deleteNonEffective']);
+        Route::post('non-effective-days/bulk',                  [CalendarController::class, 'bulkNonEffective']);
+        Route::post('non-effective-days/import',                [CalendarController::class, 'importNonEffective']);
+        Route::post('non-effective-days/auto-mark',             [CalendarController::class, 'autoMarkFromEvents']);
+        Route::get('non-effective-days/template',               [CalendarController::class, 'templateNonEffective']);
+        Route::get('effective-days/summary',                    [EffectiveDayController::class, 'adminSummary']);
+        Route::get('effective-days/export',                     [EffectiveDayController::class, 'export']);
+        Route::get('effective-days/export-pdf',                 [EffectiveDayController::class, 'exportPdf']);
+        Route::get('effective-days/umum',                       [EffectiveDayController::class, 'umum']);
+        Route::get('effective-days/export-umum',                [EffectiveDayController::class, 'exportUmum']);
+
+        // ── Pengaturan Cetak PDF (ukuran kertas, margin, kop surat) ────────────────
+        Route::get('print-settings',                            [PrintSettingController::class, 'show']);
+        Route::put('print-settings',                            [PrintSettingController::class, 'update']);
+        Route::get('print-settings/preview',                    [PrintSettingController::class, 'preview']);
 
         // Sinkronisasi rekomendasi untuk semua siswa (jalankan sekali untuk data lama)
         Route::post('sync-recommendations',        function () {
@@ -154,6 +219,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('academic-years',             [AcademicYearController::class, 'store']);
         Route::put('academic-years/{uuid}',       [AcademicYearController::class, 'update']);
         Route::delete('academic-years/{uuid}',    [AcademicYearController::class, 'destroy']);
+
+        // Backup & Restore (admin-only, dijaga lagi di dalam controller)
+        Route::get('backup/download',             [DatabaseBackupController::class, 'download']);
+        Route::post('backup/restore',             [DatabaseBackupController::class, 'restore']);
 
         // Guru
         Route::get('teachers',                    [TeacherAdminController::class, 'index']);
@@ -203,15 +272,21 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('action-thresholds/{uuid}', [CharacterAdminController::class, 'destroyThreshold']);
 
         // Pengguna (admin, bk, orang_tua)
-        Route::get('users',              [UserAdminController::class, 'index']);
-        Route::post('users',             [UserAdminController::class, 'store']);
-        Route::put('users/{uuid}',       [UserAdminController::class, 'update']);
-        Route::delete('users/{uuid}',    [UserAdminController::class, 'destroy']);
+        Route::get('users',                          [UserAdminController::class, 'index']);
+        Route::post('users',                         [UserAdminController::class, 'store']);
+        Route::put('users/{uuid}',                   [UserAdminController::class, 'update']);
+        Route::delete('users/{uuid}',                [UserAdminController::class, 'destroy']);
+        // Pengguna — sub-menu detail (semua role)
+        Route::get('users-detail',                   [UserAdminController::class, 'detail']);
+        Route::put('users/{uuid}/reset-password',    [UserAdminController::class, 'resetPassword']);
+        Route::put('users/{uuid}/toggle-status',     [UserAdminController::class, 'toggleStatus']);
+        Route::post('generate-accounts',             [UserAdminController::class, 'generateAccounts']);
 
         // Import aSc Timetables XML
         Route::post('import/asc-xml',         [AscXmlImportController::class, 'import']);
 
         // Import Dapodik Excel (guru & siswa)
+        Route::get('import/dapodik-guru/template', [DapodikImportController::class, 'downloadTemplate']);
         Route::post('import/dapodik-guru',    [DapodikImportController::class, 'importGuru']);
         Route::post('import/dapodik-siswa',   [DapodikImportController::class, 'importSiswa']);
 

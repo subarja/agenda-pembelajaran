@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Camera, Eye, EyeOff, Check, X } from 'lucide-react'
+import { LogOut, Camera, Check, X } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth'
 import { authApi } from '@/features/auth/api'
@@ -8,6 +8,7 @@ import api from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +23,6 @@ export default function ProfilePage() {
   const [editGelar, setEditGelar] = useState(false)
   const [editEmail, setEditEmail] = useState(false)
   const [editPwd, setEditPwd]     = useState(false)
-  const [showPwd, setShowPwd]     = useState(false)
 
   const [nama, setNama]                   = useState(user?.nama ?? '')
   const [hp, setHp]                       = useState(user?.teacher?.nomor_hp ?? '')
@@ -240,11 +240,13 @@ export default function ProfilePage() {
           )}
 
           {/* NIP (guru) */}
-          {user.teacher?.nip && (
+          {user.teacher && (
             <div>
               <p className="text-xs text-muted-foreground mb-1">NIP</p>
-              <p className="text-sm font-medium">{user.teacher.nip}</p>
-              <p className="text-xs text-muted-foreground">Password default = NIP</p>
+              <p className="text-sm font-medium">{user.teacher.nip ?? '—'}</p>
+              {user.teacher.nip && (
+                <p className="text-xs text-muted-foreground">NIP diisi saat import data guru</p>
+              )}
             </div>
           )}
 
@@ -319,20 +321,15 @@ export default function ProfilePage() {
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label>Password Lama</Label>
-                <div className="relative">
-                  <Input type={showPwd ? 'text' : 'password'} value={pwdLama} onChange={(e) => setPwdLama(e.target.value)} className="pr-10" />
-                  <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
+                <PasswordInput value={pwdLama} onChange={(e) => setPwdLama(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label>Password Baru</Label>
-                <Input type={showPwd ? 'text' : 'password'} value={pwdBaru} onChange={(e) => setPwdBaru(e.target.value)} />
+                <PasswordInput value={pwdBaru} onChange={(e) => setPwdBaru(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label>Konfirmasi Password Baru</Label>
-                <Input type={showPwd ? 'text' : 'password'} value={pwdKonfirm} onChange={(e) => setPwdKonfirm(e.target.value)} />
+                <PasswordInput value={pwdKonfirm} onChange={(e) => setPwdKonfirm(e.target.value)} />
               </div>
               <div className="flex gap-2">
                 <Button size="sm" disabled={pwdMutation.isPending} onClick={() => pwdMutation.mutate()}>

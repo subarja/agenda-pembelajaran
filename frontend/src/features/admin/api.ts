@@ -14,7 +14,16 @@ export interface ImportResult {
 export interface AdminTeacher {
   id: string; nama: string; email: string; role: string
   status: string; nip: string; mapel_utama: string; nomor_hp: string | null
-  gelar_depan: string | null; gelar_belakang: string | null
+  gelar_depan: string | null; gelar_belakang: string | null; is_bk?: boolean
+}
+
+export interface AdminManualNote {
+  id: string; uuid: string; catatan: string; nilai: number | null
+  status: 'pending' | 'approved' | 'rejected'
+  admin_catatan: string | null; nilai_final: number | null
+  student: { id: string; nama: string; nis: string; kelas: string | null }
+  teacher: { id: string; nama: string }
+  created_at: string
 }
 
 export interface AdminStudent {
@@ -43,6 +52,11 @@ export interface AdminSchedule {
 
 export interface AdminAcademicYear {
   id: string; tahun: string; semester: string; aktif: boolean
+  tanggal_mulai: string | null; tanggal_selesai: string | null
+  wk_kurikulum_gelar_depan: string | null; wk_kurikulum_nama: string | null
+  wk_kurikulum_gelar_belakang: string | null; wk_kurikulum_nip: string | null
+  kepala_sekolah_gelar_depan: string | null; kepala_sekolah_nama: string | null
+  kepala_sekolah_gelar_belakang: string | null; kepala_sekolah_nip: string | null
 }
 
 export interface AdminCharacterCategory {
@@ -122,6 +136,11 @@ export const adminApi = {
   updateAdminUser: (id: string, d: object) => api.put(`/admin/users/${id}`, d).then(r => r.data),
   deleteAdminUser: (id: string) => api.delete(`/admin/users/${id}`).then(r => r.data),
 
+  // Nilai Manual (character_manual_notes)
+  getManualNotes: (params?: object) => api.get('/admin/character-manual-notes', { params }).then(r => r.data as { data: AdminManualNote[]; meta: any }),
+  reviewManualNote: (uuid: string, d: { action: 'approve' | 'reject' | 'adjust'; nilai_final?: number | null; admin_catatan?: string }) =>
+    api.put(`/admin/character-manual-notes/${uuid}/review`, d).then(r => r.data),
+
   // Import Excel
   importData: (entity: string, file: File) => {
     const formData = new FormData()
@@ -138,6 +157,19 @@ export const adminApi = {
     const a   = document.createElement('a')
     a.href    = url
     a.download = `template_${entity}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  },
+
+  // Format Import Data Guru (guru + wali kelas + program keahlian, 3 sheet dalam 1 file)
+  downloadDapodikGuruTemplate: async () => {
+    const res = await api.get('/admin/import/dapodik-guru/template', { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const a   = document.createElement('a')
+    a.href    = url
+    a.download = 'Format Import Data Guru.xlsx'
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)

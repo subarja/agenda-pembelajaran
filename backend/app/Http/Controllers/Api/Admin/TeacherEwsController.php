@@ -5,14 +5,26 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Agenda;
 use App\Models\AuditLog;
+use App\Models\PrintSetting;
 use App\Models\Schedule;
 use App\Models\Teacher;
+use App\Traits\BuildsXlsxReports;
+use App\Traits\HandlesPdfPreview;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use OpenSpout\Common\Entity\Cell\NumericCell;
+use OpenSpout\Common\Entity\Cell\StringCell;
+use OpenSpout\Common\Entity\Row;
+use OpenSpout\Common\Entity\Style\Style;
+use OpenSpout\Writer\XLSX\Writer;
 
 class TeacherEwsController extends Controller
 {
+    use HandlesPdfPreview;
+    use BuildsXlsxReports;
+
     /**
      * GET /admin/teacher-ews
      *
@@ -121,6 +133,70 @@ class TeacherEwsController extends Controller
                 'tanggal_mulai' => $mulai->toDateString(),
                 'tanggal_akhir' => $akhir->toDateString(),
             ],
+        ]);
+    }
+
+    // GET /admin/teacher-ews/export?format=excel|pdf&tanggal_mulai=&tanggal_akhir=&level=
+    public function export(Request $request)
+    {
+        $jsonResp = $this->index($request);
+        $payload  = $jsonResp->getData(true);
+        $rows     = $payload['data'] ?? [];
+        $meta     = $payload['meta'] ?? [];
+
+        if ($request->filled('level')) {
+            $lvl  = $request->level;
+            $rows = array_values(array_filter($rows, fn ($r) => $r['level'] === $lvl));
+        }
+
+        $periodeLabel = ($meta['tanggal_mulai'] ?? '—') . ' s.d. ' . ($meta['tanggal_akhir'] ?? '—');
+
+        if ($request->query('format') === 'pdf') {
+            $printSettings = PrintSetting::instance();
+            $pdf = Pdf::loadView('reports.ews_guru', compact('rows', 'periodeLabel', 'printSettings'))
+                ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+            return $this->pdfResponse($pdf, 'EWS_Guru.pdf', $request);
+        }
+
+        // Excel
+        $tmpFile = tempnam(sys_get_temp_dir(), 'ews_guru_') . '.xlsx';
+        $writer  = new Writer();
+        $writer->openToFile($tmpFile);
+
+        $this->xlsxSetColumnWidths($writer, [1 => 5, 2 => 26, 3 => 20, 4 => 20, 5 => 12, 6 => 12, 7 => 10, 8 => 10, 9 => 10, 10 => 10, 11 => 16]);
+
+        $writer->addRow(Row::fromValuesWithStyle(["Laporan EWS Guru — Periode: {$periodeLabel}"], $this->xlsxTitleStyle()));
+        $writer->addRow(Row::fromValues(['']));
+        $writer->addRow(Row::fromValuesWithStyle(
+            ['No', 'Nama Guru', 'NIP', 'Mapel Utama', 'Level EWS', 'Total Jadwal', 'Terisi', 'Draft', 'Kosong', '% Terisi', 'Terakhir Login'],
+            $this->xlsxHeaderStyle()
+        ));
+
+        $cellCenter = $this->xlsxCellCenterStyle();
+        $cellText   = $this->xlsxCellStyle();
+        foreach ($rows as $i => $r) {
+            $writer->addRow(new Row([
+                new NumericCell($i + 1, $cellCenter),
+                new StringCell($r['nama'] ?? '—', $cellText),
+                new StringCell($r['nip'] ?? '—', $cellCenter),
+                new StringCell($r['mapel_utama'] ?? '—', $cellText),
+                new StringCell(strtoupper($r['level']), $cellCenter),
+                new NumericCell($r['total_jadwal'], $cellCenter),
+                new NumericCell($r['total_tersubmit'], $cellCenter),
+                new NumericCell($r['total_draft'], $cellCenter),
+                new NumericCell($r['total_kosong'], $cellCenter),
+                new StringCell($r['pct_terisi'] !== null ? $r['pct_terisi'] . '%' : '—', $cellCenter),
+                new StringCell($r['last_login_date'] ?? 'Belum pernah', $cellCenter),
+            ]));
+        }
+
+        $writer->close();
+        $content = file_get_contents($tmpFile);
+        @unlink($tmpFile);
+
+        return response($content, 200, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="EWS_Guru.xlsx"',
         ]);
     }
 

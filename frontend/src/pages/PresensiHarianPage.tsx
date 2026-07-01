@@ -5,7 +5,7 @@ import { ArrowLeft, Calendar, CheckCircle2, Users, BarChart3, ChevronLeft, Chevr
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { cn, toLocalDateStr } from '@/lib/utils'
 
 type StatusHarian = 'hadir' | 'sakit' | 'izin' | 'alpha'
 
@@ -45,7 +45,7 @@ interface RekapSiswa {
 }
 
 function toDateStr(d: Date) {
-  return d.toISOString().split('T')[0]
+  return toLocalDateStr(d)
 }
 
 function formatTanggal(iso: string) {
@@ -62,7 +62,7 @@ export default function PresensiHarianPage() {
   const [records, setRecords] = useState<Record<string, StatusHarian>>({})
   const [saved, setSaved] = useState(false)
   const [activeTab, setActiveTab] = useState<'input' | 'rekap'>('input')
-  const [rekapMonth, setRekapMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [rekapMonth, setRekapMonth] = useState(toLocalDateStr(new Date()).slice(0, 7))
 
   const { data, isLoading } = useQuery({
     queryKey: ['daily-attendance', tanggal],

@@ -1,9 +1,10 @@
 import api from '@/lib/api'
-import type { ApiResponse, User } from '@/types'
+import type { ApiResponse, AcademicYearOption, User } from '@/types'
 
 export interface LoginPayload {
   identifier: string   // email / NIP / NISN
   password: string
+  academic_year_id: string
   device_name?: string
 }
 
@@ -22,4 +23,12 @@ export const authApi = {
 
   logout: () =>
     api.post('/auth/logout'),
+}
+
+export const academicYearApi = {
+  pilihan: () =>
+    api.get<ApiResponse<AcademicYearOption[]>>('/academic-years/pilihan'),
+
+  pilih: (academic_year_id: string) =>
+    api.post<ApiResponse<User>>('/academic-years/pilih', { academic_year_id }),
 }

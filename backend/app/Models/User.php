@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -19,7 +20,7 @@ class User extends Authenticatable
 
     protected $fillable = [
         'nama', 'email', 'password', 'role', 'status', 'nomor_hp',
-        'linked_student_id', 'created_by', 'updated_by',
+        'linked_student_id', 'current_academic_year_id', 'created_by', 'updated_by',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -50,6 +51,11 @@ class User extends Authenticatable
         return $this->belongsTo(Student::class, 'linked_student_id');
     }
 
+    public function currentAcademicYear(): BelongsTo
+    {
+        return $this->belongsTo(AcademicYear::class, 'current_academic_year_id');
+    }
+
     public function managedClasses(): HasMany
     {
         return $this->hasMany(SchoolClass::class, 'wali_kelas_id');
@@ -72,9 +78,12 @@ class User extends Authenticatable
 
     public function loadProfileRelation(): static
     {
+        $this->load('currentAcademicYear');
+
         return match ($this->role) {
             UserRole::Guru,
             UserRole::WaliKelas,
+            UserRole::BK,
             UserRole::Wakasek => $this->load('teacher'),
             UserRole::Siswa   => $this->load(['student', 'student.schoolClass']),
             UserRole::OrangTua => $this->load(['linkedStudent', 'linkedStudent.schoolClass']),

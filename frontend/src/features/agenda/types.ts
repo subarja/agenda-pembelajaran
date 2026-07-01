@@ -14,6 +14,8 @@ export interface LearningObjective {
   deskripsi: string
   urutan: number
   semester: string
+  updated_by?: string | null
+  updated_at?: string | null
 }
 
 export interface StudentItem {

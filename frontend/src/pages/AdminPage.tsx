@@ -1,18 +1,20 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar } from 'lucide-react'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
 import type {
   AdminTeacher, AdminStudent, AdminClass, AdminSubject,
   AdminSchedule, AdminCharacterCategory, AdminCharacterSubitem, AdminThreshold,
-  AdminUser, AdminAcademicYear, ImportResult,
+  AdminUser, AdminAcademicYear, ImportResult, AdminManualNote,
 } from '@/features/admin/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { PasswordInput } from '@/components/ui/password-input'
+import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore']
 
 // ── Simple modal ──────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -251,6 +253,29 @@ function useDebounce<T>(value: T, delay = 300): T {
   return debounced
 }
 
+// ── Skeleton tabel (loading state) ──────────────────────────────────────────
+// Menjaga tinggi & struktur tabel tetap terlihat saat data sedang dimuat, supaya
+// tidak ada jeda "layar kosong" antara ganti tab dan tabel/isi tampil.
+function TableSkeleton({ cols, rows = 6 }: { cols: number[]; rows?: number }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm">
+        <tbody>
+          {Array.from({ length: rows }).map((_, i) => (
+            <tr key={i} className="border-b last:border-0">
+              {cols.map((w, j) => (
+                <td key={j} className="px-3 py-2">
+                  <div className="h-3.5 rounded bg-muted animate-pulse" style={{ width: w }} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB: GURU
 // ─────────────────────────────────────────────────────────────────────────────
@@ -273,6 +298,7 @@ function GuruTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-teachers', debouncedQ, page, perPage],
     queryFn: () => adminApi.getTeachers({ search: debouncedQ || undefined, page, per_page: perPage === 'semua' ? 'all' : perPage }),
+    placeholderData: (prev) => prev,
   })
 
   function toggleSort(col: string) {
@@ -330,7 +356,7 @@ function GuruTab() {
         </div>
       </div>
 
-      {isLoading ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : (
+      {isLoading ? <TableSkeleton cols={[16, 160, 120, 120, 80, 70, 40]} rows={8} /> : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
@@ -387,7 +413,7 @@ function GuruTab() {
           </Field>
           <Field label="No. HP (opsional)"><input className={inputCls} value={form.nomor_hp} onChange={e => setForm(f => ({ ...f, nomor_hp: e.target.value }))} /></Field>
           <Field label={modal === 'add' ? 'Password (default: password)' : 'Password baru (kosongkan jika tidak diubah)'}>
-            <input className={inputCls} type="password" placeholder={modal === 'add' ? 'password' : ''} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+            <PasswordInput className={inputCls} placeholder={modal === 'add' ? 'password' : ''} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
           </Field>
           {err && <ErrMsg msg={err} />}
           <div className="mt-4 flex justify-end gap-2">
@@ -436,6 +462,7 @@ function SiswaTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-students', debouncedSearch, filterKelas, page, perPage],
     queryFn: () => adminApi.getStudents({ search: debouncedSearch || undefined, class_id: filterKelas || undefined, page, per_page: perPage === 'semua' ? 'all' : perPage }),
+    placeholderData: (prev) => prev,
   })
   const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
 
@@ -447,6 +474,7 @@ function SiswaTab() {
   const rows = useMemo(() => applySort(data?.data ?? [], sortCol, sortDir, (s, col) => {
     if (col === 'nama') return s.nama
     if (col === 'nis') return s.nis ?? ''
+    if (col === 'nisn') return s.nisn ?? ''
     if (col === 'kelas') return s.kelas?.label ?? ''
     if (col === 'angkatan') return s.angkatan ?? 0
     if (col === 'status') return s.status
@@ -501,7 +529,9 @@ function SiswaTab() {
         </div>
       </div>
 
-      {isLoading ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : (
+      {isLoading ? (
+        <TableSkeleton cols={[16, 160, 80, 80, 120, 60, 60, 40]} rows={8} />
+      ) : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
@@ -509,6 +539,7 @@ function SiswaTab() {
                 <Th label="#" />
                 <SortTh label="Nama" col="nama" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="NIS" col="nis" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="NISN" col="nisn" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="Kelas" col="kelas" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="Angkatan" col="angkatan" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="Status" col="status" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
@@ -521,6 +552,7 @@ function SiswaTab() {
                   <td className="w-10 px-3 py-2 text-center text-muted-foreground">{perPage === 'semua' ? i + 1 : (page - 1) * (data?.meta?.per_page ?? 25) + i + 1}</td>
                   <td className="px-3 py-2 font-medium">{s.nama}</td>
                   <td className="px-3 py-2 text-muted-foreground">{s.nis}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{s.nisn ?? '-'}</td>
                   <td className="px-3 py-2">{s.kelas?.label ?? <span className="text-muted-foreground italic">—</span>}</td>
                   <td className="px-3 py-2">{s.angkatan ?? '-'}</td>
                   <td className="px-3 py-2"><Badge className={s.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{s.status}</Badge></td>
@@ -532,7 +564,7 @@ function SiswaTab() {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
             </tbody>
           </table>
         </div>
@@ -554,7 +586,7 @@ function SiswaTab() {
           <Field label="Nama Wali"><input className={inputCls} value={form.wali_nama} onChange={e => setForm(f => ({ ...f, wali_nama: e.target.value }))} /></Field>
           <Field label="Kontak Wali"><input className={inputCls} value={form.wali_kontak} onChange={e => setForm(f => ({ ...f, wali_kontak: e.target.value }))} /></Field>
           <Field label={modal === 'add' ? 'Password (default: password)' : 'Password baru'}>
-            <input className={inputCls} type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+            <PasswordInput className={inputCls} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
           </Field>
           {err && <ErrMsg msg={err} />}
           <div className="mt-4 flex justify-end gap-2">
@@ -607,7 +639,7 @@ function KelasTab() {
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   const { data, isLoading } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
-  const { data: teachers } = useQuery({ queryKey: ['admin-teachers'], queryFn: () => adminApi.getTeachers() })
+  const { data: teachers } = useQuery({ queryKey: ['admin-teachers', 'all'], queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
 
   useEffect(() => { setPage(1) }, [q, perPage])
 
@@ -679,7 +711,7 @@ function KelasTab() {
           <Button size="sm" onClick={openAdd}><Plus className="mr-1 h-4 w-4" />Tambah Kelas</Button>
         </div>
       </div>
-      {isLoading ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : (
+      {isLoading ? <TableSkeleton cols={[16, 140, 120, 70, 100, 40]} rows={8} /> : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
@@ -936,7 +968,7 @@ function MapelTab() {
           </Button>
         </div>
       </div>
-      {isLoading ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : (
+      {isLoading ? <TableSkeleton cols={[16, 60, 160, 90, 70, 40]} rows={8} /> : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
@@ -1028,10 +1060,11 @@ function JadwalTab() {
       page,
       per_page: perPage === 'semua' ? 'all' : perPage,
     }),
+    placeholderData: (prev) => prev,
   })
   const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
   const { data: subjects } = useQuery({ queryKey: ['admin-subjects'], queryFn: adminApi.getSubjects })
-  const { data: teachers } = useQuery({ queryKey: ['admin-teachers'], queryFn: () => adminApi.getTeachers() })
+  const { data: teachers } = useQuery({ queryKey: ['admin-teachers', 'all'], queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
 
   const rows = data?.data ?? []
 
@@ -1070,7 +1103,7 @@ function JadwalTab() {
           </Button>
         </div>
       </div>
-      {isLoading ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : (
+      {isLoading ? <TableSkeleton cols={[16, 70, 90, 120, 120, 120, 40]} rows={8} /> : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
@@ -1133,7 +1166,7 @@ function JadwalTab() {
           </Field>
           <Field label="Hari">
             <select className={selectCls} value={form.hari} onChange={e => setForm(f => ({ ...f, hari: e.target.value }))}>
-              {hariOrder.map(h => <option key={h} value={h} className="capitalize">{h}</option>)}
+              {hariOptions.map(h => <option key={h} value={h} className="capitalize">{h}</option>)}
             </select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
@@ -1496,35 +1529,44 @@ function AmbangTab() {
 // ─────────────────────────────────────────────────────────────────────────────
 function PenggunaTab() {
   const qc = useQueryClient()
-  const [modal, setModal] = useState<'add' | 'edit' | null>(null)
+  const [subTab, setSubTab] = useState<'admin' | 'guru' | 'siswa'>('admin')
+  const [modal, setModal] = useState<'add' | 'edit' | 'reset-pw' | null>(null)
   const [selected, setSelected] = useState<AdminUser | null>(null)
   const [form, setForm] = useState({ nama: '', email: '', role: 'admin', nomor_hp: '', password: '', student_id: '' })
+  const [resetPw, setResetPw] = useState('')
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
-  const [sortCol, setSortCol] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [genMsg, setGenMsg] = useState('')
+  const [genLoading, setGenLoading] = useState(false)
+  const debouncedQ = useDebounce(q, 350)
 
+  // ── Admin/BK/OrangTua query ────────────────────────────────────────────────
   const { data, isLoading } = useQuery({ queryKey: ['admin-users'], queryFn: () => adminApi.getAdminUsers() })
 
-  function toggleSort(col: string) {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortCol(col); setSortDir('asc') }
-  }
+  // ── Guru/Siswa detail queries ──────────────────────────────────────────────
+  const { data: guruDetailData, isLoading: guruLoading, refetch: refetchGuru } = useQuery({
+    queryKey: ['admin-users-detail', 'guru', debouncedQ],
+    queryFn: () => api.get('/admin/users-detail', { params: { role: 'guru', search: debouncedQ || undefined } }).then(r => r.data),
+    enabled: subTab === 'guru',
+    staleTime: 60_000,
+  })
+  const { data: siswaDetailData, isLoading: siswaLoading, refetch: refetchSiswa } = useQuery({
+    queryKey: ['admin-users-detail', 'siswa', debouncedQ],
+    queryFn: () => api.get('/admin/users-detail', { params: { role: 'siswa', search: debouncedQ || undefined } }).then(r => r.data),
+    enabled: subTab === 'siswa',
+    staleTime: 60_000,
+  })
 
   const rows = useMemo(() => {
-    let list = [...(data?.data ?? [])]
-    if (q) { const l = q.toLowerCase(); list = list.filter(u => [u.nama, u.email, u.role].some(v => v?.toLowerCase().includes(l))) }
-    return applySort(list, sortCol, sortDir, (u, col) => {
-      if (col === 'nama') return u.nama
-      if (col === 'email') return u.email
-      if (col === 'role') return u.role
-      if (col === 'status') return u.status
-      return ''
-    })
-  }, [data?.data, q, sortCol, sortDir])
+    const list = [...(data?.data ?? [])]
+    if (!q) return list
+    const l = q.toLowerCase()
+    return list.filter(u => [u.nama, u.email, u.role].some(v => v?.toLowerCase().includes(l)))
+  }, [data?.data, q])
+
   const { data: studentsRes } = useQuery({
-    queryKey: ['admin-students-list'],
-    queryFn: () => adminApi.getStudents({ per_page: 500 }),
+    queryKey: ['admin-students', 'all'],
+    queryFn: () => adminApi.getStudents({ per_page: 'all' }),
     enabled: form.role === 'orang_tua',
   })
   const allStudents = studentsRes?.data ?? []
@@ -1539,6 +1581,16 @@ function PenggunaTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
     onError: (e: any) => alert(e.response?.data?.message || 'Gagal'),
   })
+  const toggleStatus = useMutation({
+    mutationFn: (uuid: string) => api.put(`/admin/users/${uuid}/toggle-status`),
+    onSuccess: () => { refetchGuru(); refetchSiswa() },
+  })
+  const doResetPw = useMutation({
+    mutationFn: ({ uuid, password }: { uuid: string; password: string }) =>
+      api.put(`/admin/users/${uuid}/reset-password`, { password }),
+    onSuccess: () => { setModal(null); setResetPw(''); setErr('') },
+    onError: (e: any) => setErr(e.response?.data?.message || 'Gagal'),
+  })
 
   function openAdd() {
     setSelected(null); setErr('')
@@ -1550,6 +1602,7 @@ function PenggunaTab() {
     setForm({ nama: u.nama, email: u.email, role: u.role, nomor_hp: u.nomor_hp || '', password: '', student_id: u.linked_student?.id || '' })
     setModal('edit')
   }
+  function openResetPw(u: any) { setSelected(u); setResetPw(''); setErr(''); setModal('reset-pw') }
   function handleSubmit() {
     const payload: any = { ...form }
     if (!payload.password) delete payload.password
@@ -1558,70 +1611,164 @@ function PenggunaTab() {
     save.mutate(payload)
   }
 
+  async function generateAccounts(type: 'guru' | 'siswa') {
+    if (!window.confirm(`Set password default untuk semua ${type === 'guru' ? 'guru' : 'siswa'}? Tindakan ini tidak dapat diurungkan.`)) return
+    setGenLoading(true); setGenMsg('')
+    try {
+      const r = await api.post('/admin/generate-accounts', null, { params: { type } })
+      setGenMsg(r.data.message)
+      if (type === 'guru') refetchGuru(); else refetchSiswa()
+    } catch { setGenMsg('Gagal generate akun.') }
+    finally { setGenLoading(false) }
+  }
+
   const roleColor: Record<string, string> = {
     admin: 'bg-red-100 text-red-700',
     bk: 'bg-purple-100 text-purple-700',
     orang_tua: 'bg-blue-100 text-blue-700',
+    guru: 'bg-green-100 text-green-700',
+    wali_kelas: 'bg-teal-100 text-teal-700',
+    wakasek: 'bg-orange-100 text-orange-700',
+    siswa: 'bg-sky-100 text-sky-700',
   }
 
+  const detailRows: any[] = subTab === 'guru' ? (guruDetailData?.data ?? []) : (siswaDetailData?.data ?? [])
+  const detailLoading = subTab === 'guru' ? guruLoading : siswaLoading
+
   return (
-    <div>
-      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        Kelola akun pengguna non-guru: <strong>Admin</strong>, <strong>BK</strong> (Bimbingan Konseling), dan <strong>Orang Tua</strong>.
-        Akun guru, wali kelas, dan siswa dikelola di tab masing-masing.
-      </div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <SearchBar value={q} onChange={setQ} placeholder="Cari nama / email / peran..." />
-        <p className="text-xs text-muted-foreground">{rows.length} dari {data?.meta?.total ?? 0} pengguna</p>
-        <div className="ml-auto">
-          <Button size="sm" onClick={openAdd}><Plus className="mr-1 h-4 w-4" />Tambah Pengguna</Button>
-        </div>
+    <div className="space-y-3">
+      {/* Sub-tab switcher */}
+      <div className="flex rounded-md border border-input overflow-hidden w-fit">
+        {(['admin', 'guru', 'siswa'] as const).map(t => (
+          <button key={t} onClick={() => { setSubTab(t); setQ('') }}
+            className={cn('px-4 py-1.5 text-xs capitalize transition-colors',
+              subTab === t ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+            {t === 'admin' ? 'Administrator' : t === 'guru' ? 'Guru / Staf' : 'Siswa'}
+          </button>
+        ))}
       </div>
 
-      {isLoading ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/50">
-              <tr>
-                <SortTh label="Nama" col="nama" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
-                <SortTh label="Email" col="email" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
-                <SortTh label="Peran" col="role" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
-                <Th label="Siswa Dipantau" />
-                <SortTh label="Status" col="status" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
-                <Th label="" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(u => (
-                <tr key={u.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="px-3 py-2 font-medium">{u.nama}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{u.email}</td>
-                  <td className="px-3 py-2">
-                    <Badge className={roleColor[u.role] || 'bg-gray-100 text-gray-700'}>{u.role.replace(/_/g, ' ')}</Badge>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs">
-                    {u.linked_student
-                      ? <span>{u.linked_student.nama} <span className="text-muted-foreground">({u.linked_student.kelas || '-'})</span></span>
-                      : <span className="text-muted-foreground">—</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge className={u.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{u.status}</Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex gap-1">
-                      <button onClick={() => openEdit(u)} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => window.confirm('Nonaktifkan pengguna ini?') && del.mutate(u.id)} className="rounded p-1 hover:bg-red-100 text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
-            </tbody>
-          </table>
-        </div>
+      {/* Search + actions */}
+      <div className="flex flex-wrap items-center gap-2">
+        <SearchBar value={q} onChange={setQ} placeholder={`Cari ${subTab === 'siswa' ? 'nama siswa...' : 'nama / email / NIP...'}`} />
+        {subTab === 'admin' && (
+          <Button size="sm" onClick={openAdd}><Plus className="mr-1 h-4 w-4" />Tambah Pengguna</Button>
+        )}
+        {(subTab === 'guru' || subTab === 'siswa') && (
+          <Button size="sm" variant="outline" disabled={genLoading}
+            onClick={() => generateAccounts(subTab)}>
+            {genLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Key className="h-3.5 w-3.5 mr-1" />}
+            Generate Akun
+          </Button>
+        )}
+      </div>
+      {genMsg && <div className="rounded bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">{genMsg}</div>}
+
+      {/* ── Admin/BK/OrangTua sub-tab ────────────────────────────────────────── */}
+      {subTab === 'admin' && (
+        <>
+          {isLoading ? <TableSkeleton cols={[140, 180, 90, 140, 70, 40]} rows={8} /> : (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-muted/50">
+                  <tr>
+                    <Th label="Nama" /><Th label="Email" /><Th label="Peran" /><Th label="Siswa Dipantau" /><Th label="Status" /><Th label="" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(u => (
+                    <tr key={u.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-2 font-medium">{u.nama}</td>
+                      <td className="px-3 py-2 text-muted-foreground text-xs">{u.email}</td>
+                      <td className="px-3 py-2"><Badge className={roleColor[u.role] || 'bg-gray-100 text-gray-700'}>{u.role.replace(/_/g, ' ')}</Badge></td>
+                      <td className="px-3 py-2 text-muted-foreground text-xs">
+                        {u.linked_student ? `${u.linked_student.nama} (${u.linked_student.kelas || '-'})` : '—'}
+                      </td>
+                      <td className="px-3 py-2"><Badge className={u.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{u.status}</Badge></td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-1">
+                          <button onClick={() => openEdit(u)} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => window.confirm('Nonaktifkan pengguna ini?') && del.mutate(u.id)} className="rounded p-1 hover:bg-red-100 text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
-      {modal && (
+      {/* ── Guru / Siswa sub-tabs ─────────────────────────────────────────────── */}
+      {(subTab === 'guru' || subTab === 'siswa') && (
+        <>
+          {subTab === 'guru' && (
+            <p className="text-xs text-muted-foreground">Username login guru = <strong>NIP</strong> · Password default: <code>SMKN2Cimahi!</code></p>
+          )}
+          {subTab === 'siswa' && (
+            <p className="text-xs text-muted-foreground">Username login siswa = <strong>NISN</strong> · Password default: <code>SMKN2Cimahi_Istimewa!</code></p>
+          )}
+          {detailLoading ? <TableSkeleton cols={[16, 140, 90, 120, 80, 70, 90, 80, 40]} rows={8} /> : (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-xs">
+                <thead className="border-b bg-muted/50">
+                  <tr>
+                    <Th label="#" />
+                    <Th label="Nama" />
+                    {subTab === 'guru' ? <Th label="NIP" /> : <Th label="NISN" />}
+                    {subTab === 'guru' ? <Th label="Mapel" /> : <Th label="Kelas" />}
+                    <Th label="Peran" />
+                    <Th label="Status" />
+                    <Th label="Login Terakhir" />
+                    <Th label="IP" />
+                    <Th label="" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailRows.map((u: any, i: number) => (
+                    <tr key={u.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                      <td className="px-3 py-2 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {u.online && <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="Online" />}
+                          {u.nama}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 font-mono">{subTab === 'guru' ? (u.nip || '—') : (u.nisn || '—')}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{subTab === 'guru' ? (u.mapel_utama || '—') : (u.kelas || '—')}</td>
+                      <td className="px-3 py-2"><Badge className={roleColor[u.role] || 'bg-gray-100 text-gray-700'}>{u.role.replace(/_/g, ' ')}</Badge></td>
+                      <td className="px-3 py-2">
+                        <Badge className={u.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{u.status}</Badge>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{u.last_login || '—'}</td>
+                      <td className="px-3 py-2 text-muted-foreground font-mono">{u.ip_address || '—'}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-1">
+                          <button title="Reset Password" onClick={() => openResetPw(u)}
+                            className="rounded p-1 hover:bg-accent text-muted-foreground hover:text-foreground">
+                            <Key className="h-3.5 w-3.5" />
+                          </button>
+                          <button title={u.status === 'aktif' ? 'Nonaktifkan' : 'Aktifkan'}
+                            onClick={() => window.confirm(`${u.status === 'aktif' ? 'Nonaktifkan' : 'Aktifkan'} ${u.nama}?`) && toggleStatus.mutate(u.id)}
+                            className={cn('rounded p-1', u.status === 'aktif' ? 'hover:bg-red-100 text-red-600' : 'hover:bg-green-100 text-green-600')}>
+                            {u.status === 'aktif' ? <XCircle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {detailRows.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Modal Tambah/Edit Pengguna (admin tab) ───────────────────────────── */}
+      {modal === 'add' || modal === 'edit' ? (
         <Modal title={modal === 'add' ? 'Tambah Pengguna' : 'Edit Pengguna'} onClose={() => setModal(null)}>
           <Field label="Nama Lengkap"><input className={inputCls} value={form.nama} onChange={e => setForm(f => ({ ...f, nama: e.target.value }))} /></Field>
           <Field label="Email"><input className={inputCls} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></Field>
@@ -1637,9 +1784,7 @@ function PenggunaTab() {
               <select className={selectCls} value={form.student_id} onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))}>
                 <option value="">— Pilih Siswa —</option>
                 {allStudents.map((s: any) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nama} ({s.nis}){s.kelas ? ` — ${s.kelas.label}` : ''}
-                  </option>
+                  <option key={s.id} value={s.id}>{s.nama} ({s.nis}){s.kelas ? ` — ${s.kelas.label}` : ''}</option>
                 ))}
               </select>
             </Field>
@@ -1648,7 +1793,7 @@ function PenggunaTab() {
             <input className={inputCls} placeholder="08123456789" value={form.nomor_hp} onChange={e => setForm(f => ({ ...f, nomor_hp: e.target.value }))} />
           </Field>
           <Field label={modal === 'add' ? 'Password (default: password)' : 'Password baru (kosongkan jika tidak diubah)'}>
-            <input className={inputCls} type="password" placeholder={modal === 'add' ? 'password' : ''} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+            <PasswordInput className={inputCls} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
           </Field>
           {err && <ErrMsg msg={err} />}
           <div className="mt-4 flex justify-end gap-2">
@@ -1659,7 +1804,23 @@ function PenggunaTab() {
             </Button>
           </div>
         </Modal>
-      )}
+      ) : modal === 'reset-pw' ? (
+        <Modal title={`Reset Password — ${selected?.nama}`} onClose={() => setModal(null)}>
+          <Field label="Password Baru">
+            <PasswordInput className={inputCls} placeholder="Min. 8 karakter" value={resetPw}
+              onChange={e => setResetPw(e.target.value)} />
+          </Field>
+          {err && <ErrMsg msg={err} />}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setModal(null)}>Batal</Button>
+            <Button size="sm" disabled={doResetPw.isPending || resetPw.length < 8}
+              onClick={() => selected && doResetPw.mutate({ uuid: selected.id, password: resetPw })}>
+              {doResetPw.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Key className="h-4 w-4" />}
+              Reset Password
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   )
 }
@@ -1667,11 +1828,17 @@ function PenggunaTab() {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB: TAHUN AJARAN
 // ─────────────────────────────────────────────────────────────────────────────
+const EMPTY_PEJABAT_FORM = {
+  wk_kurikulum_gelar_depan: '', wk_kurikulum_nama: '', wk_kurikulum_gelar_belakang: '', wk_kurikulum_nip: '',
+  kepala_sekolah_gelar_depan: '', kepala_sekolah_nama: '', kepala_sekolah_gelar_belakang: '', kepala_sekolah_nip: '',
+}
+
 function TahunAjaranTab() {
   const qc = useQueryClient()
-  const [modal, setModal] = useState<'add' | 'edit' | null>(null)
+  const [modal, setModal] = useState<'add' | 'edit' | 'pejabat' | null>(null)
   const [selected, setSelected] = useState<AdminAcademicYear | null>(null)
-  const [form, setForm] = useState({ tahun: '', semester: 'ganjil' })
+  const [form, setForm] = useState({ tahun: '', semester: 'ganjil', tanggal_mulai: '', tanggal_selesai: '' })
+  const [pejabatForm, setPejabatForm] = useState(EMPTY_PEJABAT_FORM)
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [sortCol, setSortCol] = useState<string | null>('tahun')
@@ -1719,13 +1886,27 @@ function TahunAjaranTab() {
 
   function openAdd() {
     setSelected(null); setErr('')
-    setForm({ tahun: '', semester: 'ganjil' })
+    setForm({ tahun: '', semester: 'ganjil', tanggal_mulai: '', tanggal_selesai: '' })
     setModal('add')
   }
   function openEdit(y: AdminAcademicYear) {
     setSelected(y); setErr('')
-    setForm({ tahun: y.tahun, semester: y.semester })
+    setForm({ tahun: y.tahun, semester: y.semester, tanggal_mulai: y.tanggal_mulai ?? '', tanggal_selesai: y.tanggal_selesai ?? '' })
     setModal('edit')
+  }
+  function openPejabat(y: AdminAcademicYear) {
+    setSelected(y); setErr('')
+    setPejabatForm({
+      wk_kurikulum_gelar_depan: y.wk_kurikulum_gelar_depan ?? '',
+      wk_kurikulum_nama: y.wk_kurikulum_nama ?? '',
+      wk_kurikulum_gelar_belakang: y.wk_kurikulum_gelar_belakang ?? '',
+      wk_kurikulum_nip: y.wk_kurikulum_nip ?? '',
+      kepala_sekolah_gelar_depan: y.kepala_sekolah_gelar_depan ?? '',
+      kepala_sekolah_nama: y.kepala_sekolah_nama ?? '',
+      kepala_sekolah_gelar_belakang: y.kepala_sekolah_gelar_belakang ?? '',
+      kepala_sekolah_nip: y.kepala_sekolah_nip ?? '',
+    })
+    setModal('pejabat')
   }
 
   return (
@@ -1741,13 +1922,14 @@ function TahunAjaranTab() {
         </div>
       </div>
 
-      {isLoading ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : (
+      {isLoading ? <TableSkeleton cols={[100, 80, 140, 80, 40]} rows={4} /> : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
               <tr>
                 <SortTh label="Tahun Ajaran" col="tahun" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="Semester" col="semester" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
+                <Th label="Tanggal Semester" />
                 <SortTh label="Status" col="aktif" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <Th label="" />
               </tr>
@@ -1757,6 +1939,11 @@ function TahunAjaranTab() {
                 <tr key={y.id} className="border-b last:border-0 hover:bg-muted/30">
                   <td className="px-3 py-2 font-medium">{y.tahun}</td>
                   <td className="px-3 py-2 text-muted-foreground capitalize">{y.semester}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {y.tanggal_mulai && y.tanggal_selesai
+                      ? `${y.tanggal_mulai} – ${y.tanggal_selesai}`
+                      : <span className="text-amber-600">Belum diisi</span>}
+                  </td>
                   <td className="px-3 py-2">
                     {y.aktif
                       ? <Badge className="bg-green-100 text-green-700">Aktif</Badge>
@@ -1769,7 +1956,15 @@ function TahunAjaranTab() {
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">
-                      <button onClick={() => openEdit(y)} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => openEdit(y)} className="rounded p-1 hover:bg-accent" title="Edit Tahun Ajaran"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button
+                        onClick={() => openPejabat(y)}
+                        title="Identitas Wk. Kurikulum & Kepala Sekolah"
+                        className="flex items-center gap-1 rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-200 transition-colors"
+                      >
+                        <Users className="h-3.5 w-3.5" />
+                        Edit Pejabat
+                      </button>
                       {!y.aktif && (
                         <button
                           onClick={() => window.confirm('Hapus tahun ajaran ini?') && del.mutate(y.id)}
@@ -1780,13 +1975,13 @@ function TahunAjaranTab() {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={4} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
             </tbody>
           </table>
         </div>
       )}
 
-      {modal && (
+      {(modal === 'add' || modal === 'edit') && (
         <Modal title={modal === 'add' ? 'Tambah Tahun Ajaran' : 'Edit Tahun Ajaran'} onClose={() => setModal(null)}>
           <Field label="Tahun Ajaran (contoh: 2025/2026)">
             <input
@@ -1802,6 +1997,27 @@ function TahunAjaranTab() {
               <option value="genap">Genap</option>
             </select>
           </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Tanggal Mulai Semester">
+              <input
+                type="date"
+                className={inputCls}
+                value={form.tanggal_mulai}
+                onChange={e => setForm(f => ({ ...f, tanggal_mulai: e.target.value }))}
+              />
+            </Field>
+            <Field label="Tanggal Selesai Semester">
+              <input
+                type="date"
+                className={inputCls}
+                value={form.tanggal_selesai}
+                onChange={e => setForm(f => ({ ...f, tanggal_selesai: e.target.value }))}
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2 mb-2">
+            Dipakai untuk menghitung Minggu/Hari Efektif — boleh dikosongkan dulu dan diisi/diedit belakangan.
+          </p>
           {err && <ErrMsg msg={err} />}
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setModal(null)}>Batal</Button>
@@ -1809,6 +2025,238 @@ function TahunAjaranTab() {
               {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Simpan
             </Button>
+          </div>
+        </Modal>
+      )}
+
+      {modal === 'pejabat' && selected && (
+        <Modal title={`Identitas Pejabat — ${selected.tahun} ${selected.semester}`} onClose={() => setModal(null)}>
+          <p className="text-xs text-muted-foreground mb-3">
+            Dipakai sebagai penanda tangan laporan Minggu Efektif (Per Kelas &amp; Umum). Boleh
+            beda orang tiap semester, dan boleh dikosongkan kalau belum tahu siapa yang menjabat.
+          </p>
+
+          <p className="text-xs font-semibold mb-2">Wk. Kurikulum</p>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <Field label="Gelar Depan">
+              <input className={inputCls} placeholder="mis. Drs." value={pejabatForm.wk_kurikulum_gelar_depan}
+                onChange={e => setPejabatForm(f => ({ ...f, wk_kurikulum_gelar_depan: e.target.value }))} />
+            </Field>
+            <Field label="Gelar Belakang">
+              <input className={inputCls} placeholder="mis. S.Pd., M.T." value={pejabatForm.wk_kurikulum_gelar_belakang}
+                onChange={e => setPejabatForm(f => ({ ...f, wk_kurikulum_gelar_belakang: e.target.value }))} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <Field label="Nama">
+              <input className={inputCls} value={pejabatForm.wk_kurikulum_nama}
+                onChange={e => setPejabatForm(f => ({ ...f, wk_kurikulum_nama: e.target.value }))} />
+            </Field>
+            <Field label="NIP">
+              <input className={inputCls} value={pejabatForm.wk_kurikulum_nip}
+                onChange={e => setPejabatForm(f => ({ ...f, wk_kurikulum_nip: e.target.value }))} />
+            </Field>
+          </div>
+
+          <p className="text-xs font-semibold mb-2">Kepala Sekolah</p>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <Field label="Gelar Depan">
+              <input className={inputCls} placeholder="mis. Drs." value={pejabatForm.kepala_sekolah_gelar_depan}
+                onChange={e => setPejabatForm(f => ({ ...f, kepala_sekolah_gelar_depan: e.target.value }))} />
+            </Field>
+            <Field label="Gelar Belakang">
+              <input className={inputCls} placeholder="mis. S.Pd., M.M." value={pejabatForm.kepala_sekolah_gelar_belakang}
+                onChange={e => setPejabatForm(f => ({ ...f, kepala_sekolah_gelar_belakang: e.target.value }))} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Nama">
+              <input className={inputCls} value={pejabatForm.kepala_sekolah_nama}
+                onChange={e => setPejabatForm(f => ({ ...f, kepala_sekolah_nama: e.target.value }))} />
+            </Field>
+            <Field label="NIP">
+              <input className={inputCls} value={pejabatForm.kepala_sekolah_nip}
+                onChange={e => setPejabatForm(f => ({ ...f, kepala_sekolah_nip: e.target.value }))} />
+            </Field>
+          </div>
+
+          {err && <ErrMsg msg={err} />}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setModal(null)}>Batal</Button>
+            <Button size="sm" onClick={() => save.mutate(pejabatForm)} disabled={save.isPending}>
+              {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Simpan
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NILAI MANUAL TAB
+// ─────────────────────────────────────────────────────────────────────────────
+const STATUS_MN_LABEL: Record<string, string> = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' }
+const STATUS_MN_COLOR: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-700',
+  approved: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700',
+}
+
+function CatatanManualTab() {
+  const qc = useQueryClient()
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending')
+  const [page, setPage] = useState(1)
+  const [reviewModal, setReviewModal] = useState<AdminManualNote | null>(null)
+  const [reviewAction, setReviewAction] = useState<'approve' | 'reject' | 'adjust'>('approve')
+  const [reviewNilai, setReviewNilai] = useState('')
+  const [reviewCatatan, setReviewCatatan] = useState('')
+  const [reviewErr, setReviewErr] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-manual-notes', statusFilter, page],
+    queryFn: () => adminApi.getManualNotes({ status: statusFilter === 'all' ? undefined : statusFilter, page }),
+    placeholderData: (prev) => prev,
+  })
+  const notes = data?.data ?? []
+  const meta  = data?.meta
+
+  const review = useMutation({
+    mutationFn: () => adminApi.reviewManualNote(reviewModal!.uuid, {
+      action: reviewAction,
+      nilai_final: reviewAction !== 'reject' && reviewNilai !== '' ? parseInt(reviewNilai) : null,
+      admin_catatan: reviewCatatan || undefined,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-manual-notes'] })
+      setReviewModal(null); setReviewNilai(''); setReviewCatatan(''); setReviewErr('')
+    },
+    onError: (e: any) => setReviewErr(e.response?.data?.message ?? 'Gagal'),
+  })
+
+  const pendingCount = statusFilter === 'pending' ? meta?.total : undefined
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold">Nilai Manual Karakter</h2>
+          {pendingCount !== undefined && pendingCount > 0 && (
+            <span className="rounded-full bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 font-medium">{pendingCount} menunggu</span>
+          )}
+        </div>
+        <div className="flex gap-1">
+          {(['pending', 'approved', 'rejected', 'all'] as const).map(s => (
+            <button key={s} onClick={() => { setStatusFilter(s); setPage(1) }}
+              className={`px-3 py-1 rounded-md text-xs font-medium border transition-colors ${statusFilter === s ? 'bg-primary text-white border-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}>
+              {s === 'all' ? 'Semua' : STATUS_MN_LABEL[s]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-md border overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-muted/50 text-left">
+              <th className="px-3 py-2 font-medium">Siswa</th>
+              <th className="px-3 py-2 font-medium">Guru</th>
+              <th className="px-3 py-2 font-medium">Catatan</th>
+              <th className="px-3 py-2 font-medium text-right">Nilai</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Tanggal</th>
+              <th className="px-3 py-2 font-medium">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && (
+              <tr><td colSpan={7} className="text-center py-8"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
+            )}
+            {!isLoading && notes.length === 0 && (
+              <tr><td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">Tidak ada data.</td></tr>
+            )}
+            {notes.map(n => (
+              <tr key={n.id} className="border-t hover:bg-muted/20">
+                <td className="px-3 py-2">
+                  <p className="font-medium">{n.student.nama}</p>
+                  <p className="text-xs text-muted-foreground">{n.student.nis} · {n.student.kelas ?? '—'}</p>
+                </td>
+                <td className="px-3 py-2 text-xs">{n.teacher.nama}</td>
+                <td className="px-3 py-2 max-w-xs">
+                  <p className="text-xs line-clamp-2">{n.catatan}</p>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  {n.nilai !== null ? (
+                    <span className={n.nilai >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                      {n.nilai >= 0 ? '+' : ''}{n.nilai}
+                    </span>
+                  ) : <span className="text-muted-foreground">—</span>}
+                  {n.status === 'approved' && n.nilai_final !== null && n.nilai_final !== n.nilai && (
+                    <span className="block text-xs text-green-600">final: {n.nilai_final >= 0 ? '+' : ''}{n.nilai_final}</span>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${STATUS_MN_COLOR[n.status]}`}>
+                    {STATUS_MN_LABEL[n.status]}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">{n.created_at?.slice(0, 10)}</td>
+                <td className="px-3 py-2">
+                  {n.status === 'pending' && (
+                    <button onClick={() => { setReviewModal(n); setReviewAction('approve'); setReviewNilai(n.nilai?.toString() ?? ''); setReviewCatatan(''); setReviewErr('') }}
+                      className="text-xs text-primary-600 hover:underline">
+                      Review
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      {meta && meta.last_page > 1 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Hal {meta.current_page} / {meta.last_page}</span>
+          <div className="flex gap-1">
+            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>‹</Button>
+            <Button size="sm" variant="outline" disabled={page === meta.last_page} onClick={() => setPage(p => p + 1)}>›</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Review modal */}
+      {reviewModal && (
+        <Modal title="Review Catatan Manual" onClose={() => setReviewModal(null)}>
+          <div className="space-y-3">
+            <p className="text-sm"><strong>{reviewModal.student.nama}</strong> · {reviewModal.teacher.nama}</p>
+            <p className="text-sm bg-muted/40 rounded p-2">{reviewModal.catatan}</p>
+            <div className="flex gap-2">
+              {(['approve', 'reject', 'adjust'] as const).map(a => (
+                <button key={a} onClick={() => setReviewAction(a)}
+                  className={`flex-1 py-1.5 rounded-md border text-xs font-medium transition-colors ${reviewAction === a ? 'bg-primary text-white border-primary' : 'border-border hover:bg-muted'}`}>
+                  {a === 'approve' ? 'Setujui' : a === 'reject' ? 'Tolak' : 'Sesuaikan'}
+                </button>
+              ))}
+            </div>
+            {reviewAction !== 'reject' && (
+              <Field label="Nilai Final (opsional, -20 s.d. +20)">
+                <input type="number" min="-20" max="20" value={reviewNilai} onChange={e => setReviewNilai(e.target.value)} className={inputCls} placeholder="Kosongkan jika tidak ada nilai" />
+              </Field>
+            )}
+            <Field label="Catatan Admin (opsional)">
+              <input value={reviewCatatan} onChange={e => setReviewCatatan(e.target.value)} className={inputCls} placeholder="Alasan penolakan / penyesuaian..." />
+            </Field>
+            {reviewErr && <ErrMsg msg={reviewErr} />}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setReviewModal(null)}>Batal</Button>
+              <Button size="sm" onClick={() => review.mutate()} disabled={review.isPending}>
+                {review.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Simpan
+              </Button>
+            </div>
           </div>
         </Modal>
       )}
@@ -1821,6 +2269,58 @@ function TahunAjaranTab() {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState(0)
+  const qc = useQueryClient()
+
+  // Ganti tab kembali ke atas — kalau tab sebelumnya panjang (scroll turun) dan tab
+  // baru masih memuat/kosong, tanpa ini area yang terlihat jadi kosong sampai user
+  // sadar harus scroll naik sendiri (terkesan blank/freeze).
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [activeTab])
+
+  // Prefetch data ringan yang dipakai banyak tab — mount langsung
+  useEffect(() => {
+    qc.prefetchQuery({ queryKey: ['admin-classes'],        queryFn: adminApi.getClasses })
+    qc.prefetchQuery({ queryKey: ['admin-students', '', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getStudents({ page: 1, per_page: 25 }) })
+  }, [qc])
+
+  // Prefetch on hover — data diambil saat user bergerak ke arah tab sebelum klik
+  function prefetchTab(index: number) {
+    switch (index) {
+      case 0: // Guru
+        qc.prefetchQuery({ queryKey: ['admin-teachers', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getTeachers({ page: 1, per_page: 25 }) })
+        break
+      case 1: // Siswa
+        qc.prefetchQuery({ queryKey: ['admin-students', '', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getStudents({ page: 1, per_page: 25 }) })
+        break
+      case 2: // Kelas
+        qc.prefetchQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
+        qc.prefetchQuery({ queryKey: ['admin-teachers', 'all'], queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
+        break
+      case 3: // Mapel
+        qc.prefetchQuery({ queryKey: ['admin-subjects'], queryFn: adminApi.getSubjects })
+        break
+      case 4: // Jadwal
+        qc.prefetchQuery({ queryKey: ['admin-classes'],             queryFn: adminApi.getClasses })
+        qc.prefetchQuery({ queryKey: ['admin-subjects'],            queryFn: adminApi.getSubjects })
+        qc.prefetchQuery({ queryKey: ['admin-teachers', 'all'],    queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
+        qc.prefetchQuery({ queryKey: ['admin-schedules', '', '', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getSchedules({ page: 1, per_page: 25 }) })
+        break
+      case 5: // Karakter
+        qc.prefetchQuery({ queryKey: ['admin-char-cats'], queryFn: adminApi.getCharacterCategories })
+        qc.prefetchQuery({ queryKey: ['admin-char-subs'], queryFn: () => adminApi.getCharacterSubitems() })
+        break
+      case 6: // Ambang
+        qc.prefetchQuery({ queryKey: ['admin-thresholds'], queryFn: adminApi.getThresholds })
+        break
+      case 7: // Pengguna
+        qc.prefetchQuery({ queryKey: ['admin-users'], queryFn: () => adminApi.getAdminUsers() })
+        break
+      case 10: // Nilai Manual
+        qc.prefetchQuery({ queryKey: ['admin-manual-notes', 'all', 1], queryFn: () => adminApi.getManualNotes({ page: 1 }) })
+        break
+    }
+  }
 
   return (
     <div>
@@ -1833,6 +2333,7 @@ export default function AdminPage() {
           <button
             key={tab}
             onClick={() => setActiveTab(i)}
+            onMouseEnter={() => prefetchTab(i)}
             className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
               activeTab === i
                 ? 'border-primary text-primary'
@@ -1854,7 +2355,10 @@ export default function AdminPage() {
         {activeTab === 6 && <AmbangTab />}
         {activeTab === 7 && <PenggunaTab />}
         {activeTab === 8 && <TahunAjaranTab />}
-        {activeTab === 9 && <AscXmlImportTab />}
+        {activeTab === 9 && <AscXmlImportTab onGoToTahunAjaran={() => setActiveTab(8)} />}
+        {activeTab === 10 && <CatatanManualTab />}
+        {activeTab === 11 && <KalenderAdminTab />}
+        {activeTab === 12 && <BackupRestoreTab />}
       </div>
     </div>
   )
@@ -1865,13 +2369,7 @@ export default function AdminPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type SimpleStats = { created: number; updated: number; skipped: number }
-
-interface AscImportResult {
-  mata_pelajaran: SimpleStats
-  guru:           SimpleStats
-  kelas:          SimpleStats
-  jadwal:         SimpleStats
-}
+type PendingMatch = { key: string; nama_baru: string; matched_nama: string; matched_uuid: string }
 
 // Generic upload + import card
 function ImportCard({
@@ -1885,6 +2383,8 @@ function ImportCard({
   endpoint,
   resultLabels,
   icon,
+  headerAction,
+  onSuccess: onSuccessProp,
 }: {
   title: string
   badge: string
@@ -1896,34 +2396,47 @@ function ImportCard({
   endpoint: string
   resultLabels: string[]
   icon: React.ReactNode
+  headerAction?: React.ReactNode
+  onSuccess?: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const [file, setFile]     = useState<File | null>(null)
-  const [result, setResult] = useState<Record<string, SimpleStats> | null>(null)
-  const [error, setError]   = useState<string | null>(null)
+  const [file, setFile]         = useState<File | null>(null)
+  const [result, setResult]     = useState<Record<string, SimpleStats> | null>(null)
+  const [rowErrors, setRowErrors] = useState<string[]>([])
+  const [error, setError]       = useState<string | null>(null)
+  const [pendingMatches, setPendingMatches] = useState<PendingMatch[]>([])
+  const [decisions, setDecisions] = useState<Record<string, 'merge' | 'create'>>({})
 
   const mutation = useMutation({
-    mutationFn: async (f: File) => {
+    mutationFn: async ({ f, decisions: d }: { f: File; decisions?: Record<string, string> }) => {
       const form = new FormData()
       form.append('file', f)
-      const resp = await api.post<{ message: string; data: Record<string, SimpleStats> }>(
+      if (d && Object.keys(d).length > 0) form.append('decisions', JSON.stringify(d))
+      const resp = await api.post<{ message: string; data: Record<string, SimpleStats>; errors?: string[]; pending_matches?: PendingMatch[] }>(
         endpoint,
         form,
         { headers: { 'Content-Type': 'multipart/form-data' } },
       )
       return resp.data
     },
-    onSuccess: (data) => { setResult(data.data); setError(null) },
+    onSuccess: (data) => {
+      setResult(data.data); setRowErrors(data.errors ?? []); setError(null)
+      setPendingMatches(data.pending_matches ?? [])
+      onSuccessProp?.()
+    },
     onError: (err: any) => {
       setError(err?.response?.data?.message ?? err?.message ?? 'Terjadi kesalahan.')
-      setResult(null)
+      setResult(null); setRowErrors([]); setPendingMatches([])
     },
   })
 
   function reset() {
-    setFile(null); setResult(null); setError(null)
+    setFile(null); setResult(null); setRowErrors([]); setError(null)
+    setPendingMatches([]); setDecisions({})
     if (fileRef.current) fileRef.current.value = ''
   }
+
+  const allDecided = pendingMatches.length > 0 && pendingMatches.every((p) => decisions[p.key])
 
   return (
     <div className="rounded-lg border bg-card p-5 space-y-4">
@@ -1937,6 +2450,7 @@ function ImportCard({
           </div>
           <p className="text-xs text-muted-foreground">{description}</p>
         </div>
+        {headerAction && <div className="shrink-0">{headerAction}</div>}
       </div>
 
       {/* Bullets */}
@@ -1987,17 +2501,80 @@ function ImportCard({
         </div>
       )}
 
+      {/* Baris yang gagal/dilewati */}
+      {rowErrors.length > 0 && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+            <AlertCircle className="h-3.5 w-3.5" /> {rowErrors.length} baris dilewati / gagal
+          </div>
+          <ul className="max-h-40 overflow-y-auto text-xs text-amber-800 space-y-0.5 pl-1">
+            {rowErrors.map((e, i) => <li key={i} className="flex gap-1.5"><span className="shrink-0">•</span>{e}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* Guru yang perlu dikonfirmasi — cocok cuma karena ejaan mirip, BELUM diterapkan */}
+      {pendingMatches.length > 0 && (
+        <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2.5 space-y-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900">
+            <AlertCircle className="h-3.5 w-3.5" /> {pendingMatches.length} guru perlu dikonfirmasi sebelum dilanjutkan
+          </div>
+          <p className="text-xs text-blue-800">
+            Nama di file tidak sama persis dengan akun yang sudah ada. Pastikan dulu ini orang yang sama atau bukan —
+            baris ini BELUM diproses sampai Anda pilih salah satu.
+          </p>
+          <div className="space-y-2">
+            {pendingMatches.map((p) => (
+              <div key={p.key} className="rounded bg-white border border-blue-200 px-3 py-2 space-y-1.5">
+                <p className="text-xs">
+                  <span className="font-medium">'{p.nama_baru}'</span> mirip dengan akun yang sudah ada:{' '}
+                  <span className="font-medium">'{p.matched_nama}'</span>
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDecisions((d) => ({ ...d, [p.key]: 'merge' }))}
+                    className={cn(
+                      'rounded px-2.5 py-1 text-xs font-medium border transition-colors',
+                      decisions[p.key] === 'merge'
+                        ? 'bg-green-600 text-white border-green-600'
+                        : 'border-input hover:bg-muted',
+                    )}
+                  >
+                    Ya, orang yang sama
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDecisions((d) => ({ ...d, [p.key]: 'create' }))}
+                    className={cn(
+                      'rounded px-2.5 py-1 text-xs font-medium border transition-colors',
+                      decisions[p.key] === 'create'
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'border-input hover:bg-muted',
+                    )}
+                  >
+                    Bukan, orang berbeda
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex gap-2">
         <button
           type="button"
-          disabled={!file || mutation.isPending}
-          onClick={() => file && mutation.mutate(file)}
+          disabled={!file || mutation.isPending || (pendingMatches.length > 0 && !allDecided)}
+          onClick={() => file && mutation.mutate({ f: file, decisions })}
           className="inline-flex items-center gap-1.5 rounded bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {mutation.isPending
             ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Mengimport...</>
-            : <><Upload className="h-3.5 w-3.5" />Mulai Import</>}
+            : pendingMatches.length > 0
+              ? <><Upload className="h-3.5 w-3.5" />Lanjutkan Import</>
+              : <><Upload className="h-3.5 w-3.5" />Mulai Import</>}
         </button>
         {(file || result || error) && (
           <button type="button" onClick={reset}
@@ -2010,7 +2587,35 @@ function ImportCard({
   )
 }
 
-function AscXmlImportTab() {
+function AscXmlImportTab({ onGoToTahunAjaran }: { onGoToTahunAjaran: () => void }) {
+  const qc = useQueryClient()
+
+  const { data: years, isLoading: yearsLoading } = useQuery({
+    queryKey: ['admin-academic-years'],
+    queryFn: () => adminApi.getAcademicYears(),
+  })
+  const hasActiveYear = !!years?.some((y) => y.aktif)
+
+  if (!yearsLoading && !hasActiveYear) {
+    return (
+      <div className="max-w-2xl">
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-5 space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h2 className="text-sm font-semibold text-amber-900">Belum ada Tahun Ajaran aktif</h2>
+              <p className="text-sm text-amber-800 mt-1">
+                Semua import di halaman ini butuh Tahun Ajaran aktif (jadwal, kelas, dan siswa terikat ke tahun
+                ajaran tersebut). Buat atau aktifkan salah satu tahun ajaran dulu sebelum mulai import.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" onClick={onGoToTahunAjaran}>Buka Tahun Ajaran</Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-2xl space-y-4">
       <div>
@@ -2020,43 +2625,62 @@ function AscXmlImportTab() {
         </p>
       </div>
 
-      {/* Langkah 1: aSc XML */}
+      {/* Langkah 1: Format Import Data Guru — sumber utama identitas guru */}
       <ImportCard
-        title="1. aSc Timetables XML"
-        badge="Jadwal & Struktur"
+        title="1. Daftar Guru (Format Import Data Guru)"
+        badge="Data Guru Utama"
+        badgeColor="bg-blue-100 text-blue-700"
+        description="Langkah pertama. Sumber utama identitas guru — NIP, NUPTK, dan data pribadi Dapodik. Satu file Excel berisi 3 sheet: Daftar Guru, Wali Kelas, dan Data Program Keahlian."
+        bullets={[
+          'Sheet "Daftar Guru" — cocokkan guru yang sudah ada lewat NIP → NUPTK → nama; sisanya dibuat baru',
+          'Kolom "Jenis PTK" = Guru BK otomatis mengaktifkan menu khusus BK',
+          'Sheet "Wali Kelas" — assign wali kelas per kelas (cocokkan lewat NIP, fallback nama)',
+          'Sheet "Data Program Keahlian" — disimpan sebagai data referensi program keahlian',
+          'Baris yang gagal dicocokkan dilaporkan satu per satu, baris lain tetap diproses',
+        ]}
+        warning={`Format file: "Format Import Data Guru.xlsx" — header baris 3 (Daftar Guru & Wali Kelas) / baris 2 (Data Program Keahlian). Sheet "Wali Kelas" butuh data Kelas yang baru dibuat di langkah 2 (XML) — kalau baris wali kelas gagal karena kelas belum ada, upload ulang file ini setelah langkah 2 selesai.`}
+        accept=".xlsx,.xls"
+        endpoint="/admin/import/dapodik-guru"
+        resultLabels={['Program Keahlian', 'Guru', 'Wali Kelas']}
+        icon={<Users className="h-8 w-8 text-blue-500" />}
+        headerAction={
+          <button
+            type="button"
+            onClick={() => adminApi.downloadDapodikGuruTemplate()}
+            className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline shrink-0"
+          >
+            <Download className="h-3.5 w-3.5" /> Download Format
+          </button>
+        }
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ['admin-teachers'] })
+          qc.invalidateQueries({ queryKey: ['admin-classes'] })
+        }}
+      />
+
+      {/* Langkah 2: aSc XML — melengkapi jadwal, gelar, dan mapel yang diampu */}
+      <ImportCard
+        title="2. aSc Timetables XML"
+        badge="Lengkapi Jadwal & Gelar"
         badgeColor="bg-purple-100 text-purple-700"
-        description="Langkah pertama. Buat data guru (nama), kelas, mata pelajaran, dan jadwal lengkap dari file ekspor aSc."
+        description="Melengkapi data guru dari langkah 1 dengan jadwal mengajar, gelar, dan mata pelajaran yang diampu. Juga membuat data kelas & mata pelajaran dari file ekspor aSc."
         bullets={[
           'Mata pelajaran — nama, kode, kelompok',
-          'Guru — akun login dengan email sementara (akan dilengkapi di langkah 2)',
+          'Guru — dicocokkan ke akun dari langkah 1 lewat nama (fallback: ejaan mirip); dilengkapi gelar & mapel utama kalau belum ada',
           'Kelas — tingkat, jurusan, rombel untuk tahun ajaran aktif',
           'Jadwal — hari, jam, guru, kelas, mapel (750+ jadwal sekaligus)',
         ]}
-        warning="Pastikan sudah ada Tahun Ajaran aktif sebelum import. NIP & email akan dilengkapi di langkah 2."
+        warning="Pastikan sudah ada Tahun Ajaran aktif sebelum import. Guru yang belum ada di langkah 1 akan tetap dibuat otomatis (tanpa NIP)."
         accept=".xml,application/xml,text/xml"
         endpoint="/admin/import/asc-xml"
         resultLabels={['Mata Pelajaran', 'Guru', 'Kelas', 'Jadwal']}
         icon={<FileCode2 className="h-8 w-8 text-purple-500" />}
-      />
-
-      {/* Langkah 2: Dapodik Guru */}
-      <ImportCard
-        title="2. Daftar Guru (Dapodik Excel)"
-        badge="Lengkapi Data Guru"
-        badgeColor="bg-blue-100 text-blue-700"
-        description="Melengkapi data guru dari langkah 1. Cocokkan berdasarkan nama, update NIP, NUPTK, email asli, HP, dan role jabatan."
-        bullets={[
-          'NIP (18 digit) — untuk guru PNS/PPPK',
-          'NUPTK (16 digit) — untuk semua guru',
-          'Email & HP asli dari Dapodik (menggantikan email sementara)',
-          'Role otomatis: "Guru Wali" → wali_kelas, "Wakil KS" → wakasek',
-          'Jika nama tidak cocok dengan data aSc → buat akun baru',
-        ]}
-        warning={`Format file: ekspor "Daftar PTK" dari Dapodik. Header data di baris 5, data mulai baris 7.`}
-        accept=".xlsx,.xls"
-        endpoint="/admin/import/dapodik-guru"
-        resultLabels={['Guru']}
-        icon={<Users className="h-8 w-8 text-blue-500" />}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ['admin-classes'] })
+          qc.invalidateQueries({ queryKey: ['admin-teachers'] })
+          qc.invalidateQueries({ queryKey: ['admin-subjects'] })
+          qc.invalidateQueries({ queryKey: ['admin-schedules'] })
+        }}
       />
 
       {/* Langkah 3: Dapodik Siswa */}
@@ -2073,11 +2697,14 @@ function AscXmlImportTab() {
           'HP siswa — kontak langsung',
           'Email (jika tersedia); default: NISN@siswa.smkn2cimahi.sch.id',
         ]}
-        warning="Kelas harus sudah ada (dari langkah 1). Siswa di rombel yang tidak dikenal akan tetap diimport tapi tanpa kelas."
         accept=".xlsx,.xls"
         endpoint="/admin/import/dapodik-siswa"
         resultLabels={['Siswa']}
         icon={<Users className="h-8 w-8 text-green-500" />}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ['admin-students'] })
+          qc.invalidateQueries({ queryKey: ['admin-classes'] }) // kelas baru bisa terbuat otomatis
+        }}
       />
     </div>
   )
@@ -2108,3 +2735,537 @@ function ResultCard({
     </div>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KALENDER ADMIN TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function KalenderAdminTab() {
+  const qc = useQueryClient()
+  const [syncMethod, setSyncMethod] = useState<'ics' | 'api_key' | 'service_account'>('ics')
+  const [icsUrl, setIcsUrl]         = useState('')
+  const [apiKey, setApiKey]         = useState('')
+  const [calId, setCalId]           = useState('')
+  const [syncAhead, setSyncAhead]   = useState(6)
+  const [credFile, setCredFile]     = useState<File | null>(null)
+  const [nedYear, setNedYear]       = useState(new Date().getFullYear())
+  const [nedMonth, setNedMonth]     = useState(new Date().getMonth() + 1)
+  const [nedFullYear, setNedFullYear] = useState(false)
+  const [msg, setMsg]               = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const credRef = useRef<HTMLInputElement>(null)
+
+  const { data: settings, isLoading: settingsLoading } = useQuery<{
+    sync_method: 'ics' | 'api_key' | 'service_account'; ics_url: string | null
+    api_key: string | null; calendar_id: string | null; has_credentials: boolean
+    last_synced_at: string | null; sync_months_ahead: number
+  }>({
+    queryKey: ['admin-calendar-settings'],
+    queryFn: () => api.get('/admin/calendar/settings').then(r => r.data),
+  })
+
+  const { data: nedData, isLoading: nedLoading } = useQuery<{ data: { id: number; tanggal: string; status: string; keterangan: string | null; event_title: string | null }[] }>({
+    queryKey: ['admin-ned', nedYear, nedMonth],
+    queryFn: () => api.get(`/admin/non-effective-days?year=${nedYear}&month=${nedMonth}`).then(r => r.data),
+  })
+
+  useEffect(() => {
+    if (settings) {
+      setSyncMethod(settings.sync_method ?? 'ics')
+      setIcsUrl(settings.ics_url ?? '')
+      setApiKey(settings.api_key ?? '')
+      setCalId(settings.calendar_id ?? '')
+      setSyncAhead(settings.sync_months_ahead)
+    }
+  }, [settings])
+
+  const saveSettingsMut = useMutation({
+    mutationFn: () => api.post('/admin/calendar/settings', {
+      sync_method: syncMethod,
+      ics_url: icsUrl || null,
+      api_key: apiKey || null,
+      calendar_id: calId || null,
+      sync_months_ahead: syncAhead,
+    }).then(r => r.data),
+    onSuccess: (d) => { setMsg({ type: 'ok', text: d.message }); qc.invalidateQueries({ queryKey: ['admin-calendar-settings'] }) },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal.' }),
+  })
+
+  const uploadCredMut = useMutation({
+    mutationFn: () => {
+      if (!credFile) throw new Error('Pilih file JSON')
+      const form = new FormData(); form.append('file', credFile)
+      return api.post('/admin/calendar/upload-credentials', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+    },
+    onSuccess: (d) => { setMsg({ type: 'ok', text: d.message }); setCredFile(null); qc.invalidateQueries({ queryKey: ['admin-calendar-settings'] }) },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Upload gagal.' }),
+  })
+
+  const syncMut = useMutation({
+    mutationFn: () => api.post('/admin/calendar/sync').then(r => r.data),
+    onSuccess: (d) => { setMsg({ type: 'ok', text: d.message }); qc.invalidateQueries({ queryKey: ['calendar-events'] }) },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Sync gagal.' }),
+  })
+
+  const delNedMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/admin/non-effective-days/${id}`).then(r => r.data),
+    // "calendar-events" dipakai oleh halaman /kalender (terpisah dari tab admin ini) — tanpa
+    // invalidate ini, perubahan hari tidak efektif tidak langsung kelihatan di sana.
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-ned'] }); qc.invalidateQueries({ queryKey: ['calendar-events'] }) },
+  })
+
+  const importNedRef = useRef<HTMLInputElement>(null)
+  const [nedImportResult, setNedImportResult] = useState<{
+    inserted: number; updated: number; reverted: number; errors: string[]
+  } | null>(null)
+  const importNedMut = useMutation({
+    mutationFn: (f: File) => {
+      const form = new FormData(); form.append('file', f)
+      return api.post('/admin/non-effective-days/import', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+    },
+    onSuccess: (d) => {
+      setMsg({ type: 'ok', text: d.message })
+      setNedImportResult({ inserted: d.inserted ?? 0, updated: d.updated ?? 0, reverted: d.reverted ?? 0, errors: d.errors ?? [] })
+      qc.invalidateQueries({ queryKey: ['admin-ned'] })
+      qc.invalidateQueries({ queryKey: ['calendar-events'] })
+    },
+    onError: (e: any) => {
+      setMsg({ type: 'err', text: e.response?.data?.message ?? 'Import gagal.' })
+      setNedImportResult(null)
+    },
+  })
+
+  const autoMarkMut = useMutation({
+    mutationFn: () => api.post('/admin/non-effective-days/auto-mark').then(r => r.data),
+    onSuccess: (d) => {
+      setMsg({ type: 'ok', text: d.message })
+      qc.invalidateQueries({ queryKey: ['admin-ned'] })
+      qc.invalidateQueries({ queryKey: ['calendar-events'] })
+    },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal.' }),
+  })
+
+  async function downloadTemplate() {
+    const params = nedFullYear ? `year=${nedYear}` : `year=${nedYear}&month=${nedMonth}`
+    const resp = await api.get(`/admin/non-effective-days/template?${params}`, { responseType: 'blob' })
+    const url  = URL.createObjectURL(resp.data)
+    const a    = document.createElement('a'); a.href = url
+    a.download = nedFullYear ? `template_hari_tidak_efektif_${nedYear}.xlsx` : `template_hari_tidak_efektif_${nedYear}_${nedMonth}.xlsx`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  const canSync = syncMethod === 'ics' ? !!icsUrl
+    : syncMethod === 'api_key' ? (!!apiKey && !!calId)
+    : settings?.has_credentials
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      {msg && (
+        <div className={`rounded-md border px-3 py-2 text-sm flex items-center justify-between ${msg.type === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <span>{msg.text}</span>
+          <button onClick={() => setMsg(null)}><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+
+      {/* Settings */}
+      <div className="rounded-lg border bg-card p-4 space-y-4">
+        <h3 className="font-semibold flex items-center gap-2"><Calendar className="h-4 w-4" /> Pengaturan Kalender</h3>
+
+        {settingsLoading ? <div className="h-20 animate-pulse bg-muted rounded" /> : (
+          <>
+            {/* Method selector */}
+            <div>
+              <label className="text-xs font-medium block mb-2">Metode Sinkronisasi</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => setSyncMethod('ics')}
+                  className={`rounded-lg border p-2.5 text-left transition-colors ${syncMethod === 'ics' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+                  <div className="font-medium text-xs">ICS Feed URL</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">Paling mudah, tapi detail event mungkin tidak muncul</div>
+                </button>
+                <button onClick={() => setSyncMethod('api_key')}
+                  className={`rounded-lg border p-2.5 text-left transition-colors ${syncMethod === 'api_key' ? 'border-green-500 bg-green-50' : 'border-border hover:bg-muted/50'}`}>
+                  <div className="font-medium text-xs text-green-700">API Key ✓ Rekomendasi</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">Detail event lengkap, setup mudah</div>
+                </button>
+                <button onClick={() => setSyncMethod('service_account')}
+                  className={`rounded-lg border p-2.5 text-left transition-colors ${syncMethod === 'service_account' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+                  <div className="font-medium text-xs">Service Account</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">Setup paling rumit, untuk private calendar</div>
+                </button>
+              </div>
+            </div>
+
+            {/* ICS Method */}
+            {syncMethod === 'ics' && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-3 space-y-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1">ICS Feed URL</label>
+                  <input
+                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                    placeholder="https://calendar.google.com/calendar/ical/...@.../basic.ics"
+                    value={icsUrl}
+                    onChange={e => setIcsUrl(e.target.value)}
+                  />
+                  <p className="text-xs text-amber-700 mt-1">
+                    ⚠️ Google Workspace menyembunyikan detail event — event akan muncul sebagai "Busy". Gunakan metode <strong>API Key</strong> agar detail event muncul.
+                    URL: Google Calendar → Settings → Integrate calendar → <strong>Public/Secret address in iCal format</strong>
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Sinkronisasi ke depan (bulan)</label>
+                  <input type="number" min={1} max={24}
+                    className="w-24 rounded-md border border-input px-3 py-2 text-sm bg-white focus:outline-none"
+                    value={syncAhead} onChange={e => setSyncAhead(Number(e.target.value))} />
+                </div>
+              </div>
+            )}
+
+            {/* API Key Method - REKOMENDASI */}
+            {syncMethod === 'api_key' && (
+              <div className="rounded-md bg-green-50 border border-green-200 p-3 space-y-3">
+                <div className="rounded-md bg-green-100 border border-green-300 p-2.5">
+                  <p className="text-xs font-semibold text-green-800 mb-1">Cara mendapatkan API Key (5 menit):</p>
+                  <ol className="text-xs text-green-700 space-y-0.5 list-decimal list-inside">
+                    <li>Buka <strong>console.cloud.google.com</strong></li>
+                    <li>Buat project baru (mis. "Kalender Sekolah")</li>
+                    <li>Library → cari "Google Calendar API" → Enable</li>
+                    <li>Credentials → + Create Credentials → <strong>API Key</strong></li>
+                    <li>Copy API Key dan paste di bawah</li>
+                    <li>Pastikan kalender Google <strong>dibagikan ke publik</strong> (Settings → Access permissions → Make available to public)</li>
+                  </ol>
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Google Calendar API Key</label>
+                  <PasswordInput
+                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                    placeholder="AIzaSy..."
+                    value={apiKey}
+                    onChange={e => setApiKey(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Calendar ID</label>
+                  <input
+                    className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                    placeholder="mis. kurikulum@smkn2cmi.sch.id atau xxxxx@group.calendar.google.com"
+                    value={calId}
+                    onChange={e => setCalId(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Dapatkan di: Google Calendar → Settings → Integrate calendar → <strong>Calendar ID</strong>
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Sinkronisasi ke depan (bulan)</label>
+                  <input type="number" min={1} max={24}
+                    className="w-24 rounded-md border border-input px-3 py-2 text-sm bg-white focus:outline-none"
+                    value={syncAhead} onChange={e => setSyncAhead(Number(e.target.value))} />
+                </div>
+              </div>
+            )}
+
+            {/* Service Account Method */}
+            {syncMethod === 'service_account' && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-3 space-y-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1">Calendar ID</label>
+                  <input className="w-full rounded-md border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="mis. kurikulum@smkn2cmi.sch.id"
+                    value={calId} onChange={e => setCalId(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Sinkronisasi ke depan (bulan)</label>
+                  <input type="number" min={1} max={24}
+                    className="w-24 rounded-md border border-input px-3 py-2 text-sm bg-white focus:outline-none"
+                    value={syncAhead} onChange={e => setSyncAhead(Number(e.target.value))} />
+                </div>
+                <div>
+                  <p className="text-xs font-medium mb-1">Service Account JSON</p>
+                  <p className="text-xs text-amber-700 mb-2">
+                    Butuh Google Cloud Console → Service Account → download key JSON. Lebih lengkap dari ICS tapi setup lebih rumit.
+                    {settings?.last_synced_at && ` Terakhir sync: ${settings.last_synced_at}.`}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input ref={credRef} type="file" accept=".json" className="hidden"
+                      onChange={e => setCredFile(e.target.files?.[0] ?? null)} />
+                    <Button size="sm" variant="outline" onClick={() => credRef.current?.click()}>
+                      <Upload className="h-3.5 w-3.5 mr-1" /> {credFile ? credFile.name : 'Pilih File JSON'}
+                    </Button>
+                    {credFile && (
+                      <Button size="sm" onClick={() => uploadCredMut.mutate()} disabled={uploadCredMut.isPending}>
+                        {uploadCredMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />} Upload
+                      </Button>
+                    )}
+                    {settings?.has_credentials && !credFile && (
+                      <span className="text-xs text-green-600 flex items-center gap-1"><Check className="h-3 w-3" /> Aktif</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Save + Sync */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <Button size="sm" onClick={() => saveSettingsMut.mutate()} disabled={saveSettingsMut.isPending}>
+                {saveSettingsMut.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />} Simpan Pengaturan
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => syncMut.mutate()} disabled={syncMut.isPending || !canSync}>
+                {syncMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                Sync Sekarang
+              </Button>
+              {settings?.last_synced_at && (
+                <span className="text-xs text-muted-foreground">Terakhir: {settings.last_synced_at}</span>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Non-effective days */}
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <h3 className="font-semibold">Hari Tidak Efektif</h3>
+        <p className="text-xs text-muted-foreground">Kelola via kalender di halaman <strong>/kalender</strong> (klik tanggal) atau import Excel massal di sini.</p>
+
+        <div className="flex flex-wrap gap-2 items-center">
+          <select className="rounded-md border border-input px-2 py-1.5 text-sm bg-background"
+            value={nedYear} onChange={e => setNedYear(Number(e.target.value))}>
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select className="rounded-md border border-input px-2 py-1.5 text-sm bg-background disabled:opacity-40"
+            value={nedMonth} onChange={e => setNedMonth(Number(e.target.value))} disabled={nedFullYear}>
+            {['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'].map((m, i) => (
+              <option key={i} value={i+1}>{m}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-wrap gap-2 items-center">
+          <p className="text-xs text-muted-foreground mr-1">Template Excel untuk:</p>
+          <label className="flex items-center gap-1.5 text-xs">
+            <input type="radio" checked={!nedFullYear} onChange={() => setNedFullYear(false)} />
+            Bulan terpilih (bisa dipakai untuk revisi bulan tertentu juga)
+          </label>
+          <label className="flex items-center gap-1.5 text-xs">
+            <input type="radio" checked={nedFullYear} onChange={() => setNedFullYear(true)} />
+            Satu tahun penuh
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-2 items-center">
+          <Button size="sm" variant="outline" onClick={downloadTemplate}>
+            <Download className="h-3.5 w-3.5 mr-1" /> Template Excel
+          </Button>
+          <input ref={importNedRef} type="file" accept=".xlsx,.xls" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) importNedMut.mutate(f) }} />
+          <Button size="sm" variant="outline" onClick={() => importNedRef.current?.click()} disabled={importNedMut.isPending}>
+            {importNedMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
+            Import Excel
+          </Button>
+          <Button size="sm" variant="outline"
+            className="border-green-300 text-green-700 hover:bg-green-50"
+            onClick={() => { if (confirm('Tandai SEMUA event kalender yang tersinkron sebagai hari tidak efektif? Tanggal yang sudah ada tidak akan diubah.')) autoMarkMut.mutate() }}
+            disabled={autoMarkMut.isPending}>
+            {autoMarkMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+            ✓ Auto-tandai dari Kalender
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Template berisi status <strong>tidak_efektif</strong> (kalau sudah pernah ditandai) atau <strong>efektif</strong> (tanggal
+          bertepatan dengan event kalender tapi tetap hari efektif). Ubah kolom status lalu import ulang untuk memperbarui —
+          isi "efektif" untuk mengembalikan tanggal yang sudah terlanjur ditandai tidak efektif.
+        </p>
+
+        {/* Rekap hasil import — ditaruh persis di sini (bukan cuma banner di atas halaman)
+            supaya langsung terlihat tanpa scroll ke atas setelah klik Import Excel. */}
+        {nedImportResult && (
+          <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-green-800">Import selesai</p>
+              <button onClick={() => setNedImportResult(null)} className="text-green-700 hover:text-green-900">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-green-800">
+              <span>Ditambahkan: <strong>{nedImportResult.inserted}</strong></span>
+              <span>Diperbarui: <strong>{nedImportResult.updated}</strong></span>
+              <span>Dikembalikan efektif: <strong>{nedImportResult.reverted}</strong></span>
+            </div>
+            {nedImportResult.errors.length > 0 && (
+              <div className="pt-1 border-t border-green-200">
+                <p className="text-xs font-medium text-amber-800 mb-1">{nedImportResult.errors.length} baris bermasalah:</p>
+                <ul className="max-h-32 overflow-y-auto text-xs text-amber-800 space-y-0.5 pl-1">
+                  {nedImportResult.errors.map((e, i) => <li key={i} className="flex gap-1.5"><span className="shrink-0">•</span>{e}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {nedLoading ? (
+          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : (nedData?.data ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">Belum ada hari tidak efektif di bulan ini.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {(nedData?.data ?? []).map(n => (
+              <div key={n.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">
+                    {new Date(n.tanggal + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </span>
+                  <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-700">Tidak Efektif</span>
+                  {n.keterangan && <span className="text-xs text-muted-foreground truncate max-w-[200px]">{n.keterangan}</span>}
+                </div>
+                <button onClick={() => { if (confirm(`Hapus hari tidak efektif ${n.tanggal}?`)) delNedMut.mutate(n.id) }}
+                  className="text-destructive hover:text-destructive/80">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Backup & Restore ─────────────────────────────────────────────────────────
+const RESTORE_CONFIRMATION = 'PULIHKAN'
+
+function BackupRestoreTab() {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [dlLoading, setDlLoading]   = useState(false)
+  const [file, setFile]             = useState<File | null>(null)
+  const [confirmText, setConfirmText] = useState('')
+  const [result, setResult]         = useState<string | null>(null)
+  const [error, setError]           = useState<string | null>(null)
+
+  async function downloadBackup() {
+    setDlLoading(true)
+    try {
+      const resp = await api.get('/admin/backup/download', { responseType: 'blob' })
+      const url  = URL.createObjectURL(new Blob([resp.data]))
+      const ts   = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)
+      const a    = document.createElement('a'); a.href = url; a.download = `backup-agenda-${ts}.dump`; a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setDlLoading(false)
+    }
+  }
+
+  const restoreMut = useMutation({
+    mutationFn: async () => {
+      const form = new FormData()
+      form.append('file', file as File)
+      form.append('confirmation', confirmText)
+      const resp = await api.post('/admin/backup/restore', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return resp.data as { message: string }
+    },
+    onSuccess: (data) => {
+      setResult(data.message); setError(null)
+      setFile(null); setConfirmText('')
+      if (fileRef.current) fileRef.current.value = ''
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.message ?? err?.message ?? 'Restore gagal.')
+      setResult(null)
+    },
+  })
+
+  return (
+    <div className="max-w-xl space-y-6">
+      <div>
+        <h2 className="text-base font-semibold mb-1">Backup & Restore</h2>
+        <p className="text-sm text-muted-foreground">
+          Unduh cadangan seluruh data aplikasi, atau pulihkan dari file cadangan.
+          Cadangan per-semester akan tersedia setelah data per tahun pelajaran
+          dipisah sepenuhnya &mdash; untuk saat ini cakupannya seluruh data.
+        </p>
+      </div>
+
+      {/* Download */}
+      <div className="rounded-lg border bg-card p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Download className="h-5 w-5 text-primary-600" />
+          <h3 className="text-sm font-semibold">Unduh Cadangan (Seluruh Data)</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Menghasilkan file <code className="px-1 py-0.5 rounded bg-muted">.dump</code> berisi
+          seluruh data aplikasi saat ini. Simpan file ini di tempat aman.
+        </p>
+        <Button size="sm" onClick={downloadBackup} disabled={dlLoading}>
+          {dlLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+          Unduh Backup
+        </Button>
+      </div>
+
+      {/* Restore */}
+      <div className="rounded-lg border bg-card p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Upload className="h-5 w-5 text-destructive" />
+          <h3 className="text-sm font-semibold">Pulihkan dari Cadangan</h3>
+        </div>
+
+        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 flex gap-2 text-xs text-red-700">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span>
+            Tindakan ini akan MENIMPA seluruh data yang sedang berjalan dengan isi file
+            cadangan. Sistem akan otomatis membuat cadangan pengaman dari data saat ini
+            sebelum memulihkan, tapi tindakan ini tetap berisiko tinggi. Hanya gunakan
+            file <code className="px-1 py-0.5 rounded bg-red-100">.dump</code> hasil unduhan
+            fitur ini.
+          </span>
+        </div>
+
+        <div
+          className="rounded-md border-2 border-dashed border-muted-foreground/25 p-4 text-center cursor-pointer hover:border-primary/40 hover:bg-muted/20 transition-colors"
+          onClick={() => fileRef.current?.click()}
+        >
+          {file ? (
+            <p className="text-xs"><span className="font-medium">{file.name}</span> <span className="text-muted-foreground">({(file.size/1024/1024).toFixed(1)} MB)</span></p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Klik pilih file .dump</p>
+          )}
+          <input ref={fileRef} type="file" accept=".dump" className="hidden"
+            onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setError(null) }} />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+            Ketik <span className="font-semibold text-foreground">{RESTORE_CONFIRMATION}</span> untuk mengaktifkan tombol restore
+          </label>
+          <input
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={RESTORE_CONFIRMATION}
+            className="w-full rounded-md border px-3 py-1.5 text-sm"
+          />
+        </div>
+
+        {error && (
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 flex gap-2 text-xs text-red-700">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />{error}
+          </div>
+        )}
+
+        {result && (
+          <div className="rounded border border-green-200 bg-green-50 px-3 py-2 flex gap-2 text-xs text-green-800">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />{result}
+          </div>
+        )}
+
+        <Button
+          size="sm"
+          variant="destructive"
+          disabled={!file || confirmText !== RESTORE_CONFIRMATION || restoreMut.isPending}
+          onClick={() => restoreMut.mutate()}
+        >
+          {restoreMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
+          Pulihkan Sekarang
+        </Button>
+      </div>
+    </div>
+  )
+}
+

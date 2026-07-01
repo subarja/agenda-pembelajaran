@@ -17,19 +17,9 @@ Perintah ini otomatis mengerjakan semua setup dari nol:
 - Menyalin `.env`
 - Build image Docker
 - Generate `APP_KEY` Laravel
-- Migrasi database + isi data awal (seeder)
+- Migrasi database + isi data demo
 
 Setelah selesai, buka: **http://localhost:5173**
-
-| Peran | Email | Password | Keterangan |
-|---|---|---|---|
-| Admin | admin@smkn2cimahi.sch.id | password | Kelola semua data |
-| Wakasek | kusman@smkn2cimahi.sch.id | password | Dashboard EWS & laporan |
-| Guru | guru@smkn2cimahi.sch.id | password | Budi Santoso — Pemrograman Web |
-| Wali Kelas | walikelas@smkn2cimahi.sch.id | password | Siti Rahayu — XI RPL A |
-| Siswa | siswa@smkn2cimahi.sch.id | password | Ahmad Fauzi — XI RPL A |
-
-Guru tambahan (password: `password`): `deni@` · `rina@` · `hendra@` · `yuni@` (domain: smkn2cimahi.sch.id)
 
 ---
 
@@ -43,16 +33,85 @@ Jalankan ini setiap kali ingin menghidupkan aplikasi kembali (setelah komputer r
 
 ---
 
-### Perintah Lainnya
+### Referensi Semua Perintah `make`
 
-| Perintah | Fungsi |
+| Perintah | Kapan dipakai | Yang terjadi |
+|---|---|---|
+| `make setup` | Pertama kali / setelah `make reset` | Build image → migrasi → seed. Butuh beberapa menit. |
+| `make start` | Setiap hari (container sudah ada) | Hidupkan container yang sudah ada. |
+| `make restart` | Setelah ubah `.env` atau config | Restart semua container tanpa rebuild. |
+| `make stop` | Selesai kerja | Hentikan semua container (data tetap ada). |
+| `make reset` | Mau mulai dari nol total | Matikan + **hapus semua container & volume** (data hilang). Perlu `make setup` sesudahnya. |
+| `make reseed` | Setelah ubah migration atau seeder | Drop semua tabel → jalankan ulang semua migration → seed. Container tetap jalan, lebih cepat dari reset+setup. |
+| `make seed` | Debug seeder saja | Jalankan seeder tanpa drop tabel. Aman hanya jika data lama tidak konflik. |
+| `make logs` | Debug / pantau log | Tampilkan log live semua service (`Ctrl+C` untuk keluar). |
+
+**Alur kerja yang paling sering dipakai:**
+
+```
+# Pertama kali
+make setup
+
+# Setiap hari
+make start
+
+# Setelah ubah schema/migration/seeder
+make reseed
+
+# Setelah ubah kode Laravel/React saja (tanpa ubah DB)
+# → tidak perlu perintah apapun, hot-reload otomatis
+
+# Mau bersih total (ganti environment, dll)
+make reset
+make setup
+```
+
+---
+
+### Akun Demo (semua password: `password`)
+
+| Peran | Email | Keterangan |
+|---|---|---|
+| Admin | admin@smkn2cimahi.sch.id | Kelola semua data |
+| Wakasek Kurikulum | kusman@smkn2cimahi.sch.id | Dashboard EWS & laporan |
+| Guru (murni) | guru@smkn2cimahi.sch.id | Budi Santoso — Pemrograman Web |
+| Guru Wali Kelas | walikelas@smkn2cimahi.sch.id | Siti Rahayu — Wali XI RPL A |
+| Guru BK | bk@smkn2cimahi.sch.id | Dewi Rahayu — Bimbingan Konseling |
+| Orang Tua | orangtua@smkn2cimahi.sch.id | Terhubung ke Ahmad Fauzi |
+| Siswa | siswa@smkn2cimahi.sch.id | Ahmad Fauzi — XI RPL A |
+
+**Akun demo guru tambahan** (password: `password`):
+
+| Email | Nama | Mapel | Kelas |
+|---|---|---|---|
+| `wulan@smkn2cimahi.sch.id` | Wulan Indah Pratiwi, M.Pd | Matematika | X DKV A, X/XI Pemesinan, XI Animasi B, XI RPL B |
+| `edy@smkn2cimahi.sch.id` | Edy Santoso, ST., M.Pd. | KK Mekatronika-11 | XI Mekatronika A–D |
+
+> Kedua akun di atas menggunakan jadwal asli hasil import ASc XML dengan data siswa nyata. Sudah dilengkapi agenda KBM, presensi, TP, dan penilaian karakter sebagai data uji.
+
+**Guru seeder demo** (password: `password`, domain: `@smkn2cimahi.sch.id`):
+
+| Key | Email | Mapel |
+|---|---|---|
+| RPL | `deni@` · `rina@` · `hendra@` · `yuni@` | Basis Data · PBO · Matematika · Bahasa Indonesia |
+| TKJ | `ahmad.yanuar@` · `wahyu@` · `eko@` | Jaringan Komputer · ASJ · TLJ |
+| DKV | `tono@` · `sari@` · `indah@` | Desain Grafis · DKV · Animasi 2D |
+
+### Volume Data Demo
+
+Data demo dirancang mendekati kondisi nyata untuk pengujian performa:
+
+| Data | Jumlah |
 |---|---|
-| `make setup` | Setup awal |
-| `make start` | menjalankan setelah setup |
-| `make restart` | Restart semua container tanpa rebuild |
-| `make stop` | Hentikan semua service |
-| `make reset` | Hentikan + **hapus semua data** (mulai dari nol lagi), untuk mengawali make start lagi |
-| `make logs` | Lihat log live semua service |
+| Jurusan | 3 (RPL, TKJ, DKV) |
+| Kelas | 15 (X/XI/XII × A/B per jurusan) |
+| Siswa | ±540 (36 per kelas) |
+| Guru | 17 |
+| Jadwal | 75 (5 per kelas per minggu) |
+| Agenda (history) | ±600 (8 minggu ke belakang) |
+| Presensi | ±21.600 record |
+| Input Karakter | ±800 record |
+| EWS Status | 540 record |
 
 ---
 
@@ -122,15 +181,7 @@ docker compose exec backend php artisan migrate --seed
 
 ### Akun Login Bawaan (Setelah Seeder)
 
-| Peran | Email | Password |
-|---|---|---|
-| Admin | admin@smkn2cimahi.sch.id | password |
-| Wakasek | kusman@smkn2cimahi.sch.id | password |
-| Guru | guru@smkn2cimahi.sch.id | password |
-| Wali Kelas | walikelas@smkn2cimahi.sch.id | password |
-| Siswa | siswa@smkn2cimahi.sch.id | password |
-
-> Guru tambahan demo: `deni@` · `rina@` · `hendra@` · `yuni@` (domain: smkn2cimahi.sch.id, password: `password`)
+Lihat tabel lengkap di bagian **Akun Demo** di atas (semua password: `password`).
 
 ---
 

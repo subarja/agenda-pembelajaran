@@ -8,20 +8,29 @@ use App\Models\AgendaStudentScore;
 use App\Models\CharacterInput;
 use App\Models\LearningObjective;
 use App\Models\Note;
+use App\Models\PrintSetting;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentAttendance;
 use App\Models\TeacherAttendance;
+use App\Traits\BuildsXlsxReports;
+use App\Traits\HandlesPdfPreview;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use OpenSpout\Common\Entity\Cell\NumericCell;
+use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
+use OpenSpout\Common\Entity\Style\CellAlignment;
 use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Options;
 use OpenSpout\Writer\XLSX\Writer;
 
 class ReportController extends Controller
 {
+    use HandlesPdfPreview;
+    use BuildsXlsxReports;
+
     public function classes(Request $request)
     {
         $ay      = \App\Models\AcademicYear::where('aktif', true)->first();
@@ -39,7 +48,17 @@ class ReportController extends Controller
             'tanggal_mulai'=> ['required', 'date'],
             'tanggal_akhir'=> ['required', 'date', 'after_or_equal:tanggal_mulai'],
             'format'       => ['required', 'in:pdf,excel'],
+            'teacher_id'   => ['nullable', 'string'],
         ]);
+
+        // Identitas guru untuk header laporan
+        $teacher = $request->user()->teacher;
+        if (! $teacher && $request->filled('teacher_id')) {
+            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
+        }
+        if ($teacher && ! $teacher->relationLoaded('user')) {
+            $teacher->load('user');
+        }
 
         $class    = SchoolClass::where('uuid', $request->class_id)->with('students.user')->firstOrFail();
         $students = $class->students()->with('user')->orderBy('nis')->get();
@@ -76,23 +95,79 @@ class ReportController extends Controller
         $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
         $filename   = "kehadiran_{$class->tingkat->value}_{$class->jurusan}_{$class->rombel}";
 
-        if ($request->format === 'pdf') {
-            return Pdf::loadView('reports.kehadiran', compact('rows', 'periode', 'totalSesi') + ['kelas' => $kelasLabel])
-                ->setPaper('a4', 'landscape')->download("{$filename}.pdf");
+        // Cari mapel yang diajarkan guru di kelas ini
+        $mapelGuru = null;
+        $guruNama  = null;
+        $guruNip   = null;
+        if ($teacher) {
+            $guruNama  = $teacher->nama_lengkap;
+            $guruNip   = $teacher->nip ?? '—';
+            $mapelGuru = \App\Models\Schedule::where('teacher_id', $teacher->id)
+                ->where('class_id', $class->id)
+                ->where('aktif', true)
+                ->with('subject')
+                ->get()
+                ->map(fn ($s) => $s->subject->nama)
+                ->unique()
+                ->join(', ');
         }
 
-        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kelasLabel, $periode, $totalSesi) {
-            $w->addRow(Row::fromValues(["Rekap Kehadiran — {$kelasLabel} | Periode: {$periode} | Sesi: {$totalSesi}"]));
-            $w->addRow(Row::fromValues(['No','Nama Siswa','NIS','Hadir','Sakit','Izin','Alpha','Total','% Kehadiran','Tanggal Tidak Hadir']));
+        if ($request->format === 'pdf') {
+            $printSettings = PrintSetting::instance();
+            $pdf = Pdf::loadView('reports.kehadiran', compact('rows', 'periode', 'totalSesi', 'guruNama', 'guruNip', 'mapelGuru', 'printSettings') + ['kelas' => $kelasLabel])
+                ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+            return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
+        }
+
+        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kelasLabel, $periode, $totalSesi, $guruNama, $guruNip, $mapelGuru) {
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 8, 5 => 8, 6 => 8, 7 => 8, 8 => 8, 9 => 13, 10 => 45]);
+
+            $w->addRow(Row::fromValuesWithStyle(["Rekap Kehadiran — {$kelasLabel}"], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValues(["Periode: {$periode} | Sesi: {$totalSesi}"]));
+            if ($guruNama) {
+                $w->addRow(Row::fromValues(["Guru: {$guruNama}" . ($guruNip ? " | NIP: {$guruNip}" : '') . ($mapelGuru ? " | Mapel: {$mapelGuru}" : '')]));
+            }
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValuesWithStyle(
+                ['No','Nama Siswa','NIS','Hadir','Sakit','Izin','Alpha','Total','% Kehadiran','Tanggal Tidak Hadir'],
+                $this->xlsxHeaderStyle()
+            ));
+
+            $cellCenter = $this->xlsxCellCenterStyle();
+            $cellText   = $this->xlsxCellStyle();
             foreach ($rows->values() as $i => $r) {
-                $w->addRow(Row::fromValues([$i+1,$r['nama'],$r['nis'],$r['hadir'],$r['sakit'],$r['izin'],$r['alpha'],$r['total'],$r['pct'].'%',implode(', ',$r['absences'])]));
+                $w->addRow(new Row([
+                    new NumericCell($i + 1, $cellCenter),
+                    new StringCell($r['nama'], $cellText),
+                    new StringCell($r['nis'], $cellCenter),
+                    new NumericCell($r['hadir'], $cellCenter),
+                    new NumericCell($r['sakit'], $cellCenter),
+                    new NumericCell($r['izin'], $cellCenter),
+                    new NumericCell($r['alpha'], $cellCenter),
+                    new NumericCell($r['total'], $cellCenter),
+                    new StringCell($r['pct'].'%', $cellCenter),
+                    new StringCell(implode(', ',$r['absences']) ?: '—', $cellText),
+                ]));
             }
         });
     }
 
     public function karakter(Request $request)
     {
-        $request->validate(['class_id'=>['required','string'],'format'=>['required','in:pdf,excel']]);
+        $request->validate([
+            'class_id'   => ['required', 'string'],
+            'format'     => ['required', 'in:pdf,excel'],
+            'teacher_id' => ['nullable', 'string'],
+        ]);
+
+        // Identitas guru untuk header laporan
+        $teacher = $request->user()->teacher;
+        if (! $teacher && $request->filled('teacher_id')) {
+            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
+        }
+        if ($teacher && ! $teacher->relationLoaded('user')) {
+            $teacher->load('user');
+        }
 
         $class    = SchoolClass::where('uuid', $request->class_id)->with('students.user')->firstOrFail();
         $students = $class->students()->with('user')->orderBy('nis')->get();
@@ -115,16 +190,54 @@ class ReportController extends Controller
         $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
         $filename   = "karakter_{$class->tingkat->value}_{$class->jurusan}";
 
+        $guruNama  = $teacher ? $teacher->nama_lengkap : null;
+        $guruNip   = $teacher ? ($teacher->nip ?? '—') : null;
+        $mapelGuru = $teacher ? \App\Models\Schedule::where('teacher_id', $teacher->id)
+            ->where('class_id', $class->id)
+            ->where('aktif', true)
+            ->with('subject')
+            ->get()
+            ->map(fn ($s) => $s->subject->nama)
+            ->unique()
+            ->join(', ') : null;
+
         if ($request->format === 'pdf') {
-            return Pdf::loadView('reports.karakter', compact('rows','kategori','periode','totalInput') + ['kelas' => $kelasLabel])
-                ->setPaper('a4','landscape')->download("{$filename}.pdf");
+            $printSettings = PrintSetting::instance();
+            $pdf = Pdf::loadView('reports.karakter', compact('rows','kategori','periode','totalInput','guruNama','guruNip','mapelGuru','printSettings') + ['kelas' => $kelasLabel])
+                ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+            return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
 
-        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows,$kategori,$kelasLabel,$periode) {
-            $w->addRow(Row::fromValues(["Rekap Karakter — {$kelasLabel} | {$periode}"]));
-            $w->addRow(Row::fromValues(array_merge(['No','Nama Siswa','NIS'],$kategori,['Total Poin'])));
+        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows,$kategori,$kelasLabel,$periode,$guruNama,$guruNip,$mapelGuru) {
+            $lastCol = 3 + count($kategori) + 1;
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12]);
+            $w->getOptions()->setColumnWidthForRange(14, 4, $lastCol);
+
+            $w->addRow(Row::fromValuesWithStyle(["Rekap Karakter — {$kelasLabel}"], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValues(["Periode: {$periode}"]));
+            if ($guruNama) {
+                $w->addRow(Row::fromValues(["Guru: {$guruNama}" . ($guruNip ? " | NIP: {$guruNip}" : '') . ($mapelGuru ? " | Mapel: {$mapelGuru}" : '')]));
+            }
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValuesWithStyle(
+                array_merge(['No','Nama Siswa','NIS'],$kategori,['Total Poin']),
+                $this->xlsxHeaderStyle()
+            ));
+
+            $cellCenter = $this->xlsxCellCenterStyle();
+            $cellText   = $this->xlsxCellStyle();
+            $totalStyle = $this->xlsxTotalStyle();
             foreach ($rows->values() as $i => $r) {
-                $w->addRow(Row::fromValues(array_merge([$i+1,$r['nama'],$r['nis']],array_map(fn($k)=>$r['per_kategori'][$k]??0,$kategori),[$r['total']])));
+                $cells = [
+                    new NumericCell($i + 1, $cellCenter),
+                    new StringCell($r['nama'], $cellText),
+                    new StringCell($r['nis'], $cellCenter),
+                ];
+                foreach ($kategori as $k) {
+                    $cells[] = new NumericCell($r['per_kategori'][$k] ?? 0, $cellCenter);
+                }
+                $cells[] = new NumericCell($r['total'], $totalStyle);
+                $w->addRow(new Row($cells));
             }
         });
     }
@@ -155,15 +268,36 @@ class ReportController extends Controller
         $filename   = "ews_{$class->tingkat->value}_{$class->jurusan}";
 
         if ($request->format === 'pdf') {
-            return Pdf::loadView('reports.ews', compact('rows','periode') + ['kelas'=>$kelasLabel])
-                ->setPaper('a4','landscape')->download("{$filename}.pdf");
+            $printSettings = PrintSetting::instance();
+            $pdf = Pdf::loadView('reports.ews', compact('rows','periode','printSettings') + ['kelas'=>$kelasLabel])
+                ->setPaper($printSettings->paperDimensionsPt(),'landscape');
+            return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
 
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows,$kelasLabel,$periode) {
-            $w->addRow(Row::fromValues(["Laporan EWS — {$kelasLabel} | {$periode}"]));
-            $w->addRow(Row::fromValues(['No','Nama Siswa','NIS','Level','Kehadiran (%)','Karakter (poin)','Catatan','Nilai Rata-rata']));
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 10, 5 => 14, 6 => 15, 7 => 10, 8 => 15]);
+
+            $w->addRow(Row::fromValuesWithStyle(["Laporan EWS — {$kelasLabel}"], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValues(["Periode: {$periode}"]));
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValuesWithStyle(
+                ['No','Nama Siswa','NIS','Level','Kehadiran (%)','Karakter (poin)','Catatan','Nilai Rata-rata'],
+                $this->xlsxHeaderStyle()
+            ));
+
+            $cellCenter = $this->xlsxCellCenterStyle();
+            $cellText   = $this->xlsxCellStyle();
             foreach ($rows as $i => $r) {
-                $w->addRow(Row::fromValues([$i+1,$r['nama'],$r['nis'],strtoupper($r['level']),$r['kehadiran'],$r['karakter'],$r['catatan'],$r['nilai']??'—']));
+                $w->addRow(new Row([
+                    new NumericCell($i + 1, $cellCenter),
+                    new StringCell($r['nama'], $cellText),
+                    new StringCell($r['nis'], $cellCenter),
+                    new StringCell(strtoupper($r['level']), $cellCenter),
+                    new NumericCell($r['kehadiran'], $cellCenter),
+                    new NumericCell($r['karakter'], $cellCenter),
+                    new NumericCell($r['catatan'], $cellCenter),
+                    new StringCell($r['nilai'] ?? '—', $cellCenter),
+                ]));
             }
         });
     }
@@ -197,16 +331,19 @@ class ReportController extends Controller
         $tahunPelajaran = $ay ? $ay->tahun : $tglMulai->year . '/' . ($tglMulai->year + 1);
         $semester       = $ay ? ucfirst($ay->semester->value) : 'Ganjil';
 
-        $mapelSet = $agendas->map(fn ($a) => $a->schedule->subject->nama)->unique()->sort()->join(', ');
-        $kelasSet = $agendas->map(fn ($a) =>
-            $a->schedule->schoolClass->tingkat->value . ' ' .
-            $a->schedule->schoolClass->jurusan . ' - ' .
-            $a->schedule->schoolClass->rombel
-        )->unique()->sort()->join('; ');
+        // Kelas & mapel diampu diambil dari SELURUH jadwal aktif guru (bukan cuma yang
+        // sudah diisi agenda pada periode ini) — supaya identitas laporan tetap lengkap
+        // walau guru belum sempat mengisi KBM di sebagian kelas/mapel yang ia ampu.
+        $teacherSchedules = \App\Models\Schedule::where('teacher_id', $teacher->id)
+            ->where('aktif', true)
+            ->with(['subject', 'schoolClass'])
+            ->get();
+        $mapelSet = $this->formatMapelDiampu($teacherSchedules);
+        $kelasSet = $this->formatKelasDiampu($teacherSchedules);
 
         $periode = $tglMulai->isoFormat('D MMMM') . ' - ' . $tglAkhir->isoFormat('D MMMM YYYY');
 
-        $guru               = $teacher->user->nama;
+        $guru               = $teacher->nama_lengkap;
         $nip                = $teacher->nip ?? '—';
         $kompetensiKeahlian = $teacher->mapel_utama ?? $mapelSet;
         $filename           = 'Laporan_Agenda_' . str_replace(' ', '_', $guru) . '_' . $bulan;
@@ -234,8 +371,9 @@ class ReportController extends Controller
         });
 
         if ($request->format === 'pdf') {
-            $kopSuratPath = 'file://' . public_path('images/kop_surat.jpg');
-            return Pdf::loadView('reports.agenda', [
+            $kopSuratPath  = 'file://' . public_path('images/kop_surat.jpg');
+            $printSettings = PrintSetting::instance();
+            $pdf = Pdf::loadView('reports.agenda', [
                 'rows'                => $rows,
                 'guru'                => $guru,
                 'nip'                 => $nip,
@@ -248,7 +386,9 @@ class ReportController extends Controller
                 'tahun_pelajaran'     => $tahunPelajaran,
                 'tanggal_ttd'         => $tglAkhir->isoFormat('D MMMM YYYY'),
                 'kopSuratPath'        => $kopSuratPath,
-            ])->setPaper('a4', 'landscape')->download("{$filename}.pdf");
+                'printSettings'       => $printSettings,
+            ])->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+            return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
 
         // ── Excel ─────────────────────────────────────────────────────────────
@@ -256,43 +396,52 @@ class ReportController extends Controller
             $rows, $guru, $nip, $kompetensiKeahlian, $mapelSet, $kelasSet,
             $semester, $periode, $bulan, $tahunPelajaran, $tglAkhir
         ) {
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 22, 3 => 14, 4 => 16, 5 => 40, 6 => 40, 7 => 20]);
+            $centerBold = (new Style())->withFontBold(true)->withCellAlignment(CellAlignment::CENTER);
+            $label      = $this->xlsxLabelStyle();
+
             // Kop surat (teks)
-            $w->addRow(Row::fromValues(['PEMERINTAH DAERAH PROVINSI JAWA BARAT']));
+            $w->addRow(Row::fromValuesWithStyle(['PEMERINTAH DAERAH PROVINSI JAWA BARAT'], $centerBold));
             $w->addRow(Row::fromValues(['DINAS PENDIDIKAN']));
             $w->addRow(Row::fromValues(['CABANG DINAS PENDIDIKAN WILAYAH VII']));
-            $w->addRow(Row::fromValues(['SEKOLAH MENENGAH KEJURUAN NEGERI 2 CIMAHI']));
+            $w->addRow(Row::fromValuesWithStyle(['SEKOLAH MENENGAH KEJURUAN NEGERI 2 CIMAHI'], $centerBold));
             $w->addRow(Row::fromValues(['Jalan Kamarung No.69 RT 02/RW 05 Kel. Citeureup Kec. Cimahi Utara Kota Cimahi 40512']));
             $w->addRow(Row::fromValues(['Telp/fax. (022) 87805857  Email: info@smkn2cmi.sch.id  Web: www.smkn2cimahi.sch.id']));
             $w->addRow(Row::fromValues(['']));
 
             // Judul
-            $w->addRow(Row::fromValues(["KEGIATAN BELAJAR MENGAJAR BULAN " . strtoupper($bulan)]));
+            $w->addRow(Row::fromValuesWithStyle(["KEGIATAN BELAJAR MENGAJAR BULAN " . strtoupper($bulan)], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["TAHUN PELAJARAN {$tahunPelajaran}"]));
             $w->addRow(Row::fromValues(['']));
 
             // Identitas guru
-            $w->addRow(Row::fromValues(['Nama Guru', ':', $guru]));
-            $w->addRow(Row::fromValues(['NIP', ':', $nip]));
-            $w->addRow(Row::fromValues(['Kompetensi Keahlian', ':', $kompetensiKeahlian]));
-            $w->addRow(Row::fromValues(['Mata Pelajaran', ':', $mapelSet ?: $kompetensiKeahlian]));
-            $w->addRow(Row::fromValues(['Kelas Diampu', ':', $kelasSet]));
-            $w->addRow(Row::fromValues(['Semester', ':', $semester]));
-            $w->addRow(Row::fromValues(['Periode Laporan', ':', $periode]));
+            $w->addRow(new Row([new StringCell('Nama Guru', $label), new StringCell(':'), new StringCell($guru)]));
+            $w->addRow(new Row([new StringCell('NIP', $label), new StringCell(':'), new StringCell($nip)]));
+            $w->addRow(new Row([new StringCell('Kompetensi Keahlian', $label), new StringCell(':'), new StringCell($kompetensiKeahlian)]));
+            $w->addRow(new Row([new StringCell('Mata Pelajaran', $label), new StringCell(':'), new StringCell($mapelSet ?: $kompetensiKeahlian)]));
+            $w->addRow(new Row([new StringCell('Kelas Diampu', $label), new StringCell(':'), new StringCell($kelasSet)]));
+            $w->addRow(new Row([new StringCell('Semester', $label), new StringCell(':'), new StringCell($semester)]));
+            $w->addRow(new Row([new StringCell('Periode Laporan', $label), new StringCell(':'), new StringCell($periode)]));
             $w->addRow(Row::fromValues(['']));
 
             // Header tabel
-            $w->addRow(Row::fromValues(['No', 'Hari / Tanggal', 'Jam Ke', 'Kelas', 'Tujuan Pembelajaran', 'Kegiatan Pembelajaran', 'Keterangan']));
+            $w->addRow(Row::fromValuesWithStyle(
+                ['No', 'Hari / Tanggal', 'Jam Ke', 'Kelas', 'Tujuan Pembelajaran', 'Kegiatan Pembelajaran', 'Keterangan'],
+                $this->xlsxHeaderStyle()
+            ));
 
             // Data baris
+            $cellCenter = $this->xlsxCellCenterStyle();
+            $cellText   = $this->xlsxCellStyle();
             foreach ($rows->values() as $i => $r) {
-                $w->addRow(Row::fromValues([
-                    $i + 1,
-                    $r['hari_tanggal'],
-                    $r['jam'],
-                    $r['kelas'],
-                    $r['tujuan_pembelajaran'] ?: '—',
-                    $r['kegiatan_pembelajaran'] ?: '—',
-                    $r['keterangan'],
+                $w->addRow(new Row([
+                    new NumericCell($i + 1, $cellCenter),
+                    new StringCell($r['hari_tanggal'], $cellText),
+                    new StringCell($r['jam'], $cellCenter),
+                    new StringCell($r['kelas'], $cellCenter),
+                    new StringCell($r['tujuan_pembelajaran'] ?: '—', $cellText),
+                    new StringCell($r['kegiatan_pembelajaran'] ?: '—', $cellText),
+                    new StringCell($r['keterangan'] ?: '', $cellText),
                 ]));
             }
 
@@ -304,7 +453,7 @@ class ReportController extends Controller
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValues(['']));
-            $w->addRow(Row::fromValues(['', '', '', '', '', $guru]));
+            $w->addRow(Row::fromValuesWithStyle(['', '', '', '', '', $guru], $label));
             $w->addRow(Row::fromValues(['', '', '', '', '', "NIP. {$nip}"]));
             $w->addRow(Row::fromValues(['']));
 
@@ -363,20 +512,31 @@ class ReportController extends Controller
         });
 
         // ── Mapel & kelas label ───────────────────────────────────────────────
-        $mapelSet  = $agendas->map(fn ($a) => $a->schedule->subject->nama)->unique()->join(', ');
-        $kelasSet  = $agendas->map(fn ($a) =>
-            $a->schedule->schoolClass->tingkat->value . ' ' .
-            $a->schedule->schoolClass->jurusan . ' - ' .
-            $a->schedule->schoolClass->rombel
-        )->unique()->sort()->join(', ');
+        // Diambil dari SELURUH jadwal aktif guru (bukan cuma yang sudah diisi agenda pada
+        // periode ini) — supaya identitas laporan tetap lengkap walau guru belum sempat
+        // mengisi KBM di sebagian kelas/mapel yang ia ampu.
+        $teacherSchedules = \App\Models\Schedule::where('teacher_id', $teacher->id)
+            ->where('aktif', true)
+            ->with(['subject', 'schoolClass'])
+            ->get();
+        $mapelSet  = $this->formatMapelDiampu($teacherSchedules);
+        $kelasSet  = $this->formatKelasDiampu($teacherSchedules);
 
         // ── Ringkasan ─────────────────────────────────────────────────────────
         $totalPertemuan  = $agendas->count();
         $tpDibahasIds    = $agendas->flatMap(fn ($a) => $a->learningObjectives->pluck('id'))->unique()->count();
 
-        // Total TP direncanakan untuk guru ini (semua kelas diampu, semester aktif)
-        $tpDirencanakan  = LearningObjective::where('teacher_id', $teacher->id)
+        // Total TP direncanakan — cari via mapel + fase yang diajarkan guru
+        $subjectIds = $teacherSchedules->pluck('subject_id')->unique();
+        $fases = $teacherSchedules
+            ->map(fn ($s) => $s->schoolClass?->tingkat->value === 'X' ? 'E' : 'F')
+            ->filter()
+            ->unique()
+            ->values();
+        $tpDirencanakan = LearningObjective::whereIn('subject_id', $subjectIds)
+            ->whereIn('fase', $fases)
             ->where('semester', $ay?->semester->value ?? 'ganjil')
+            ->when($ay, fn ($q) => $q->where('academic_year_id', $ay->id))
             ->count();
 
         // Kehadiran mengajar — cek TeacherAttendance
@@ -401,14 +561,16 @@ class ReportController extends Controller
                       ' s.d. ' .
                       \Carbon\Carbon::parse($request->tanggal_akhir)->locale('id')->isoFormat('D MMMM YYYY');
         $report_id  = strtoupper(Str::random(8));
+        $guruNama   = $teacher->nama_lengkap;
         $filename   = 'Jurnal_Mengajar_' . str_replace(' ', '_', $teacher->user->nama) . '_' .
                       str_replace('/', '-', substr($request->tanggal_mulai, 0, 7));
 
         // ── PDF ───────────────────────────────────────────────────────────────
         if ($request->format === 'pdf') {
-            return Pdf::loadView('reports.jurnal', [
+            $printSettings = PrintSetting::instance();
+            $pdf = Pdf::loadView('reports.jurnal', [
                 'rows'         => $rows,
-                'guru'         => $teacher->user->nama,
+                'guru'         => $guruNama,
                 'nip'          => $teacher->nip ?? '—',
                 'mapel'        => $mapelSet ?: $teacher->mapel_utama,
                 'kelas_label'  => $kelasSet ?: 'Semua kelas diampu',
@@ -416,60 +578,72 @@ class ReportController extends Controller
                 'periode'      => $periode,
                 'ringkasan'    => $ringkasan,
                 'report_id'    => $report_id,
-            ])->setPaper('a4', 'landscape')->download("{$filename}.pdf");
+                'printSettings'=> $printSettings,
+            ])->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+            return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
 
-        // ── Excel (3 sheet mirror) ────────────────────────────────────────────
+        // ── Excel (2 sheet: Identitas+Ringkasan, Tabel Jurnal) ────────────────
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use (
-            $rows, $teacher, $mapelSet, $kelasSet, $ay, $periode, $ringkasan, $report_id
+            $rows, $teacher, $guruNama, $mapelSet, $kelasSet, $ay, $periode, $ringkasan, $report_id
         ) {
+            $label = $this->xlsxLabelStyle();
+
             // Sheet 1: Header & Identitas
-            $w->addRow(Row::fromValues(['LAPORAN JURNAL MENGAJAR']));
+            $w->getCurrentSheet()->setName('Identitas & Ringkasan');
+            $w->getOptions()->setColumnWidth(24, 1);
+            $w->getOptions()->setColumnWidth(35, 2);
+            $w->addRow(Row::fromValuesWithStyle(['LAPORAN JURNAL MENGAJAR'], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(['SMK NEGERI 2 CIMAHI']));
             $w->addRow(Row::fromValues(['']));
-            $w->addRow(Row::fromValues(['Periode', $periode]));
-            $w->addRow(Row::fromValues(['Nama Guru', $teacher->user->nama]));
-            $w->addRow(Row::fromValues(['NIP', $teacher->nip ?? '—']));
-            $w->addRow(Row::fromValues(['Mata Pelajaran', $mapelSet ?: $teacher->mapel_utama]));
-            $w->addRow(Row::fromValues(['Kelas yang Diampu', $kelasSet]));
-            $w->addRow(Row::fromValues(['Tahun Ajaran', $ay ? $ay->tahun . ' — ' . ucfirst($ay->semester->value) : '—']));
+            $w->addRow(new Row([new StringCell('Periode', $label), new StringCell($periode)]));
+            $w->addRow(new Row([new StringCell('Nama Guru', $label), new StringCell($guruNama)]));
+            $w->addRow(new Row([new StringCell('NIP', $label), new StringCell($teacher->nip ?? '—')]));
+            $w->addRow(new Row([new StringCell('Mata Pelajaran', $label), new StringCell($mapelSet ?: $teacher->mapel_utama)]));
+            $w->addRow(new Row([new StringCell('Kelas yang Diampu', $label), new StringCell($kelasSet)]));
+            $w->addRow(new Row([new StringCell('Tahun Ajaran', $label), new StringCell($ay ? $ay->tahun . ' — ' . ucfirst($ay->semester->value) : '—')]));
             $w->addRow(Row::fromValues(['']));
 
             // Ringkasan
-            $w->addRow(Row::fromValues(['RINGKASAN']));
-            $w->addRow(Row::fromValues(['Total Pertemuan', $ringkasan['total_pertemuan']]));
-            $w->addRow(Row::fromValues(['Total Jam Mengajar', $ringkasan['total_jam'] . ' JP']));
-            $w->addRow(Row::fromValues(['TP Direncanakan', $ringkasan['tp_direncanakan']]));
-            $w->addRow(Row::fromValues(['TP Sudah Dibahas', $ringkasan['tp_dibahas']]));
-            $w->addRow(Row::fromValues(['Tidak Terlaksana', $ringkasan['tidak_terlaksana'] . ' pertemuan']));
-            $w->addRow(Row::fromValues(['% Kehadiran Mengajar', $ringkasan['pct_kehadiran'] . '%']));
+            $w->addRow(Row::fromValuesWithStyle(['RINGKASAN'], $label));
+            $w->addRow(new Row([new StringCell('Total Pertemuan', $label), new NumericCell($ringkasan['total_pertemuan'])]));
+            $w->addRow(new Row([new StringCell('Total Jam Mengajar', $label), new StringCell($ringkasan['total_jam'] . ' JP')]));
+            $w->addRow(new Row([new StringCell('TP Direncanakan', $label), new NumericCell($ringkasan['tp_direncanakan'])]));
+            $w->addRow(new Row([new StringCell('TP Sudah Dibahas', $label), new NumericCell($ringkasan['tp_dibahas'])]));
+            $w->addRow(new Row([new StringCell('Tidak Terlaksana', $label), new StringCell($ringkasan['tidak_terlaksana'] . ' pertemuan')]));
+            $w->addRow(new Row([new StringCell('% Kehadiran Mengajar', $label), new StringCell($ringkasan['pct_kehadiran'] . '%')]));
             $w->addRow(Row::fromValues(['']));
 
             // Tanda tangan (teks)
-            $w->addRow(Row::fromValues(['', 'Dibuat oleh,', '', 'Mengetahui,', '', 'Disetujui,']));
+            $w->addRow(Row::fromValuesWithStyle(['', 'Dibuat oleh,', '', 'Mengetahui,', '', 'Disetujui,'], $label));
             $w->addRow(Row::fromValues(['', 'Guru Mata Pelajaran', '', 'Wakasek Bid. Kurikulum', '', 'Kepala SMK Negeri 2 Cimahi']));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValues(['']));
-            $w->addRow(Row::fromValues(['', $teacher->user->nama, '', 'Kusman Subarja, S.Pd., M.T.', '', '................................']));
+            $w->addRow(Row::fromValuesWithStyle(['', $guruNama, '', 'Kusman Subarja, S.Pd., M.T.', '', '................................'], $label));
             $w->addRow(Row::fromValues(['', 'NIP. ' . ($teacher->nip ?? '—'), '', 'NIP. 197501012005011001', '', 'NIP. ................................']));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValues(['ID Laporan: ' . $report_id]));
 
-            // Sheet 2: Tabel Jurnal (new sheet via workaround — openspout adds rows to active sheet)
-            // Tambahkan header tabel sebagai lanjutan sheet yang sama (single sheet Excel)
-            $w->addRow(Row::fromValues(['']));
-            $w->addRow(Row::fromValues(['TABEL JURNAL PERTEMUAN']));
-            $w->addRow(Row::fromValues(['No', 'Tanggal', 'Hari', 'Kelas', 'Materi / Tujuan Pembelajaran', 'Catatan Kegiatan KBM', 'Status']));
+            // Sheet 2: Tabel Jurnal
+            $w->addNewSheetAndMakeItCurrent()->setName('Tabel Jurnal');
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 13, 3 => 10, 4 => 16, 5 => 45, 6 => 45, 7 => 12]);
+            $w->addRow(Row::fromValuesWithStyle(
+                ['No', 'Tanggal', 'Hari', 'Kelas', 'Materi / Tujuan Pembelajaran', 'Catatan Kegiatan KBM', 'Status'],
+                $this->xlsxHeaderStyle()
+            ));
+
+            $cellCenter = $this->xlsxCellCenterStyle();
+            $cellText   = $this->xlsxCellStyle();
             foreach ($rows->values() as $i => $r) {
-                $w->addRow(Row::fromValues([
-                    $i + 1,
-                    $r['tanggal'],
-                    $r['hari'],
-                    $r['kelas'],
-                    ($r['tp_kode'] ? $r['tp_kode'] . ' — ' : '') . ($r['tp'] ?: '—'),
-                    $r['resume'] ?: '—',
-                    $r['status'] === 'submitted' ? 'Selesai' : 'Draft',
+                $w->addRow(new Row([
+                    new NumericCell($i + 1, $cellCenter),
+                    new StringCell($r['tanggal'], $cellCenter),
+                    new StringCell($r['hari'], $cellCenter),
+                    new StringCell($r['kelas'], $cellCenter),
+                    new StringCell(($r['tp_kode'] ? $r['tp_kode'] . ' — ' : '') . ($r['tp'] ?: '—'), $cellText),
+                    new StringCell($r['resume'] ?: '—', $cellText),
+                    new StringCell($r['status'] === 'submitted' ? 'Selesai' : 'Draft', $cellCenter),
                 ]));
             }
         });
@@ -508,6 +682,42 @@ class ReportController extends Controller
             ->values();
 
         return response()->json(['data' => $teachers]);
+    }
+
+    /**
+     * Ringkas daftar kelas yang diampu guru: dikelompokkan per tingkat+jurusan lalu
+     * rombel digabung jadi satu baris — mis. "X Mekatronika A, B, C, D; X Desain
+     * Komunikasi Visual A, B" — bukan dipisah baris per kelas satu-satu.
+     *
+     * @param  \Illuminate\Support\Collection<int,\App\Models\Schedule>  $schedules
+     */
+    private function formatKelasDiampu(\Illuminate\Support\Collection $schedules): string
+    {
+        $groups = [];
+        foreach ($schedules as $s) {
+            $c = $s->schoolClass;
+            if (! $c) continue;
+            $key = "{$c->tingkat->value} {$c->jurusan}";
+            $groups[$key][$c->rombel] = true;
+        }
+        ksort($groups);
+
+        $parts = [];
+        foreach ($groups as $key => $rombels) {
+            $r = array_keys($rombels);
+            sort($r);
+            $parts[] = "{$key} " . implode(', ', $r);
+        }
+
+        return implode('; ', $parts);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int,\App\Models\Schedule>  $schedules
+     */
+    private function formatMapelDiampu(\Illuminate\Support\Collection $schedules): string
+    {
+        return $schedules->pluck('subject.nama')->filter()->unique()->sort()->values()->join(', ');
     }
 
     private function streamXlsx(string $filename, callable $callback): \Symfony\Component\HttpFoundation\StreamedResponse

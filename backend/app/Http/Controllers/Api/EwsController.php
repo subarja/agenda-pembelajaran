@@ -5,22 +5,36 @@ namespace App\Http\Controllers\Api;
 use App\Enums\EwsLevel;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Traits\HandlesPdfPreview;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\AcademicYear;
 use App\Models\AgendaStudentScore;
 use App\Models\CharacterInput;
 use App\Models\EwsStatus;
 use App\Models\Note;
+use App\Models\PrintSetting;
 use App\Models\Recommendation;
+use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentAttendance;
+use App\Models\Teacher;
+use App\Traits\BuildsXlsxReports;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use OpenSpout\Common\Entity\Cell\NumericCell;
+use OpenSpout\Common\Entity\Cell\StringCell;
+use OpenSpout\Common\Entity\Row;
+use OpenSpout\Common\Entity\Style\Style;
+use OpenSpout\Writer\XLSX\Writer;
 
 class EwsController extends Controller
 {
+    use HandlesPdfPreview;
+    use BuildsXlsxReports;
+
     private const THRESHOLD_KEHADIRAN = 80.0;
     private const THRESHOLD_KARAKTER  = 0;
     private const THRESHOLD_CATATAN   = 3;
@@ -41,9 +55,15 @@ class EwsController extends Controller
 
         match ($user->role) {
             UserRole::WaliKelas => $query->whereHas('schoolClass', fn ($q) => $q->where('wali_kelas_id', $user->id)),
-            UserRole::Guru      => $query->whereHas('schoolClass.schedules', fn ($q) =>
-                $q->whereHas('teacher', fn ($q2) => $q2->where('user_id', $user->id))
-            ),
+            UserRole::Guru      => (function () use ($query, $user) {
+                $teacherId = Teacher::where('user_id', $user->id)->value('id');
+                if (! $teacherId) {
+                    $query->whereRaw('1=0');
+                    return;
+                }
+                $classIds = Schedule::where('teacher_id', $teacherId)->where('aktif', true)->pluck('class_id')->unique()->values();
+                $query->whereIn('class_id', $classIds);
+            })(),
             UserRole::Siswa     => $query->whereHas('user', fn ($q) => $q->where('id', $user->id)),
             UserRole::OrangTua  => $user->linked_student_id
                 ? $query->where('id', $user->linked_student_id)
@@ -304,6 +324,8 @@ class EwsController extends Controller
         $kelas     = $student->schoolClass
             ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
             : '—';
+        $printSettings = PrintSetting::instance();
+        $paperDims     = $printSettings->paperDimensionsPt();
 
         if ($dim === 'kehadiran') {
             $kehadiran = $this->calcKehadiran($student->id);
@@ -317,8 +339,9 @@ class EwsController extends Controller
                     'status'  => strtoupper($a->status->value),
                     'mapel'   => $a->agenda->schedule->subject->nama ?? '—',
                 ]);
-            return Pdf::loadView('reports.dim_kehadiran', compact('student', 'kelas', 'kehadiran', 'rows', 'generated'))
-                ->setPaper('a4', 'portrait')->download("{$namaFile}.pdf");
+            $pdf = Pdf::loadView('reports.dim_kehadiran', compact('student', 'kelas', 'kehadiran', 'rows', 'generated', 'printSettings'))
+                ->setPaper($paperDims, 'portrait');
+            return $this->pdfResponse($pdf, "{$namaFile}.pdf", $request);
         }
 
         if ($dim === 'karakter') {
@@ -334,8 +357,9 @@ class EwsController extends Controller
                     'poin'     => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot),
                     'guru'     => $i->teacher->user->nama,
                 ]);
-            return Pdf::loadView('reports.dim_karakter', compact('student', 'kelas', 'karakter', 'rows', 'generated'))
-                ->setPaper('a4', 'portrait')->download("{$namaFile}.pdf");
+            $pdf = Pdf::loadView('reports.dim_karakter', compact('student', 'kelas', 'karakter', 'rows', 'generated', 'printSettings'))
+                ->setPaper($paperDims, 'portrait');
+            return $this->pdfResponse($pdf, "{$namaFile}.pdf", $request);
         }
 
         if ($dim === 'catatan') {
@@ -352,8 +376,9 @@ class EwsController extends Controller
                     'tindak_lanjut' => $n->tindak_lanjut,
                     'oleh'          => $n->createdBy?->nama ?? '—',
                 ]);
-            return Pdf::loadView('reports.dim_catatan', compact('student', 'kelas', 'catatanStat', 'rows', 'generated'))
-                ->setPaper('a4', 'portrait')->download("{$namaFile}.pdf");
+            $pdf = Pdf::loadView('reports.dim_catatan', compact('student', 'kelas', 'catatanStat', 'rows', 'generated', 'printSettings'))
+                ->setPaper($paperDims, 'portrait');
+            return $this->pdfResponse($pdf, "{$namaFile}.pdf", $request);
         }
 
         $nilaiStat = $this->calcNilai($student->id);
@@ -366,8 +391,73 @@ class EwsController extends Controller
                 'mapel'   => $n->agenda->schedule->subject->nama ?? '—',
                 'nilai'   => $n->nilai,
             ]);
-        return Pdf::loadView('reports.dim_nilai', compact('student', 'kelas', 'nilaiStat', 'rows', 'generated'))
-            ->setPaper('a4', 'portrait')->download("{$namaFile}.pdf");
+        $pdf = Pdf::loadView('reports.dim_nilai', compact('student', 'kelas', 'nilaiStat', 'rows', 'generated', 'printSettings'))
+            ->setPaper($paperDims, 'portrait');
+        return $this->pdfResponse($pdf, "{$namaFile}.pdf", $request);
+    }
+
+    // GET /ews/export?format=excel|pdf&level=...
+    public function export(Request $request)
+    {
+        // Re-use index logic to get the data
+        $indexResponse = $this->index($request);
+        $payload = $indexResponse->getData(true);
+        $rows    = $payload['data'] ?? [];
+
+        if ($request->query('format') === 'pdf') {
+            $ay = AcademicYear::where('aktif', true)->first();
+            // Group by jurusan
+            $byJurusan = [];
+            foreach ($rows as $r) {
+                $kelas   = $r['kelas'] ?? 'Tanpa Kelas';
+                $jurusan = preg_match('/X{0,3}(?:I{1,3}|IV|VI{0,3}|IX|V?I{0,3})?\s+(.+?)\s+-/', $kelas, $m) ? $m[1] : ($kelas !== 'Tanpa Kelas' ? explode(' - ', $kelas)[0] : 'Tanpa Kelas');
+                $byJurusan[$jurusan][] = $r;
+            }
+            $ayLabel = $ay ? "Semester {$ay->semester->value} — TP {$ay->tahun}" : '';
+            $printSettings = PrintSetting::instance();
+            $pdf = Pdf::loadView('reports.ews_siswa', compact('rows', 'byJurusan', 'ayLabel', 'printSettings'))
+                ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+            return $this->pdfResponse($pdf, 'EWS_Siswa.pdf', $request);
+        }
+
+        // Excel export
+        $tmpFile = tempnam(sys_get_temp_dir(), 'ews_siswa_') . '.xlsx';
+        $writer  = new Writer();
+        $writer->openToFile($tmpFile);
+
+        $this->xlsxSetColumnWidths($writer, [1 => 5, 2 => 26, 3 => 12, 4 => 16, 5 => 12, 6 => 14, 7 => 15, 8 => 12, 9 => 15]);
+
+        $writer->addRow(Row::fromValuesWithStyle(['Daftar EWS Siswa'], $this->xlsxTitleStyle()));
+        $writer->addRow(Row::fromValues(['']));
+        $writer->addRow(Row::fromValuesWithStyle(
+            ['No', 'Nama Siswa', 'NIS', 'Kelas', 'Level EWS', 'Kehadiran (%)', 'Karakter (Poin)', 'Catatan (x)', 'Nilai Rata-rata'],
+            $this->xlsxHeaderStyle()
+        ));
+
+        $cellCenter = $this->xlsxCellCenterStyle();
+        $cellText   = $this->xlsxCellStyle();
+        foreach ($rows as $i => $r) {
+            $writer->addRow(new Row([
+                new NumericCell($i + 1, $cellCenter),
+                new StringCell($r['nama'], $cellText),
+                new StringCell($r['nis'], $cellCenter),
+                new StringCell($r['kelas'] ?? '—', $cellCenter),
+                new StringCell(strtoupper($r['level']), $cellCenter),
+                new NumericCell($r['kehadiran_score'], $cellCenter),
+                new NumericCell($r['karakter_score'], $cellCenter),
+                new NumericCell($r['catatan_count'], $cellCenter),
+                new StringCell($r['nilai_score'] ?? '—', $cellCenter),
+            ]));
+        }
+
+        $writer->close();
+        $content = file_get_contents($tmpFile);
+        @unlink($tmpFile);
+
+        return response($content, 200, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="EWS_Siswa.xlsx"',
+        ]);
     }
 
     // ── Batch loaders (untuk index) ───────────────────────────────────────────

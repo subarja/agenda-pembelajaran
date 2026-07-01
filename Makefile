@@ -44,11 +44,13 @@ setup:
 	@echo ""
 	@echo "  Akun login (semua password: password)"
 	@echo "  ─────────────────────────────────────────────"
-	@echo "  Admin    : admin@smkn2cimahi.sch.id"
-	@echo "  Wakasek  : kusman@smkn2cimahi.sch.id"
-	@echo "  Guru     : guru@smkn2cimahi.sch.id"
-	@echo "  WaliKelas: walikelas@smkn2cimahi.sch.id"
-	@echo "  Siswa    : siswa@smkn2cimahi.sch.id"
+	@echo "  Admin      : admin@smkn2cimahi.sch.id"
+	@echo "  Wakasek    : kusman@smkn2cimahi.sch.id"
+	@echo "  Guru       : guru@smkn2cimahi.sch.id"
+	@echo "  Wali Kelas : walikelas@smkn2cimahi.sch.id"
+	@echo "  Guru BK    : bk@smkn2cimahi.sch.id"
+	@echo "  Orang Tua  : orangtua@smkn2cimahi.sch.id"
+	@echo "  Siswa      : siswa@smkn2cimahi.sch.id"
 	@echo ""
 
 # ── SEHARI-HARI ───────────────────────────────────────────────────────────────
@@ -64,11 +66,25 @@ stop:
 reset:
 	docker compose down -v
 
-# Ulangi seeder saja (tanpa hapus & buat ulang tabel)
+# Reset DB — hanya menyisakan akun super admin (admin@smkn2cimahi.sch.id)
+reseed:
+	docker compose exec backend php artisan migrate:fresh --seeder=AdminOnlySeeder --force
+	@echo ""
+	@echo "✓ Database dikosongkan. Hanya akun admin@smkn2cimahi.sch.id yang tersisa."
+	@echo ""
+
+# Reset DB + seed data demo lengkap
+reseed-demo:
+	docker compose exec backend php artisan migrate:fresh --seed --force
+	@echo ""
+	@echo "✓ Database direset dan data demo diisi ulang."
+	@echo ""
+
+# Ulangi seeder saja tanpa drop tabel (untuk debugging seeder)
 seed:
 	docker compose exec backend php artisan db:seed --force
 
 logs:
 	docker compose logs -f
 
-.PHONY: setup start restart stop reset seed logs
+.PHONY: setup start restart stop reset reseed reseed-demo seed logs

@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ChevronRight, RefreshCw, ChevronLeft } from 'lucide-react'
+import { AlertTriangle, ChevronRight, RefreshCw, ChevronLeft, FileText, FileSpreadsheet, Loader2 } from 'lucide-react'
 import { ewsApi } from '@/features/ews/api'
 import type { EwsLevel } from '@/features/ews/types'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import api from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { usePdfPreview } from '@/hooks/usePdfPreview'
+import { useAuthStore } from '@/store/auth'
 
 const LEVEL_CONFIG: Record<EwsLevel, { label: string; bg: string; text: string; border: string; dot: string }> = {
   hijau:  { label: 'Hijau',  bg: 'bg-green-50',  text: 'text-green-700',  border: 'border-green-200', dot: 'bg-green-500'  },
@@ -20,9 +24,13 @@ type PerPage = 25 | 50 | 100 | 'semua'
 
 export default function EwsPage() {
   const navigate = useNavigate()
+  const user     = useAuthStore(s => s.user)
+  const isAdmin  = user?.role === 'admin' || user?.role === 'wakasek'
   const [filterLevel, setFilterLevel] = useState<EwsLevel | null>(null)
   const [perPage, setPerPage]         = useState<PerPage>(25)
   const [page, setPage]               = useState(1)
+  const [exporting, setExporting]     = useState<'excel' | 'pdf' | null>(null)
+  const pdfPreview = usePdfPreview({ printSettings: isAdmin })
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['ews', filterLevel],
@@ -32,8 +40,30 @@ export default function EwsPage() {
   const allStudents = data?.data.data ?? []
   const summary     = data?.data.meta.summary
 
-  // Reset halaman saat filter atau per-page berubah
   useEffect(() => { setPage(1) }, [filterLevel, perPage])
+
+  const handleExport = async (format: 'excel' | 'pdf') => {
+    const params = new URLSearchParams({ format })
+    if (filterLevel) params.set('level', filterLevel)
+
+    if (format === 'pdf') {
+      await pdfPreview.openPreview(`/ews/export?${params.toString()}`, 'EWS_Siswa.pdf')
+      return
+    }
+
+    setExporting(format)
+    try {
+      const resp = await api.get(`/ews/export?${params.toString()}`, { responseType: 'blob' })
+      const url  = URL.createObjectURL(new Blob([resp.data]))
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = 'EWS_Siswa.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExporting(null)
+    }
+  }
 
   const totalItems = allStudents.length
   const totalPages = perPage === 'semua' ? 1 : Math.ceil(totalItems / perPage)
@@ -45,16 +75,32 @@ export default function EwsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="text-xl font-bold">Early Warning System</h1>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
-          Perbarui
-        </button>
+        <div className="flex items-center gap-2">
+          {totalItems > 0 && (
+            <>
+              <Button variant="outline" size="sm" disabled={!!exporting} onClick={() => handleExport('excel')}
+                className="h-8 gap-1.5 text-xs">
+                {exporting === 'excel' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+                Excel
+              </Button>
+              <Button variant="outline" size="sm" disabled={pdfPreview.loading} onClick={() => handleExport('pdf')}
+                className="h-8 gap-1.5 text-xs">
+                {pdfPreview.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                PDF
+              </Button>
+            </>
+          )}
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
+            Perbarui
+          </button>
+        </div>
       </div>
 
       {/* ── Ringkasan per level ─────────────────────────────────────────── */}
@@ -154,8 +200,9 @@ export default function EwsPage() {
       )}
 
       <div className="space-y-2">
-        {displayed.map((s) => {
-          const cfg = LEVEL_CONFIG[s.level]
+        {displayed.map((s, idx) => {
+          const cfg     = LEVEL_CONFIG[s.level]
+          const nomor   = perPage === 'semua' ? idx + 1 : (page - 1) * (perPage as number) + idx + 1
           return (
             <Card
               key={s.student_id}
@@ -164,6 +211,7 @@ export default function EwsPage() {
             >
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-5 text-right shrink-0">{nomor}</span>
                   <div className={cn('h-3 w-3 shrink-0 rounded-full', cfg.dot)} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -235,6 +283,12 @@ export default function EwsPage() {
           </button>
         </div>
       )}
+
+      {pdfPreview.error && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{pdfPreview.error}</div>
+      )}
+      {pdfPreview.modal}
+      {pdfPreview.loadingOverlay}
     </div>
   )
 }

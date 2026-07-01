@@ -1,0 +1,162 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Enums\UserRole;
+use App\Http\Controllers\Controller;
+use App\Models\CharacterManualNote;
+use App\Models\Student;
+use App\Models\User;
+use App\Notifications\ManualNoteSubmittedNotification;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class CharacterManualNoteController extends Controller
+{
+    // POST /character-manual-notes — guru submit catatan manual
+    public function store(Request $request): JsonResponse
+    {
+        $teacher = $request->user()->teacher;
+        abort_if(! $teacher, 403, 'Hanya guru yang dapat menambahkan catatan manual.');
+
+        $data = $request->validate([
+            'student_id' => ['required', 'string'],
+            'catatan'    => ['required', 'string', 'max:1000'],
+            'nilai'      => ['nullable', 'integer', 'min:-20', 'max:20'],
+        ]);
+
+        $student = Student::where('uuid', $data['student_id'])->with('user')->firstOrFail();
+
+        $note = CharacterManualNote::create([
+            'student_id' => $student->id,
+            'teacher_id' => $teacher->id,
+            'catatan'    => $data['catatan'],
+            'nilai'      => $data['nilai'] ?? null,
+            'status'     => 'pending',
+        ]);
+
+        // Notifikasi ke semua admin & wakasek
+        $admins = User::whereIn('role', ['admin', 'wakasek'])->get();
+        foreach ($admins as $admin) {
+            $admin->notify(new ManualNoteSubmittedNotification($note, $student, $request->user()));
+        }
+
+        return response()->json([
+            'message' => 'Catatan manual berhasil dikirim dan menunggu persetujuan admin.',
+            'data'    => $this->formatNote($note->load(['student.user', 'teacher.user'])),
+        ], 201);
+    }
+
+    // GET /character-manual-notes?student_id=xxx — guru & BK/wali kelas lihat per siswa
+    public function index(Request $request): JsonResponse
+    {
+        $request->validate(['student_id' => ['required', 'string']]);
+        $student = Student::where('uuid', $request->student_id)->firstOrFail();
+
+        $notes = CharacterManualNote::where('student_id', $student->id)
+            ->with(['teacher.user', 'reviewer'])
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($n) => $this->formatNote($n));
+
+        return response()->json(['data' => $notes]);
+    }
+
+    // GET /admin/character-manual-notes?status=pending — admin list
+    public function adminIndex(Request $request): JsonResponse
+    {
+        $status = $request->get('status');
+
+        $query = CharacterManualNote::with(['student.user', 'student.schoolClass', 'teacher.user', 'reviewer'])
+            ->orderByDesc('created_at');
+
+        if ($status && $status !== 'all') {
+            $query->where('status', $status);
+        }
+
+        $notes = $query->paginate(25);
+
+        return response()->json([
+            'data' => $notes->map(fn ($n) => $this->formatNote($n)),
+            'meta' => [
+                'total'        => $notes->total(),
+                'current_page' => $notes->currentPage(),
+                'last_page'    => $notes->lastPage(),
+                'per_page'     => $notes->perPage(),
+            ],
+        ]);
+    }
+
+    // PUT /admin/character-manual-notes/{uuid}/review — admin acc/tolak/sesuaikan
+    public function adminReview(Request $request, string $uuid): JsonResponse
+    {
+        $note = CharacterManualNote::where('uuid', $uuid)->with(['student.user', 'student.schoolClass'])->firstOrFail();
+
+        $data = $request->validate([
+            'action'       => ['required', 'in:approve,reject,adjust'],
+            'nilai_final'  => ['required_if:action,adjust', 'nullable', 'integer', 'min:-20', 'max:20'],
+            'admin_catatan'=> ['nullable', 'string', 'max:500'],
+        ]);
+
+        $now = now();
+        $newStatus = match ($data['action']) {
+            'approve' => 'approved',
+            'reject'  => 'rejected',
+            'adjust'  => 'approved',
+        };
+
+        $nilaiFinal = match ($data['action']) {
+            'approve' => $note->nilai,
+            'reject'  => null,
+            'adjust'  => $data['nilai_final'],
+        };
+
+        $note->update([
+            'status'       => $newStatus,
+            'nilai_final'  => $nilaiFinal,
+            'admin_catatan'=> $data['admin_catatan'] ?? null,
+            'reviewed_by'  => $request->user()->id,
+            'reviewed_at'  => $now,
+        ]);
+
+        return response()->json([
+            'message' => match ($data['action']) {
+                'approve' => 'Catatan manual disetujui.',
+                'reject'  => 'Catatan manual ditolak.',
+                'adjust'  => 'Catatan manual disetujui dengan nilai yang disesuaikan.',
+            },
+            'data' => $this->formatNote($note->fresh(['student.user', 'teacher.user', 'reviewer'])),
+        ]);
+    }
+
+    private function formatNote(CharacterManualNote $n): array
+    {
+        $kelas = $n->student?->schoolClass
+            ? $n->student->schoolClass->tingkat->value . ' '
+              . $n->student->schoolClass->jurusan . ' - '
+              . $n->student->schoolClass->rombel
+            : null;
+
+        return [
+            'id'            => (string) $n->id,
+            'uuid'          => $n->uuid,
+            'catatan'       => $n->catatan,
+            'nilai'         => $n->nilai,
+            'nilai_final'   => $n->nilai_final,
+            'status'        => $n->status,
+            'admin_catatan' => $n->admin_catatan,
+            'reviewed_at'   => $n->reviewed_at?->format('Y-m-d H:i'),
+            'student'       => [
+                'id'    => $n->student?->uuid,
+                'nama'  => $n->student?->user?->nama,
+                'nis'   => $n->student?->nis,
+                'kelas' => $kelas,
+            ],
+            'teacher'       => [
+                'id'   => $n->teacher?->uuid,
+                'nama' => $n->teacher?->user?->nama,
+            ],
+            'created_at'    => $n->created_at?->format('Y-m-d H:i'),
+        ];
+    }
+}

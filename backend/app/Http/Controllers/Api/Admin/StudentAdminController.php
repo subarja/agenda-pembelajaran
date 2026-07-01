@@ -22,22 +22,20 @@ class StudentAdminController extends Controller
             ->join('users', 'users.id', '=', 'students.user_id')
             ->select('students.*')
             ->with(['user', 'schoolClass'])
-            ->when($request->search, fn ($q, $s) =>
-                $q->where(fn ($inner) =>
-                    $inner->where('users.nama', 'ilike', "%$s%")
-                          ->orWhere('students.nis', 'ilike', "%$s%")
-                          ->orWhere('students.nisn', 'ilike', "%$s%")
-                )
+            ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->where('users.nama', 'ilike', "%$s%")
+                ->orWhere('students.nis', 'ilike', "%$s%")
+                ->orWhere('students.nisn', 'ilike', "%$s%")
             )
-            ->when($request->class_id, fn ($q, $c) =>
-                $q->whereHas('schoolClass', fn ($sc) => $sc->where('uuid', $c))
             )
-            ->orderByDesc('students.id');
+            ->when($request->class_id, fn ($q, $c) => $q->whereHas('schoolClass', fn ($sc) => $sc->where('uuid', $c))
+            )
+            ->orderBy('users.nama');
 
         $perPageRaw = $request->get('per_page', 25);
         if ($perPageRaw === 'all') {
             $items = $q->get();
-            $n     = $items->count();
+            $n = $items->count();
+
             return response()->json([
                 'data' => $items->map(fn ($s) => $this->format($s)),
                 'meta' => ['total' => $n, 'current_page' => 1, 'last_page' => 1, 'per_page' => $n ?: 1],
@@ -45,6 +43,7 @@ class StudentAdminController extends Controller
         }
 
         $paginated = $q->paginate(min((int) $perPageRaw, 1000));
+
         return response()->json([
             'data' => $paginated->map(fn ($s) => $this->format($s)),
             'meta' => ['total' => $paginated->total(), 'current_page' => $paginated->currentPage(), 'last_page' => $paginated->lastPage(), 'per_page' => $paginated->perPage()],
@@ -54,35 +53,35 @@ class StudentAdminController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'nama'        => ['required', 'string', 'max:100'],
-            'email'       => ['nullable', 'email', 'unique:users,email'],
-            'nis'         => ['required', 'string', 'max:20', 'unique:students,nis'],
-            'nisn'        => ['nullable', 'string', 'max:10', 'unique:students,nisn'],
-            'class_id'    => ['required', 'string'],
-            'angkatan'    => ['nullable', 'integer', 'min:2000'],
-            'wali_nama'   => ['nullable', 'string', 'max:100'],
+            'nama' => ['required', 'string', 'max:100'],
+            'email' => ['nullable', 'email', 'unique:users,email'],
+            'nis' => ['required', 'string', 'max:20', 'unique:students,nis'],
+            'nisn' => ['nullable', 'string', 'max:10', 'unique:students,nisn'],
+            'class_id' => ['required', 'string'],
+            'angkatan' => ['nullable', 'integer', 'min:2000'],
+            'wali_nama' => ['nullable', 'string', 'max:100'],
             'wali_kontak' => ['nullable', 'string', 'max:20'],
-            'password'    => ['nullable', 'string', 'min:8'],
+            'password' => ['nullable', 'string', 'min:8'],
         ]);
 
         $class = SchoolClass::where('uuid', $data['class_id'])->firstOrFail();
 
         $student = DB::transaction(function () use ($data, $class) {
-            $email = $data['email'] ?? ($data['nis'] . '@smkn2cimahi.sch.id');
-            $user  = User::create([
-                'nama'     => $data['nama'],
-                'email'    => $email,
+            $email = $data['email'] ?? ($data['nis'].'@smkn2cimahi.sch.id');
+            $user = User::create([
+                'nama' => $data['nama'],
+                'email' => $email,
                 'password' => $data['password'] ?? 'password',
-                'role'     => UserRole::Siswa,
-                'status'   => UserStatus::Aktif,
+                'role' => UserRole::Siswa,
+                'status' => UserStatus::Aktif,
             ]);
             $student = Student::create([
-                'user_id'     => $user->id,
-                'nis'         => $data['nis'],
-                'nisn'        => $data['nisn'] ?? null,
-                'class_id'    => $class->id,
-                'angkatan'    => $data['angkatan'] ?? null,
-                'wali_nama'   => $data['wali_nama'] ?? null,
+                'user_id' => $user->id,
+                'nis' => $data['nis'],
+                'nisn' => $data['nisn'] ?? null,
+                'class_id' => $class->id,
+                'angkatan' => $data['angkatan'] ?? null,
+                'wali_nama' => $data['wali_nama'] ?? null,
                 'wali_kontak' => $data['wali_kontak'] ?? null,
             ]);
 
@@ -106,35 +105,51 @@ class StudentAdminController extends Controller
         $student = Student::where('uuid', $uuid)->with(['user', 'schoolClass'])->firstOrFail();
 
         $data = $request->validate([
-            'nama'        => ['sometimes', 'string', 'max:100'],
-            'email'       => ['sometimes', 'email', 'unique:users,email,' . $student->user_id],
-            'nis'         => ['sometimes', 'string', 'max:20', 'unique:students,nis,' . $student->id],
-            'nisn'        => ['nullable', 'string', 'max:10', 'unique:students,nisn,' . $student->id],
-            'class_id'    => ['sometimes', 'string'],
-            'angkatan'    => ['nullable', 'integer'],
-            'wali_nama'   => ['nullable', 'string', 'max:100'],
+            'nama' => ['sometimes', 'string', 'max:100'],
+            'email' => ['sometimes', 'email', 'unique:users,email,'.$student->user_id],
+            'nis' => ['sometimes', 'string', 'max:20', 'unique:students,nis,'.$student->id],
+            'nisn' => ['nullable', 'string', 'max:10', 'unique:students,nisn,'.$student->id],
+            'class_id' => ['sometimes', 'string'],
+            'angkatan' => ['nullable', 'integer'],
+            'wali_nama' => ['nullable', 'string', 'max:100'],
             'wali_kontak' => ['nullable', 'string', 'max:20'],
-            'status'      => ['sometimes', 'in:aktif,nonaktif'],
-            'password'    => ['nullable', 'string', 'min:8'],
+            'status' => ['sometimes', 'in:aktif,nonaktif'],
+            'password' => ['nullable', 'string', 'min:8'],
         ]);
 
         DB::transaction(function () use ($student, $data) {
             $userFields = array_filter([
-                'nama'     => $data['nama'] ?? null,
-                'email'    => $data['email'] ?? null,
-                'status'   => isset($data['status']) ? UserStatus::from($data['status']) : null,
+                'nama' => $data['nama'] ?? null,
+                'email' => $data['email'] ?? null,
+                'status' => isset($data['status']) ? UserStatus::from($data['status']) : null,
                 'password' => $data['password'] ?? null,
             ]);
-            if (! empty($userFields)) $student->user->update($userFields);
+            if (! empty($userFields)) {
+                $student->user->update($userFields);
+            }
 
             $sFields = [];
-            if (isset($data['nis']))         $sFields['nis']         = $data['nis'];
-            if (array_key_exists('nisn', $data)) $sFields['nisn']    = $data['nisn'];
-            if (isset($data['class_id']))    $sFields['class_id']    = SchoolClass::where('uuid', $data['class_id'])->value('id');
-            if (isset($data['angkatan']))    $sFields['angkatan']    = $data['angkatan'];
-            if (array_key_exists('wali_nama', $data))   $sFields['wali_nama']   = $data['wali_nama'];
-            if (array_key_exists('wali_kontak', $data)) $sFields['wali_kontak'] = $data['wali_kontak'];
-            if (! empty($sFields)) $student->update($sFields);
+            if (isset($data['nis'])) {
+                $sFields['nis'] = $data['nis'];
+            }
+            if (array_key_exists('nisn', $data)) {
+                $sFields['nisn'] = $data['nisn'];
+            }
+            if (isset($data['class_id'])) {
+                $sFields['class_id'] = SchoolClass::where('uuid', $data['class_id'])->value('id');
+            }
+            if (isset($data['angkatan'])) {
+                $sFields['angkatan'] = $data['angkatan'];
+            }
+            if (array_key_exists('wali_nama', $data)) {
+                $sFields['wali_nama'] = $data['wali_nama'];
+            }
+            if (array_key_exists('wali_kontak', $data)) {
+                $sFields['wali_kontak'] = $data['wali_kontak'];
+            }
+            if (! empty($sFields)) {
+                $student->update($sFields);
+            }
         });
 
         return response()->json(['message' => 'Data siswa diperbarui.', 'data' => $this->format($student->fresh(['user', 'schoolClass']))]);
@@ -154,18 +169,18 @@ class StudentAdminController extends Controller
     private function format(Student $s): array
     {
         return [
-            'id'          => $s->uuid,
-            'nama'        => $s->user->nama,
-            'email'       => $s->user->email,
-            'status'      => $s->user->status->value,
-            'nis'         => $s->nis,
-            'nisn'        => $s->nisn,
-            'angkatan'    => $s->angkatan,
-            'wali_nama'   => $s->wali_nama,
+            'id' => $s->uuid,
+            'nama' => $s->user->nama,
+            'email' => $s->user->email,
+            'status' => $s->user->status->value,
+            'nis' => $s->nis,
+            'nisn' => $s->nisn,
+            'angkatan' => $s->angkatan,
+            'wali_nama' => $s->wali_nama,
             'wali_kontak' => $s->wali_kontak,
-            'kelas'       => $s->schoolClass ? [
-                'id'    => $s->schoolClass->uuid,
-                'label' => $s->schoolClass->tingkat->value . ' ' . $s->schoolClass->jurusan . ' - ' . $s->schoolClass->rombel,
+            'kelas' => $s->schoolClass ? [
+                'id' => $s->schoolClass->uuid,
+                'label' => $s->schoolClass->tingkat->value.' '.$s->schoolClass->jurusan.' - '.$s->schoolClass->rombel,
             ] : null,
         ];
     }

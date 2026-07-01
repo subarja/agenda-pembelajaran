@@ -61,12 +61,12 @@ class DatabaseSeeder extends Seeder
             'mapel_utama' => 'Pemrograman Web',
         ]);
 
-        // ── Wali Kelas ─────────────────────────────────────────────────────────
+        // ── Wali Kelas demo — role=guru, kapabilitas dari SchoolClass.wali_kelas_id ──
         $wali = User::create([
             'nama'     => 'Siti Rahayu, S.Pd.',
             'email'    => 'walikelas@smkn2cimahi.sch.id',
             'password' => Hash::make('password'),
-            'role'     => UserRole::WaliKelas,
+            'role'     => UserRole::Guru,
             'status'   => UserStatus::Aktif,
         ]);
         Teacher::create([
@@ -133,13 +133,24 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        // ── BK (Bimbingan Konseling) ───────────────────────────────────────────
-        User::create([
-            'nama'     => 'Bimbingan Konseling',
+        // ── Wali Kelas sekarang role=guru (kapabilitas dari SchoolClass.wali_kelas_id)
+        // Ubah role wali di atas agar konsisten (wali sudah create sebagai WaliKelas, migration nanti yg migrate)
+
+        // ── Guru BK demo — role=guru, is_bk=true ──────────────────────────────
+        $bkUser = User::create([
+            'nama'     => 'Dewi Rahayu, S.Pd.',
             'email'    => 'bk@smkn2cimahi.sch.id',
             'password' => Hash::make('password'),
-            'role'     => UserRole::BK,
+            'role'     => UserRole::Guru,
             'status'   => UserStatus::Aktif,
+            'nomor_hp' => '081234567892',
+        ]);
+        Teacher::create([
+            'user_id'        => $bkUser->id,
+            'nip'            => '198803152015042001',
+            'mapel_utama'    => 'Bimbingan Konseling',
+            'gelar_belakang' => 'S.Pd.',
+            'is_bk'          => true,
         ]);
 
         // ── Orang Tua (linked ke Ahmad Fauzi, dibuat setelah student tersedia) ─

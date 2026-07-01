@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
+use App\Models\AcademicYear;
 use App\Models\AuditLog;
 use App\Models\Student;
 use App\Models\Teacher;
@@ -30,6 +32,22 @@ class AuthController extends Controller
                 'message' => 'Akun Anda dinonaktifkan. Hubungi administrator.',
             ], 403);
         }
+
+        if ($request->academic_year_id) {
+            $ay = AcademicYear::where('uuid', $request->academic_year_id)->firstOrFail();
+            $user->update(['current_academic_year_id' => $ay->id]);
+        } elseif (AcademicYear::exists()) {
+            // Semester sudah ada di sistem tapi tidak dipilih — wajib pilih salah satu.
+            return response()->json(['message' => 'Semester wajib dipilih.'], 422);
+        } elseif ($user->role !== UserRole::Admin) {
+            // Belum ada semester sama sekali (instalasi baru) — hanya admin yang boleh
+            // masuk tanpa memilih semester, supaya bisa membuat tahun ajaran pertama.
+            return response()->json([
+                'message' => 'Sistem belum memiliki tahun ajaran. Hubungi admin untuk membuat tahun ajaran pertama.',
+            ], 422);
+        }
+        // Admin diizinkan login tanpa memilih semester saat instalasi baru (belum ada
+        // tahun ajaran sama sekali), supaya bisa membuat tahun ajaran pertama.
 
         $deviceName = $request->device_name ?? ($request->userAgent() ?? 'unknown');
         $token      = $user->createToken($deviceName)->plainTextToken;

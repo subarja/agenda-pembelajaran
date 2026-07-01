@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
+import { usePdfPreview } from '@/hooks/usePdfPreview'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const LEVEL_BADGE: Record<EwsLevel, 'hijau' | 'kuning' | 'oranye' | 'merah'> = {
@@ -58,6 +59,7 @@ export default function EwsDetailPage() {
   const isWali  = ['wali_kelas', 'admin', 'wakasek', 'bk'].includes(role)
 
   const [activeDim, setActiveDim] = useState<DimKey | null>(null)
+  const pdfPreview = usePdfPreview({ printSettings: isAdmin })
 
   const { data, isLoading } = useQuery({
     queryKey: ['ews-detail', studentId],
@@ -67,27 +69,20 @@ export default function EwsDetailPage() {
 
   const d = data?.data.data
 
-  // ── Blob download laporan utama ────────────────────────────────────────────
+  // ── Preview + simpan laporan utama ─────────────────────────────────────────
   async function downloadHandlingReport() {
-    const resp = await api.get(`/students/${studentId}/handling-report`, { responseType: 'blob' })
-    triggerDownload(new Blob([resp.data], { type: 'application/pdf' }), `Riwayat_Penanganan_${d?.student.nama ?? studentId}.pdf`)
+    await pdfPreview.openPreview(
+      `/students/${studentId}/handling-report`,
+      `Riwayat_Penanganan_${d?.student.nama ?? studentId}.pdf`
+    )
   }
 
-  // ── Blob download PDF dimensi ──────────────────────────────────────────────
+  // ── Preview + simpan PDF dimensi ───────────────────────────────────────────
   async function downloadDimPdf(dim: DimKey) {
-    const resp = await api.get(`/ews/${studentId}/pdf`, { params: { dim }, responseType: 'blob' })
-    triggerDownload(new Blob([resp.data], { type: 'application/pdf' }), `EWS_${dim}_${d?.student.nama ?? studentId}.pdf`)
-  }
-
-  function triggerDownload(blob: Blob, filename: string) {
-    const url = URL.createObjectURL(blob)
-    const a   = document.createElement('a')
-    a.href    = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    await pdfPreview.openPreview(
+      `/ews/${studentId}/pdf?dim=${dim}`,
+      `EWS_${dim}_${d?.student.nama ?? studentId}.pdf`
+    )
   }
 
   if (isLoading) return (
@@ -107,7 +102,7 @@ export default function EwsDetailPage() {
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
         <h1 className="text-xl font-bold">Detail EWS</h1>
         <div className="ml-auto">
-          <Button variant="outline" size="sm" onClick={downloadHandlingReport}>
+          <Button variant="outline" size="sm" onClick={downloadHandlingReport} disabled={pdfPreview.loading}>
             <FileDown className="mr-1 h-4 w-4" />Laporan
           </Button>
         </div>
@@ -240,6 +235,12 @@ export default function EwsDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {pdfPreview.error && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{pdfPreview.error}</div>
+      )}
+      {pdfPreview.modal}
+      {pdfPreview.loadingOverlay}
     </div>
   )
 }

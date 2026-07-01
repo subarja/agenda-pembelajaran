@@ -1,9 +1,16 @@
 <!DOCTYPE html>
 <html lang="id">
 <head><meta charset="UTF-8">
+@php
+  $ps = $printSettings ?? null;
+  $mTop = $ps->margin_top ?? 1; $mBottom = $ps->margin_bottom ?? 1;
+  $mLeft = $ps->margin_left ?? 2; $mRight = $ps->margin_right ?? 2;
+  $kopWidth = $ps->kop_width_percent ?? 100;
+  $kopAlign = $ps->kop_position ?? 'center';
+@endphp
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
-body { font-family:Arial,sans-serif; font-size:11pt; color:#1a1a1a; margin:1cm 2cm 1cm 2cm; }
+body { font-family:Arial,sans-serif; font-size:11pt; color:#1a1a1a; margin:{{ $mTop }}cm {{ $mRight }}cm {{ $mBottom }}cm {{ $mLeft }}cm; }
 .judul { text-align:center; margin:10px 0 8px; }
 .judul h2 { font-size:12pt; font-weight:bold; text-transform:uppercase; }
 .judul p  { font-size:9pt; color:#555; margin-top:2px; }
@@ -24,8 +31,8 @@ table.data tr:nth-child(even) td { background:#f8fafc; }
 <body>
 
 {{-- KOP SURAT --}}
-<div style="text-align:center; margin-bottom:8px;">
-  <img src="file://{{ public_path('images/kop_surat.jpg') }}" style="display:inline-block; max-width:100%; height:auto;" alt="Kop SMKN 2 Cimahi">
+<div style="text-align:{{ $kopAlign }}; margin-bottom:8px;">
+  <img src="file://{{ public_path('images/kop_surat.jpg') }}" style="display:inline-block; width:{{ $kopWidth }}%; height:auto;" alt="Kop SMKN 2 Cimahi">
 </div>
 <div style="border-top:3px solid #000; border-bottom:1px solid #000; margin-bottom:12px;"></div>
 

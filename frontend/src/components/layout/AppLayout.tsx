@@ -12,8 +12,10 @@ export default function AppLayout() {
       {/* Mobile top bar */}
       <TopBar />
 
-      {/* Main content */}
-      <main className="md:pl-64 pb-16 md:pb-0">
+      {/* Main content — pb-24 (bukan pb-16) beri ruang ekstra utk bottom nav yang kini
+          punya padding safe-area-inset-bottom (notch/home-indicator HP), supaya konten
+          terakhir tidak ketutup nav di iPhone/Android bezel-less. */}
+      <main className="md:pl-64 pb-24 md:pb-0">
         <div className="p-4 md:p-6">
           <Outlet />
         </div>

@@ -2,11 +2,18 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
+@php
+  $ps = $printSettings ?? null;
+  $mTop = $ps->margin_top ?? 1; $mBottom = $ps->margin_bottom ?? 1;
+  $mLeft = $ps->margin_left ?? 2; $mRight = $ps->margin_right ?? 2;
+  $kopWidth = $ps->kop_width_percent ?? 100;
+  $kopAlign = $ps->kop_position ?? 'center';
+@endphp
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; margin: 1cm 2cm 1cm 2cm; }
-  .kop { text-align: center; margin-bottom: 8px; }
-  .kop img { display: inline-block; max-width: 100%; height: auto; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; margin: {{ $mTop }}cm {{ $mRight }}cm {{ $mBottom }}cm {{ $mLeft }}cm; }
+  .kop { text-align: {{ $kopAlign }}; margin-bottom: 8px; }
+  .kop img { display: inline-block; width: {{ $kopWidth }}%; height: auto; }
   .kop-garis { border-top: 3px solid #000; border-bottom: 1px solid #000; margin-bottom: 12px; }
   .judul-laporan { font-size: 13px; font-weight: bold; margin-bottom: 6px; }
   .meta { font-size: 10px; color: #64748b; border-bottom: 1px solid #e2e8f0; margin-bottom: 12px; padding-bottom: 8px; }

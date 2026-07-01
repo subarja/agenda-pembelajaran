@@ -3,6 +3,12 @@
 @section('title', 'Rekap Kehadiran Siswa')
 
 @section('meta')
+  @if($guruNama ?? null)
+  <span><strong>Guru:</strong> {{ $guruNama }}</span>
+  <span><strong>NIP:</strong> {{ $guruNip }}</span>
+  @if($mapelGuru ?? null)<span><strong>Mapel:</strong> {{ $mapelGuru }}</span>@endif
+  <br>
+  @endif
   <span><strong>Kelas:</strong> {{ $kelas }}</span>
   <span><strong>Periode:</strong> {{ $periode }}</span>
   <span><strong>Total Sesi:</strong> {{ $totalSesi }}</span>

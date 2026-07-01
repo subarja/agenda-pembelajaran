@@ -4,7 +4,7 @@ import {
   BookOpen, ClipboardCheck, Star, AlertTriangle,
   Users, GraduationCap, School, ShieldCheck,
   ChevronRight, TrendingUp, Bell, Heart, TrendingDown,
-  Clock, CheckCircle2, XCircle, Info,
+  Clock, CheckCircle2, XCircle, Info, BarChart3, Calendar,
 } from 'lucide-react'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared: stat card kecil
+// Shared: stat card kecil (outline style)
 // ─────────────────────────────────────────────────────────────────────────────
 function StatCard({
   icon: Icon, label, value, color, bg, onClick,
@@ -30,6 +30,29 @@ function StatCard({
         <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
       </CardContent>
     </Card>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared: stat card gradient berwarna
+// ─────────────────────────────────────────────────────────────────────────────
+function GradCard({
+  icon: Icon, label, value, gradient, onClick,
+}: {
+  icon: React.ElementType; label: string; value: string | number
+  gradient: string; onClick?: () => void
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className={`rounded-xl p-4 text-white shadow-sm ${gradient} ${onClick ? 'cursor-pointer hover:brightness-105 transition-all' : ''}`}
+    >
+      <div className="flex items-start justify-between mb-2">
+        <Icon className="h-6 w-6 opacity-80" />
+      </div>
+      <p className="text-3xl font-bold leading-none">{value}</p>
+      <p className="text-xs mt-1.5 opacity-85">{label}</p>
+    </div>
   )
 }
 
@@ -188,6 +211,7 @@ function AdminDashboard() {
               { label: 'Kelola Guru',              path: '/admin',    state: 0 },
               { label: 'Kelola Siswa',             path: '/admin',    state: 1 },
               { label: 'Kelola Jadwal',            path: '/admin',    state: 4 },
+              { label: 'Kalender & Hari Efektif',  path: '/kalender', state: 0 },
             ].map((item) => (
               <button
                 key={item.label}
@@ -211,6 +235,7 @@ function AdminDashboard() {
 function WaliKelasDashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
+  const kap  = user?.kapabilitas
 
   const { data: ewsData } = useQuery({
     queryKey: ['ews-wali'],
@@ -223,27 +248,41 @@ function WaliKelasDashboard() {
 
   const ewsSummary  = ewsData?.meta?.summary ?? {}
   const ewsKritis   = (ewsSummary.merah ?? 0) + (ewsSummary.oranye ?? 0)
+  const ewsKuning   = ewsSummary.kuning ?? 0
+  const ewsHijau    = ewsSummary.hijau ?? 0
+  const totalSiswa  = ewsData?.meta?.total ?? '—'
   const urgentList  = (ewsData?.data ?? [])
     .filter((s: any) => ['merah', 'oranye'].includes(s.level))
-    .slice(0, 5)
+    .slice(0, 6)
   const todaySchedules = scheduleData?.data ?? []
   const belumIsi = todaySchedules.filter((s: any) => !s.agenda_hari_ini).length
 
+  const kelasLabel = kap?.wali_kelas_class?.label
+    ?? (user?.role === 'wali_kelas' ? 'Wali Kelas' : undefined)
+
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold">Pantau Kelas Anda</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Halo, <span className="font-medium">{user?.nama}</span> — Wali Kelas
+      {/* Header banner */}
+      <div className="rounded-xl bg-gradient-to-r from-primary-700 to-primary-500 px-5 py-4 text-white shadow-sm">
+        <p className="text-xs font-medium opacity-80 mb-0.5">Selamat datang,</p>
+        <h1 className="text-lg font-bold leading-tight">{user?.nama}</h1>
+        <p className="text-sm opacity-85 mt-0.5">
+          Wali Kelas{kelasLabel ? ` · ${kelasLabel}` : ''} · SMK Negeri 2 Cimahi
         </p>
       </div>
 
-      {/* EWS ringkasan */}
+      {/* Stat cards bergradient */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard icon={AlertTriangle} label="EWS Kritis"  value={ewsKritis}                  color="text-red-600"    bg="bg-red-50"    onClick={() => navigate('/ews')} />
-        <StatCard icon={TrendingUp}    label="EWS Kuning"  value={ewsSummary.kuning ?? 0}     color="text-yellow-600" bg="bg-yellow-50" onClick={() => navigate('/ews')} />
-        <StatCard icon={Star}          label="EWS Hijau"   value={ewsSummary.hijau  ?? 0}     color="text-green-600"  bg="bg-green-50" />
-        <StatCard icon={Users}         label="Total Siswa" value={ewsData?.meta?.total ?? '—'} color="text-blue-600"   bg="bg-blue-50" />
+        <GradCard icon={AlertTriangle} label="EWS Kritis"  value={ewsKritis}
+          gradient="bg-gradient-to-br from-red-500 to-red-700"
+          onClick={() => navigate('/ews')} />
+        <GradCard icon={TrendingUp}    label="EWS Kuning"  value={ewsKuning}
+          gradient="bg-gradient-to-br from-amber-400 to-orange-500"
+          onClick={() => navigate('/ews')} />
+        <GradCard icon={Star}          label="EWS Hijau"   value={ewsHijau}
+          gradient="bg-gradient-to-br from-green-500 to-emerald-700" />
+        <GradCard icon={Users}         label="Total Siswa" value={totalSiswa}
+          gradient="bg-gradient-to-br from-blue-500 to-indigo-700" />
       </div>
 
       {/* Siswa perlu perhatian */}
@@ -251,25 +290,37 @@ function WaliKelasDashboard() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+              </span>
               Siswa Perlu Perhatian
             </CardTitle>
-            <button onClick={() => navigate('/ews')} className="flex items-center gap-1 text-xs text-primary hover:underline">
+            <button onClick={() => navigate('/ews')} className="flex items-center gap-1 text-xs text-primary hover:underline font-medium">
               EWS Lengkap <ChevronRight className="h-3.5 w-3.5" />
             </button>
           </div>
         </CardHeader>
         <CardContent>
           {urgentList.length === 0
-            ? <p className="text-sm text-muted-foreground text-center py-4">Tidak ada siswa dengan status kritis.</p>
+            ? (
+              <div className="flex flex-col items-center py-6 gap-2 text-center">
+                <CheckCircle2 className="h-8 w-8 text-green-500" />
+                <p className="text-sm text-muted-foreground">Tidak ada siswa dengan status kritis.</p>
+              </div>
+            )
             : (
-              <div className="space-y-2">
-                {urgentList.map((s: any) => (
-                  <div key={s.student_id} onClick={() => navigate(`/ews/${s.student_id}`)}
-                    className="flex items-center justify-between rounded-lg border px-3 py-2 hover:bg-muted/50 cursor-pointer">
-                    <div>
-                      <p className="text-sm font-medium">{s.nama}</p>
-                      <p className="text-xs text-muted-foreground">{s.kelas}</p>
+              <div className="divide-y divide-border -mx-1">
+                {urgentList.map((s: any, i: number) => (
+                  <div key={s.student_id}
+                    onClick={() => navigate(`/ews/${s.student_id}`)}
+                    className="flex items-center justify-between px-1 py-2.5 hover:bg-muted/40 cursor-pointer rounded-md transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">{i + 1}</span>
+                      <div>
+                        <p className="text-sm font-medium leading-tight">{s.nama}</p>
+                        <p className="text-xs text-muted-foreground">{s.kelas}</p>
+                      </div>
                     </div>
                     <Badge className={LEVEL_BADGE[s.level]}>{s.level}</Badge>
                   </div>
@@ -284,7 +335,10 @@ function WaliKelasDashboard() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Jadwal Hari Ini</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              Jadwal Mengajar Hari Ini
+            </CardTitle>
             {belumIsi > 0 && (
               <Badge className="bg-orange-100 text-orange-700">{belumIsi} belum diisi</Badge>
             )}
@@ -296,18 +350,18 @@ function WaliKelasDashboard() {
             : (
               <div className="space-y-2">
                 {todaySchedules.map((s: any) => (
-                  <div key={s.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-medium">{s.subject?.nama}</p>
+                  <div key={s.id} className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5 gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{s.subject?.nama}</p>
                       <p className="text-xs text-muted-foreground">
                         {s.class?.label} · {s.jam_mulai?.slice(0,5)}–{s.jam_selesai?.slice(0,5)}
                       </p>
                     </div>
                     {s.agenda_hari_ini
-                      ? <Badge className="bg-green-100 text-green-700">Sudah diisi</Badge>
+                      ? <Badge className="bg-green-100 text-green-700 shrink-0">✓ Sudah diisi</Badge>
                       : (
                         <button onClick={() => navigate(`/agenda/baru?schedule=${s.id}`)}
-                          className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-white hover:bg-primary/90">
+                          className="shrink-0 rounded-md bg-primary-600 px-3 py-1 text-xs font-medium text-white hover:bg-primary-700 transition-colors">
                           Isi Agenda
                         </button>
                       )
@@ -319,6 +373,27 @@ function WaliKelasDashboard() {
           }
         </CardContent>
       </Card>
+
+      {/* Aksi Cepat Wali Kelas */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Aksi Cepat</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-2">
+          {[
+            { label: 'Presensi Harian', path: '/presensi-harian', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+            { label: 'EWS Siswa',       path: '/ews',             color: 'bg-red-50 text-red-700 border-red-200' },
+            { label: 'Data Siswa',      path: '/siswa',           color: 'bg-blue-50 text-blue-700 border-blue-200' },
+            { label: 'Laporan Kelas',   path: '/laporan',         color: 'bg-green-50 text-green-700 border-green-200' },
+          ].map(a => (
+            <button key={a.label} onClick={() => navigate(a.path)}
+              className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors hover:brightness-95 ${a.color}`}>
+              {a.label}
+              <ChevronRight className="h-4 w-4 opacity-60" />
+            </button>
+          ))}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -326,6 +401,65 @@ function WaliKelasDashboard() {
 // ─────────────────────────────────────────────────────────────────────────────
 // GURU DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
+function HariEfektifWidget() {
+  const navigate = useNavigate()
+  const { data } = useQuery<{
+    data: { class_id: string; class_label: string; total_minggu: number; total_efektif: number; total_mapel: number }[]
+    academic_year: { id: string; tahun: string; semester: string } | null
+  }>({
+    queryKey: ['effective-weeks-my'],
+    queryFn: () => api.get('/effective-days/my-minggu').then(r => r.data),
+    staleTime: 10 * 60 * 1000,
+  })
+  const classes = data?.data ?? []
+  const ay      = data?.academic_year
+  if (classes.length === 0) return null
+
+  const totalMinggu  = classes.reduce((s, c) => s + c.total_minggu, 0)
+  const totalEfektif = classes.reduce((s, c) => s + c.total_efektif, 0)
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" /> Minggu Efektif
+          </CardTitle>
+          <button onClick={() => navigate('/hari-efektif')}
+            className="flex items-center gap-1 text-xs text-primary hover:underline">
+            Detail <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        {ay && (
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Semester {ay.semester === 'ganjil' ? 'Ganjil' : 'Genap'} — TP {ay.tahun}
+          </p>
+        )}
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-4 mb-3">
+          <div>
+            <div className="text-2xl font-bold text-primary">{totalEfektif}</div>
+            <div className="text-xs text-muted-foreground">dari {totalMinggu} total minggu</div>
+          </div>
+          <button onClick={() => navigate('/kalender')}
+            className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-primary border rounded-md px-2 py-1.5">
+            <Calendar className="h-3.5 w-3.5" /> Lihat Kalender
+          </button>
+        </div>
+        <div className="space-y-1.5">
+          {classes.map(c => (
+            <div key={c.class_id} className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground truncate">{c.class_label}</span>
+              <span className="font-semibold text-primary ml-2 shrink-0">{c.total_efektif}/{c.total_minggu}</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function GuruDashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
@@ -408,6 +542,9 @@ function GuruDashboard() {
           color="text-green-600" bg="bg-green-50"
         />
       </div>
+
+      {/* Widget Hari Efektif */}
+      <HariEfektifWidget />
 
       {/* Agenda terbaru */}
       {recentAgendas.length > 0 && (
@@ -505,47 +642,100 @@ function WakasekDashboard() {
 function BkDashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
-  const { data: ewsData } = useQuery({ queryKey: ['ews-summary'], queryFn: () => api.get('/ews').then(r => r.data) })
+  const { data: ewsData } = useQuery({ queryKey: ['ews-bk'], queryFn: () => api.get('/ews').then(r => r.data) })
 
   const urgentList = (ewsData?.data ?? []).filter((s: any) => ['merah','oranye'].includes(s.level))
   const ewsSummary = ewsData?.meta?.summary ?? {}
+  const ewsKritis  = (ewsSummary.merah ?? 0) + (ewsSummary.oranye ?? 0)
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold">Bimbingan & Konseling</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Halo, <span className="font-medium">{user?.nama}</span></p>
+      {/* Header banner */}
+      <div className="rounded-xl bg-gradient-to-r from-teal-700 to-teal-500 px-5 py-4 text-white shadow-sm">
+        <p className="text-xs font-medium opacity-80 mb-0.5">Selamat datang,</p>
+        <h1 className="text-lg font-bold leading-tight">{user?.nama}</h1>
+        <p className="text-sm opacity-85 mt-0.5">Guru BK · SMK Negeri 2 Cimahi</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard icon={AlertTriangle} label="Oranye + Merah" value={(ewsSummary.merah ?? 0) + (ewsSummary.oranye ?? 0)} color="text-red-600" bg="bg-red-50" onClick={() => navigate('/ews')} />
-        <StatCard icon={Users}         label="Total Terpantau" value={(ewsData?.meta?.total ?? 0)} color="text-blue-600" bg="bg-blue-50" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <GradCard icon={AlertTriangle} label="Butuh Intervensi" value={ewsKritis}
+          gradient="bg-gradient-to-br from-red-500 to-red-700"
+          onClick={() => navigate('/ews')} />
+        <GradCard icon={TrendingUp}    label="EWS Kuning"       value={ewsSummary.kuning ?? 0}
+          gradient="bg-gradient-to-br from-amber-400 to-orange-500"
+          onClick={() => navigate('/ews')} />
+        <GradCard icon={Star}          label="EWS Hijau"        value={ewsSummary.hijau ?? 0}
+          gradient="bg-gradient-to-br from-green-500 to-emerald-700" />
+        <GradCard icon={Users}         label="Total Terpantau"  value={ewsData?.meta?.total ?? 0}
+          gradient="bg-gradient-to-br from-teal-500 to-teal-700" />
       </div>
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Antrian Intervensi</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+              </span>
+              Antrian Intervensi
+            </CardTitle>
+            <button onClick={() => navigate('/ews')} className="flex items-center gap-1 text-xs text-primary hover:underline font-medium">
+              EWS Lengkap <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </CardHeader>
         <CardContent>
           {urgentList.length === 0
-            ? <p className="text-sm text-muted-foreground text-center py-4">Tidak ada siswa dengan status kritis saat ini.</p>
+            ? (
+              <div className="flex flex-col items-center py-6 gap-2 text-center">
+                <CheckCircle2 className="h-8 w-8 text-green-500" />
+                <p className="text-sm text-muted-foreground">Tidak ada siswa dengan status kritis saat ini.</p>
+              </div>
+            )
             : (
-              <div className="space-y-2">
-                {urgentList.slice(0,8).map((s: any) => (
-                  <div key={s.student_id} onClick={() => navigate(`/siswa/${s.student_id}/rekap`)} className="flex items-center justify-between rounded-lg border px-3 py-2 hover:bg-muted/50 cursor-pointer">
-                    <div>
-                      <p className="text-sm font-medium">{s.nama}</p>
-                      <p className="text-xs text-muted-foreground">{s.kelas}</p>
+              <div className="divide-y divide-border -mx-1">
+                {urgentList.slice(0, 8).map((s: any, i: number) => (
+                  <div key={s.student_id} onClick={() => navigate(`/siswa/${s.student_id}/rekap`)}
+                    className="flex items-center justify-between px-1 py-2.5 hover:bg-muted/40 cursor-pointer rounded-md transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">{i + 1}</span>
+                      <div>
+                        <p className="text-sm font-medium leading-tight">{s.nama}</p>
+                        <p className="text-xs text-muted-foreground">{s.kelas}</p>
+                      </div>
                     </div>
                     <div className="text-right">
                       <Badge className={LEVEL_BADGE[s.level]}>{s.level}</Badge>
-                      <p className="text-xs text-muted-foreground mt-0.5">hadir {s.kehadiran_score?.toFixed(0)}%</p>
+                      {s.kehadiran_score !== undefined && (
+                        <p className="text-xs text-muted-foreground mt-0.5">hadir {s.kehadiran_score?.toFixed(0)}%</p>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             )
           }
+        </CardContent>
+      </Card>
+
+      {/* Aksi cepat BK */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Aksi Cepat</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-2">
+          {[
+            { label: 'Catatan BK',  path: '/catatan-bk', color: 'bg-teal-50 text-teal-700 border-teal-200' },
+            { label: 'EWS Siswa',   path: '/ews',        color: 'bg-red-50 text-red-700 border-red-200' },
+            { label: 'Data Siswa',  path: '/siswa',      color: 'bg-blue-50 text-blue-700 border-blue-200' },
+            { label: 'Laporan',     path: '/laporan',    color: 'bg-green-50 text-green-700 border-green-200' },
+          ].map(a => (
+            <button key={a.label} onClick={() => navigate(a.path)}
+              className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors hover:brightness-95 ${a.color}`}>
+              {a.label}
+              <ChevronRight className="h-4 w-4 opacity-60" />
+            </button>
+          ))}
         </CardContent>
       </Card>
     </div>
@@ -1142,10 +1332,18 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user)
   if (!user) return null
 
+  const kap = user.kapabilitas
+
   switch (user.role) {
     case 'admin':      return <AdminDashboard />
     case 'wakasek':    return <WakasekDashboard />
-    case 'guru':       return <GuruDashboard />
+    case 'guru': {
+      // Route guru ke dashboard sesuai kapabilitas
+      if (kap?.is_wali_kelas && kap?.is_bk) return <WaliKelasDashboard />  // tampilkan wali kelas (lebih rich)
+      if (kap?.is_wali_kelas) return <WaliKelasDashboard />
+      if (kap?.is_bk)         return <BkDashboard />
+      return <GuruDashboard />
+    }
     case 'wali_kelas': return <WaliKelasDashboard />
     case 'bk':         return <BkDashboard />
     case 'orang_tua':  return <OrangTuaDashboard />

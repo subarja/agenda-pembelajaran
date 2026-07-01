@@ -21,6 +21,11 @@ import StudentRekapPage from '@/pages/StudentRekapPage'
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage'
 import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import TeacherEwsPage from '@/pages/TeacherEwsPage'
+import StudentCaseNotesPage from '@/pages/StudentCaseNotesPage'
+import KalenderPage from '@/pages/KalenderPage'
+import HariEfektifPage from '@/pages/HariEfektifPage'
+import PilihTahunAjaranPage from '@/pages/PilihTahunAjaranPage'
+import RekapPerkembanganPage from '@/pages/RekapPerkembanganPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // Cek token langsung dari localStorage sebagai fallback untuk Zustand rehydration race
@@ -33,14 +38,26 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>
 }
 
+function RequireAcademicYear({ children }: { children: React.ReactNode }) {
+  const currentAcademicYear = useAuthStore((s) => s.currentAcademicYear)
+  const role = useAuthStore((s) => s.user?.role)
+  // Admin boleh masuk tanpa tahun ajaran terpilih saat instalasi baru (belum ada
+  // tahun ajaran sama sekali) — supaya bisa membuat tahun ajaran pertama di AdminPage.
+  // Backend hanya mengizinkan login tanpa academic_year_id untuk admin dalam kondisi ini,
+  // jadi kasus ini eksklusif untuk bootstrap awal.
+  if (!currentAcademicYear && role !== 'admin') return <Navigate to="/pilih-tahun-ajaran" replace />
+  return <>{children}</>
+}
+
 export default function AppRouter() {
   return (
     <Routes>
       <Route path="/login"           element={<GuestRoute><LoginPage /></GuestRoute>} />
       <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordPage /></GuestRoute>} />
       <Route path="/reset-password"  element={<GuestRoute><ResetPasswordPage /></GuestRoute>} />
+      <Route path="/pilih-tahun-ajaran" element={<ProtectedRoute><PilihTahunAjaranPage /></ProtectedRoute>} />
 
-      <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+      <Route element={<ProtectedRoute><RequireAcademicYear><AppLayout /></RequireAcademicYear></ProtectedRoute>}>
         <Route index                            element={<DashboardPage />} />
 
         <Route path="agenda"                    element={<AgendaPage />} />
@@ -55,13 +72,18 @@ export default function AppRouter() {
 
         <Route path="karakter"                  element={<KarakterPage />} />
 
+        <Route path="catatan-bk"                element={<StudentCaseNotesPage />} />
         <Route path="siswa"                     element={<PlaceholderPage title="Data Siswa" />} />
         <Route path="siswa/:studentId/rekap"    element={<StudentRekapPage />} />
 
         <Route path="ews"                       element={<EwsPage />} />
         <Route path="ews/:studentId"            element={<EwsDetailPage />} />
 
+        <Route path="kalender"                  element={<KalenderPage />} />
+        <Route path="hari-efektif"              element={<HariEfektifPage />} />
+
         <Route path="laporan"                   element={<LaporanPage />} />
+        <Route path="rekap-perkembangan"        element={<RekapPerkembanganPage />} />
         <Route path="admin"                     element={<AdminPage />} />
         <Route path="ews-guru"                  element={<TeacherEwsPage />} />
         <Route path="pengaturan"                element={<PlaceholderPage title="Pengaturan" />} />

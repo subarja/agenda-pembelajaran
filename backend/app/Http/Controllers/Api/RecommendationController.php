@@ -9,16 +9,20 @@ use App\Models\AgendaStudentScore;
 use App\Models\CharacterInput;
 use App\Models\HandlingSession;
 use App\Models\Note;
+use App\Models\PrintSetting;
 use App\Models\Recommendation;
 use App\Models\Student;
 use App\Models\StudentAttendance;
 use App\Models\User;
+use App\Traits\HandlesPdfPreview;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class RecommendationController extends Controller
 {
+    use HandlesPdfPreview;
+
     // ── Admin: tambah catatan + sarankan penangan ─────────────────────────────
 
     // PUT /recommendations/{uuid}/admin-note
@@ -207,18 +211,20 @@ class RecommendationController extends Controller
 
         $ews = $this->calcEwsForReport($student->id);
 
+        $printSettings = PrintSetting::instance();
         $data = [
-            'student'   => $student,
-            'recs'      => $recs,
-            'wali'      => $student->schoolClass?->waliKelas,
-            'generated' => now('Asia/Jakarta')->format('d M Y H:i'),
-            'report_id' => strtoupper(\Illuminate\Support\Str::random(8)),
-            'ews'       => $ews,
+            'student'       => $student,
+            'recs'          => $recs,
+            'wali'          => $student->schoolClass?->waliKelas,
+            'generated'     => now('Asia/Jakarta')->format('d M Y H:i'),
+            'report_id'     => strtoupper(\Illuminate\Support\Str::random(8)),
+            'ews'           => $ews,
+            'printSettings' => $printSettings,
         ];
 
-        return Pdf::loadView('reports.handling', $data)
-            ->setPaper('a4', 'portrait')
-            ->download("Riwayat_Penanganan_{$student->user->nama}.pdf");
+        $pdf = Pdf::loadView('reports.handling', $data)
+            ->setPaper($printSettings->paperDimensionsPt(), 'portrait');
+        return $this->pdfResponse($pdf, "Riwayat_Penanganan_{$student->user->nama}.pdf", $request);
     }
 
     private function calcEwsForReport(int $studentId): array

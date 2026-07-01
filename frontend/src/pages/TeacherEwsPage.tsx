@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, RefreshCw, Users } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileSpreadsheet, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
 import api from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { cn, toLocalDateStr } from '@/lib/utils'
+import { usePdfPreview } from '@/hooks/usePdfPreview'
 
 const LEVEL_CONFIG: Record<string, { label: string; dot: string; bg: string; text: string; border: string }> = {
   merah:  { label: 'Merah',  dot: 'bg-red-500',    bg: 'bg-red-50',    text: 'text-red-700',    border: 'border-red-200'    },
@@ -25,14 +27,18 @@ const PER_PAGE_OPTIONS = [25, 50, 100, 'semua'] as const
 type PerPage = 25 | 50 | 100 | 'semua'
 
 export default function TeacherEwsPage() {
-  const today     = new Date().toISOString().slice(0, 10)
-  const thirtyAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
+  const today     = toLocalDateStr(new Date())
+  const thirtyAgo = toLocalDateStr(new Date(Date.now() - 30 * 86400000))
 
   const [mulai, setMulai]        = useState(thirtyAgo)
   const [akhir, setAkhir]        = useState(today)
   const [filterLevel, setFilter] = useState<string | null>(null)
   const [perPage, setPerPage]    = useState<PerPage>(25)
   const [page, setPage]          = useState(1)
+  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
+  // Halaman ini hanya dapat diakses admin/wakasek (lihat nav-config.ts) — tombol
+  // pengaturan kertas & margin aman ditampilkan tanpa cek role tambahan di sini.
+  const pdfPreview = usePdfPreview({ printSettings: true })
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['teacher-ews', mulai, akhir],
@@ -45,6 +51,29 @@ export default function TeacherEwsPage() {
 
   useEffect(() => { setPage(1) }, [filterLevel, perPage, mulai, akhir])
 
+  const handleExport = async (format: 'excel' | 'pdf') => {
+    const params = new URLSearchParams({ format, tanggal_mulai: mulai, tanggal_akhir: akhir })
+    if (filterLevel) params.set('level', filterLevel)
+
+    if (format === 'pdf') {
+      await pdfPreview.openPreview(`/admin/teacher-ews/export?${params.toString()}`, 'EWS_Guru.pdf')
+      return
+    }
+
+    setExporting(format)
+    try {
+      const resp = await api.get(`/admin/teacher-ews/export?${params.toString()}`, { responseType: 'blob' })
+      const url  = URL.createObjectURL(new Blob([resp.data]))
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = 'EWS_Guru.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExporting(null)
+    }
+  }
+
   const totalItems = filtered.length
   const totalPages = perPage === 'semua' ? 1 : Math.ceil(totalItems / perPage)
   const displayed  = perPage === 'semua'
@@ -56,7 +85,7 @@ export default function TeacherEwsPage() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Users className="h-5 w-5" />
@@ -66,14 +95,30 @@ export default function TeacherEwsPage() {
             Monitoring pengisian agenda & aktivitas guru
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
-          Perbarui
-        </button>
+        <div className="flex items-center gap-2">
+          {totalItems > 0 && (
+            <>
+              <Button variant="outline" size="sm" disabled={!!exporting} onClick={() => handleExport('excel')}
+                className="h-8 gap-1.5 text-xs">
+                {exporting === 'excel' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+                Excel
+              </Button>
+              <Button variant="outline" size="sm" disabled={pdfPreview.loading} onClick={() => handleExport('pdf')}
+                className="h-8 gap-1.5 text-xs">
+                {pdfPreview.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                PDF
+              </Button>
+            </>
+          )}
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
+            Perbarui
+          </button>
+        </div>
       </div>
 
       {/* Filter periode */}
@@ -176,17 +221,19 @@ export default function TeacherEwsPage() {
         <p className="text-center text-sm text-muted-foreground py-12">Tidak ada data.</p>
       ) : (
         <div className="space-y-2">
-          {displayed.map(t => {
+          {displayed.map((t, idx) => {
             const cfg      = LEVEL_CONFIG[t.level] ?? LEVEL_CONFIG['n/a']
             const pct      = t.pct_terisi
             const loginLama = t.last_login_raw
               ? new Date(t.last_login_raw) < new Date(Date.now() - 7 * 86400000)
               : true
+            const nomor    = perPage === 'semua' ? idx + 1 : (page - 1) * (perPage as number) + idx + 1
 
             return (
               <Card key={t.teacher_id} className={cn('border', cfg.border)}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
+                    <span className="text-xs text-muted-foreground w-5 text-right shrink-0 mt-1">{nomor}</span>
                     <div className={cn('mt-1 h-3 w-3 shrink-0 rounded-full', cfg.dot)} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -292,6 +339,12 @@ export default function TeacherEwsPage() {
           </button>
         </div>
       )}
+
+      {pdfPreview.error && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{pdfPreview.error}</div>
+      )}
+      {pdfPreview.modal}
+      {pdfPreview.loadingOverlay}
     </div>
   )
 }
