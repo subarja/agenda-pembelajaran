@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use Illuminate\Http\JsonResponse;
@@ -48,11 +49,15 @@ class ProfileController extends Controller
     // POST /profile/photo — upload foto
     public function updatePhoto(Request $request): JsonResponse
     {
-        $request->validate([
-            'foto' => ['required', 'image', 'max:2048', 'mimes:jpg,jpeg,png,webp'],
-        ]);
-
         $user = $request->user();
+
+        // Foto siswa dikelola khusus (kolom students.foto) oleh admin/wali kelas saja —
+        // lihat StudentPhotoController — siswa TIDAK boleh ganti foto sendiri lewat sini.
+        abort_if($user->role === UserRole::Siswa, 403, 'Siswa tidak dapat mengubah foto sendiri. Hubungi admin atau wali kelas.');
+
+        $request->validate([
+            'foto' => ['required', 'image', 'max:50', 'mimes:jpg,jpeg,png'],
+        ]);
 
         // Hapus foto lama
         if ($user->foto && Storage::disk('public')->exists($user->foto)) {

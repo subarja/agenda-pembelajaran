@@ -1,15 +1,14 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, CheckCircle2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { X, CheckCircle2, ChevronDown, ChevronUp, Loader2, Info } from 'lucide-react'
 import { karakterApi } from '@/features/karakter/api'
 import type { CharacterSubitem, StudentSearchItem } from '@/features/karakter/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { StudentClassPicker } from '@/components/karakter/StudentClassPicker'
 import { cn } from '@/lib/utils'
-import { useDebounce } from '@/hooks/useDebounce'
 import api from '@/lib/api'
 
 interface ManualNote {
@@ -26,13 +25,17 @@ const STATUS_COLOR: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700',
 }
 
+// GK24: satu siswa hanya bisa dinilai lewat SALAH SATU jalur dalam satu waktu — pilih
+// sub-karakter terstruktur ATAU catatan manual (butuh review admin), tidak berbarengan.
+type NilaiMode = 'sub' | 'manual' | null
+
 export default function KarakterPage() {
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'penilaian' | 'catatan-manual'>('penilaian')
 
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [searchQ, setSearchQ] = useState('')
   const [selectedStudent, setSelectedStudent] = useState<StudentSearchItem | null>(null)
+  const [mode, setMode] = useState<NilaiMode>(null)
+
+  // ── Nilai Sub-Karakter ────────────────────────────────────────────────────
   const [selectedSubitem, setSelectedSubitem] = useState<CharacterSubitem | null>(null)
   const [manualSign, setManualSign] = useState<'positif' | 'negatif'>('positif')
   const [catatan, setCatatan] = useState('')
@@ -40,25 +43,11 @@ export default function KarakterPage() {
   const [lastResult, setLastResult] = useState<{ poin: number; student: string; subitem: string } | null>(null)
   const catatanRef = useRef<HTMLInputElement>(null)
 
-  // ── Catatan Manual state ───────────────────────────────────────────────────
-  const [mnStudent, setMnStudent]         = useState<StudentSearchItem | null>(null)
-  const [mnSearchQ, setMnSearchQ]         = useState('')
-  const [mnShowDropdown, setMnShowDropdown] = useState(false)
-  const [mnCatatan, setMnCatatan]         = useState('')
-  const [mnNilai, setMnNilai]             = useState('')
-  const [mnErr, setMnErr]                 = useState('')
-  const [mnSuccess, setMnSuccess]         = useState(false)
-  const debouncedMnQ = useDebounce(mnSearchQ, 300)
-
-  const debouncedQ = useDebounce(searchQ, 300)
-
-  // ── Queries ────────────────────────────────────────────────────────────────
-  const { data: searchRes, isFetching: searching } = useQuery({
-    queryKey: ['student-search', debouncedQ],
-    queryFn: () => karakterApi.searchStudents(debouncedQ),
-    enabled: debouncedQ.length >= 2 && !selectedStudent,
-  })
-  const searchResults = searchRes?.data.data ?? []
+  // ── Nilai Karakter Manual ─────────────────────────────────────────────────
+  const [mnCatatan, setMnCatatan] = useState('')
+  const [mnNilai, setMnNilai]     = useState('')
+  const [mnErr, setMnErr]         = useState('')
+  const [mnSuccess, setMnSuccess] = useState(false)
 
   const { data: categoriesRes } = useQuery({
     queryKey: ['character-categories'],
@@ -80,36 +69,27 @@ export default function KarakterPage() {
   })
   const history = historyRes?.data.data ?? []
 
-  // ── Catatan Manual queries ─────────────────────────────────────────────────
-  const { data: mnSearchRes } = useQuery({
-    queryKey: ['mn-student-search', debouncedMnQ],
-    queryFn: () => karakterApi.searchStudents(debouncedMnQ),
-    enabled: debouncedMnQ.length >= 2 && !mnStudent,
-  })
-  const mnSearchResults = mnSearchRes?.data.data ?? []
-
   const { data: mnNotesRes, isLoading: mnNotesLoading } = useQuery({
-    queryKey: ['manual-notes', mnStudent?.id],
-    queryFn: () => api.get<{ data: ManualNote[] }>('/character-manual-notes', { params: { student_id: mnStudent!.id } }).then(r => r.data.data),
-    enabled: !!mnStudent,
+    queryKey: ['manual-notes', selectedStudent?.id],
+    queryFn: () => api.get<{ data: ManualNote[] }>('/character-manual-notes', { params: { student_id: selectedStudent!.id } }).then(r => r.data.data),
+    enabled: !!selectedStudent && mode === 'manual',
   })
   const mnNotes = mnNotesRes ?? []
 
   const mnMutation = useMutation({
     mutationFn: () => api.post('/character-manual-notes', {
-      student_id: mnStudent!.id,
+      student_id: selectedStudent!.id,
       catatan: mnCatatan,
       nilai: mnNilai !== '' ? parseInt(mnNilai, 10) : null,
     }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['manual-notes', mnStudent?.id] })
+      queryClient.invalidateQueries({ queryKey: ['manual-notes', selectedStudent?.id] })
       setMnCatatan(''); setMnNilai(''); setMnErr(''); setMnSuccess(true)
       setTimeout(() => setMnSuccess(false), 3000)
     },
-    onError: (e: any) => setMnErr(e.response?.data?.message ?? 'Terjadi kesalahan'),
+    onError: (e: { response?: { data?: { message?: string } } }) => setMnErr(e.response?.data?.message ?? 'Terjadi kesalahan'),
   })
 
-  // ── Mutation ───────────────────────────────────────────────────────────────
   const mutation = useMutation({
     mutationFn: () => karakterApi.storeInput({
       student_id: selectedStudent!.id,
@@ -129,14 +109,16 @@ export default function KarakterPage() {
 
   function selectStudent(s: StudentSearchItem) {
     setSelectedStudent(s)
-    setSearchQ('')
+    setMode(null)
     setSelectedSubitem(null)
     setLastResult(null)
+    setMnCatatan(''); setMnNilai(''); setMnErr('')
   }
 
-  function clearStudent() {
+  // GK25: Batal kembali ke posisi tanpa filter kelas (reset total)
+  function batalKeSemula() {
     setSelectedStudent(null)
-    setSearchQ('')
+    setMode(null)
     setSelectedSubitem(null)
     setLastResult(null)
   }
@@ -157,7 +139,6 @@ export default function KarakterPage() {
 
   function handleMnSubmit() {
     if (!mnCatatan.trim()) { setMnErr('Catatan tidak boleh kosong.'); return }
-    if (!mnStudent)        { setMnErr('Pilih siswa terlebih dahulu.'); return }
     if (mnNilai !== '' && (isNaN(parseInt(mnNilai)) || parseInt(mnNilai) < -20 || parseInt(mnNilai) > 20)) {
       setMnErr('Nilai harus antara -20 dan +20.'); return
     }
@@ -169,210 +150,71 @@ export default function KarakterPage() {
     <div className="max-w-lg space-y-4">
       <h1 className="text-xl font-bold">Penilaian Karakter</h1>
 
-      {/* ── Tab switcher ─────────────────────────────────────────────────── */}
-      <div className="flex border-b border-border">
-        {([['penilaian', 'Penilaian Karakter'], ['catatan-manual', 'Catatan Manual']] as const).map(([tab, label]) => (
-          <button key={tab} type="button"
-            onClick={() => setActiveTab(tab)}
-            className={cn('px-4 py-2 text-sm font-medium border-b-2 transition-colors',
-              activeTab === tab ? 'border-primary-600 text-primary-600' : 'border-transparent text-muted-foreground hover:text-foreground')}
-          >{label}</button>
-        ))}
-      </div>
-
-      {/* ── Tab: Catatan Manual ───────────────────────────────────────────── */}
-      {activeTab === 'catatan-manual' && (
-        <div className="space-y-4">
-          {/* Pilih Siswa */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pilih Siswa</p>
-            {mnStudent ? (
-              <div className="flex items-center gap-3 rounded-lg border border-primary-300 bg-primary-50 px-4 py-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{mnStudent.nama}</p>
-                  <p className="text-xs text-muted-foreground">{mnStudent.nis}{mnStudent.kelas && ` · ${mnStudent.kelas}`}</p>
-                </div>
-                <button type="button" onClick={() => { setMnStudent(null); setMnSearchQ('') }} className="text-muted-foreground hover:text-foreground">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  placeholder="Ketik nama atau NIS siswa..."
-                  value={mnSearchQ}
-                  onChange={(e) => { setMnSearchQ(e.target.value); setMnShowDropdown(true) }}
-                  onFocus={() => setMnShowDropdown(true)}
-                />
-                {mnShowDropdown && mnSearchResults.length > 0 && (
-                  <div className="mt-1 rounded-lg border border-border bg-background shadow-sm overflow-hidden">
-                    {mnSearchResults.map((s) => (
-                      <button key={s.id} type="button"
-                        onClick={() => { setMnStudent(s); setMnSearchQ(''); setMnShowDropdown(false) }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors text-left border-b border-border last:border-0"
-                      >
-                        <div>
-                          <p className="text-sm font-medium">{s.nama}</p>
-                          <p className="text-xs text-muted-foreground">{s.nis}{s.kelas && ` · ${s.kelas}`}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Form */}
-          {mnStudent && (
-            <Card>
-              <CardHeader className="pb-3"><CardTitle className="text-base">Tambah Catatan Manual</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="mn-catatan">Catatan <span className="text-red-500">*</span></Label>
-                  <textarea
-                    id="mn-catatan"
-                    value={mnCatatan}
-                    onChange={e => setMnCatatan(e.target.value)}
-                    rows={4}
-                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-                    placeholder="Deskripsikan perilaku / kejadian secara objektif..."
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="mn-nilai">Nilai Poin (opsional, -20 s.d. +20)</Label>
-                  <Input
-                    id="mn-nilai"
-                    type="number" min="-20" max="20"
-                    value={mnNilai}
-                    onChange={e => setMnNilai(e.target.value)}
-                    placeholder="Kosongkan jika tidak ada nilai numerik"
-                  />
-                  <p className="text-xs text-muted-foreground">Jika diisi, nilai ini akan menunggu persetujuan admin sebelum diterapkan ke poin karakter siswa.</p>
-                </div>
-                {mnErr && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{mnErr}</p>}
-                {mnSuccess && (
-                  <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-md">
-                    <CheckCircle2 className="h-4 w-4" />Catatan berhasil dikirim dan menunggu persetujuan admin.
-                  </div>
-                )}
-                <Button onClick={handleMnSubmit} disabled={mnMutation.isPending} className="w-full">
-                  {mnMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Kirim Catatan
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Riwayat catatan manual siswa terpilih */}
-          {mnStudent && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Riwayat Catatan — {mnStudent.nama}
-              </p>
-              {mnNotesLoading && <Loader2 className="mx-auto h-5 w-5 animate-spin" />}
-              {!mnNotesLoading && mnNotes.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">Belum ada catatan manual untuk siswa ini.</p>
-              )}
-              {mnNotes.map(n => (
-                <div key={n.id} className="rounded-lg border border-border px-4 py-3 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', STATUS_COLOR[n.status])}>
-                      {STATUS_LABEL[n.status]}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{n.created_at?.slice(0, 10)}</span>
-                  </div>
-                  <p className="text-sm">{n.catatan}</p>
-                  {n.nilai !== null && (
-                    <p className="text-xs text-muted-foreground">Nilai diajukan: <strong className={n.nilai >= 0 ? 'text-green-600' : 'text-red-600'}>{n.nilai >= 0 ? '+' : ''}{n.nilai}</strong></p>
-                  )}
-                  {n.status === 'approved' && n.nilai_final !== null && (
-                    <p className="text-xs text-green-700">Nilai final: <strong>{n.nilai_final >= 0 ? '+' : ''}{n.nilai_final}</strong></p>
-                  )}
-                  {n.admin_catatan && (
-                    <p className="text-xs text-muted-foreground border-l-2 pl-2">Catatan admin: {n.admin_catatan}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Tab: Penilaian Karakter ───────────────────────────────────────── */}
-      {activeTab === 'penilaian' && <>
-
-      {/* ── 1. Cari Siswa ────────────────────────────────────────────────── */}
+      {/* ── 1. Pilih Siswa (GK25: filter kelas ketik-langsung + grid foto) ──── */}
       <div className="space-y-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          1. Pilih Siswa
+          1. Nama
         </p>
 
         {selectedStudent ? (
           <div className="flex items-center gap-3 rounded-lg border border-primary-300 bg-primary-50 px-4 py-3">
+            <img src={selectedStudent.foto_url || '/images/default-avatar.jpg'} alt={selectedStudent.nama}
+              className="w-[20mm] h-auto shrink-0 rounded border object-cover" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate">{selectedStudent.nama}</p>
               <p className="text-xs text-muted-foreground">
                 {selectedStudent.nis}
                 {selectedStudent.kelas && ` · ${selectedStudent.kelas}`}
               </p>
+              {summary && (
+                <span className={cn(
+                  'text-sm font-bold tabular-nums',
+                  summary.total_poin >= 0 ? 'text-green-600' : 'text-red-600',
+                )}>
+                  {summary.total_poin >= 0 ? '+' : ''}{summary.total_poin} poin
+                </span>
+              )}
             </div>
-            {summary && (
-              <span className={cn(
-                'text-sm font-bold tabular-nums shrink-0',
-                summary.total_poin >= 0 ? 'text-green-600' : 'text-red-600',
-              )}>
-                {summary.total_poin >= 0 ? '+' : ''}{summary.total_poin} poin
-              </span>
-            )}
-            <button type="button" onClick={clearStudent} className="text-muted-foreground hover:text-foreground shrink-0">
+            <button type="button" onClick={batalKeSemula} className="text-muted-foreground hover:text-foreground shrink-0">
               <X className="h-4 w-4" />
             </button>
           </div>
         ) : (
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              autoFocus
-              className="pl-9"
-              placeholder="Ketik nama atau NIS siswa..."
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-            />
-            {searching && (
-              <p className="text-xs text-muted-foreground mt-1 px-1">Mencari...</p>
-            )}
-            {!searching && searchResults.length > 0 && (
-              <div className="mt-1 rounded-lg border border-border bg-background shadow-sm overflow-hidden">
-                {searchResults.map((s) => (
-                  <button key={s.id} type="button"
-                    onClick={() => selectStudent(s)}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors text-left border-b border-border last:border-0"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{s.nama}</p>
-                      <p className="text-xs text-muted-foreground">{s.nis}{s.kelas && ` · ${s.kelas}`}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-            {!searching && debouncedQ.length >= 2 && searchResults.length === 0 && (
-              <p className="text-xs text-muted-foreground mt-1 px-1">Siswa tidak ditemukan.</p>
-            )}
-          </div>
+          // GK25: siswa lain disembunyikan hanya SETELAH terpilih — sebelum itu tampilkan
+          // picker penuh (filter kelas / pencarian bebas)
+          <StudentClassPicker onPick={selectStudent} />
         )}
       </div>
 
-      {/* ── 2. Pilih Sub-Karakter ─────────────────────────────────────────── */}
+      {/* ── 2/3. Nilai Sub-Karakter ATAU Nilai Karakter Manual (mutual exclusive) ── */}
       {selectedStudent && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            2. Pilih Sub-Karakter
-          </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button"
+            disabled={mode === 'manual'}
+            onClick={() => setMode(mode === 'sub' ? null : 'sub')}
+            className={cn(
+              'rounded-md border py-2 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+              mode === 'sub' ? 'border-primary-600 bg-primary-50 text-primary-600' : 'border-border hover:bg-muted',
+            )}
+          >
+            2. Nilai Sub-Karakter
+          </button>
+          <button type="button"
+            disabled={mode === 'sub'}
+            onClick={() => setMode(mode === 'manual' ? null : 'manual')}
+            className={cn(
+              'rounded-md border py-2 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+              mode === 'manual' ? 'border-primary-600 bg-primary-50 text-primary-600' : 'border-border hover:bg-muted',
+            )}
+          >
+            3. Nilai Karakter Manual
+          </button>
+        </div>
+      )}
 
+      {/* ── Nilai Sub-Karakter ───────────────────────────────────────────────── */}
+      {selectedStudent && mode === 'sub' && (
+        <div className="space-y-2">
           {categories.map((cat) => (
             <div key={cat.id} className="rounded-lg border border-border overflow-hidden">
               <button
@@ -390,7 +232,12 @@ export default function KarakterPage() {
               {expandedCat === cat.id && (
                 <div className="divide-y divide-border">
                   {cat.subitems.map((sub) => {
-                    const isPos = sub.bobot > 0
+                    // `bobot` SELALU disimpan sebagai magnitudo positif (arah tanda
+                    // ditentukan `sifat`, bukan tanda numerik `bobot`) — jangan pernah
+                    // pakai `bobot > 0` untuk menentukan +/−, itu SELALU true dan bikin
+                    // semua subitem (termasuk yang negatif) tampil hijau "+".
+                    const isBoth = sub.sifat === 'keduanya'
+                    const isPos  = sub.sifat === 'positif'
                     const isSelected = selectedSubitem?.id === sub.id
                     return (
                       <button
@@ -405,9 +252,9 @@ export default function KarakterPage() {
                       >
                         <span className={cn(
                           'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                          isPos ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700',
+                          isBoth ? 'bg-amber-100 text-amber-700' : isPos ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700',
                         )}>
-                          {isPos ? '+' : '−'}
+                          {isBoth ? '±' : isPos ? '+' : '−'}
                         </span>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm truncate">{sub.deskripsi}</p>
@@ -415,9 +262,9 @@ export default function KarakterPage() {
                         </div>
                         <span className={cn(
                           'text-sm font-bold tabular-nums shrink-0',
-                          isPos ? 'text-green-600' : 'text-red-600',
+                          isBoth ? 'text-amber-600' : isPos ? 'text-green-600' : 'text-red-600',
                         )}>
-                          {isPos ? '+' : ''}{sub.bobot}
+                          {isBoth ? '±' : isPos ? '+' : '−'}{sub.bobot}
                         </span>
                       </button>
                     )
@@ -426,90 +273,146 @@ export default function KarakterPage() {
               )}
             </div>
           ))}
+
+          {/* Konfirmasi & Submit */}
+          {selectedSubitem && (
+            <Card className="border-primary-200">
+              <CardContent className="p-4 space-y-3">
+                <p className="text-sm font-semibold">Konfirmasi</p>
+                <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-1">
+                  <p className="text-sm">
+                    <span className="font-medium">{selectedStudent.nama}</span>
+                    {' '}akan mendapat{' '}
+                    <span className={cn('font-bold', effectivePoin >= 0 ? 'text-green-600' : 'text-red-600')}>
+                      {effectivePoin >= 0 ? '+' : ''}{effectivePoin} poin
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">{selectedSubitem.deskripsi}</p>
+                </div>
+
+                {selectedSubitem.sifat === 'keduanya' && (
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setManualSign('positif')}
+                      className={cn('flex-1 py-2 rounded-md border text-sm font-medium transition-colors',
+                        manualSign === 'positif' ? 'bg-green-100 border-green-400 text-green-700' : 'border-border hover:bg-muted')}
+                    >+ Apresiasi</button>
+                    <button type="button" onClick={() => setManualSign('negatif')}
+                      className={cn('flex-1 py-2 rounded-md border text-sm font-medium transition-colors',
+                        manualSign === 'negatif' ? 'bg-red-100 border-red-400 text-red-700' : 'border-border hover:bg-muted')}
+                    >− Pelanggaran</button>
+                  </div>
+                )}
+
+                <Input
+                  ref={catatanRef}
+                  placeholder="Keterangan (opsional)..."
+                  value={catatan}
+                  onChange={(e) => setCatatan(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && mutation.mutate()}
+                />
+
+                <div className="flex gap-2">
+                  <Button className="flex-1" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+                    {mutation.isPending ? 'Menyimpan...' : 'Simpan Penilaian'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setSelectedSubitem(null)}>Batal</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {lastResult && (
+            <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+              <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+              <p className="text-sm text-green-700">
+                <span className="font-medium">{lastResult.student}</span>
+                {' '}·{' '}
+                <span className={cn('font-bold', lastResult.poin >= 0 ? 'text-green-600' : 'text-red-600')}>
+                  {lastResult.poin >= 0 ? '+' : ''}{lastResult.poin} poin
+                </span>
+                {' '}· {lastResult.subitem}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── 3. Konfirmasi & Submit ────────────────────────────────────────── */}
-      {selectedStudent && selectedSubitem && (
-        <Card className="border-primary-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">3. Konfirmasi</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-1">
-              <p className="text-sm">
-                <span className="font-medium">{selectedStudent.nama}</span>
-                {' '}akan mendapat{' '}
-                <span className={cn(
-                  'font-bold',
-                  effectivePoin >= 0 ? 'text-green-600' : 'text-red-600',
-                )}>
-                  {effectivePoin >= 0 ? '+' : ''}{effectivePoin} poin
-                </span>
-              </p>
-              <p className="text-xs text-muted-foreground">{selectedSubitem.deskripsi}</p>
-            </div>
-
-            {/* Sign picker untuk subitem 'keduanya' */}
-            {selectedSubitem.sifat === 'keduanya' && (
-              <div className="flex gap-2">
-                <button type="button"
-                  onClick={() => setManualSign('positif')}
-                  className={cn(
-                    'flex-1 py-2 rounded-md border text-sm font-medium transition-colors',
-                    manualSign === 'positif'
-                      ? 'bg-green-100 border-green-400 text-green-700'
-                      : 'border-border hover:bg-muted',
-                  )}
-                >
-                  + Apresiasi
-                </button>
-                <button type="button"
-                  onClick={() => setManualSign('negatif')}
-                  className={cn(
-                    'flex-1 py-2 rounded-md border text-sm font-medium transition-colors',
-                    manualSign === 'negatif'
-                      ? 'bg-red-100 border-red-400 text-red-700'
-                      : 'border-border hover:bg-muted',
-                  )}
-                >
-                  − Pelanggaran
-                </button>
+      {/* ── Nilai Karakter Manual ────────────────────────────────────────────── */}
+      {selectedStudent && mode === 'manual' && (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 flex items-start gap-1.5">
+            <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span>Gunakan ini jika belum ada pilihan karakter yang sesuai di daftar Sub-Karakter. Nilai yang diajukan akan menunggu persetujuan admin sebelum berlaku.</span>
+          </div>
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="space-y-1.5">
+                <label htmlFor="mn-catatan" className="text-sm font-medium">Catatan <span className="text-red-500">*</span></label>
+                <textarea
+                  id="mn-catatan"
+                  value={mnCatatan}
+                  onChange={e => setMnCatatan(e.target.value)}
+                  rows={4}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  placeholder="Deskripsikan perilaku / kejadian secara objektif..."
+                />
               </div>
+              <div className="space-y-1.5">
+                <label htmlFor="mn-nilai" className="text-sm font-medium">Nilai Poin (opsional, -20 s.d. +20)</label>
+                <Input
+                  id="mn-nilai"
+                  type="number" min="-20" max="20"
+                  value={mnNilai}
+                  onChange={e => setMnNilai(e.target.value)}
+                  placeholder="Kosongkan jika tidak ada nilai numerik"
+                />
+              </div>
+              {mnErr && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{mnErr}</p>}
+              {mnSuccess && (
+                <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-md">
+                  <CheckCircle2 className="h-4 w-4" />Catatan berhasil dikirim dan menunggu persetujuan admin.
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button className="flex-1" onClick={handleMnSubmit} disabled={mnMutation.isPending}>
+                  {mnMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Kirim Catatan
+                </Button>
+                <Button variant="ghost" onClick={() => setMode(null)}>Batal</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Riwayat catatan manual siswa terpilih */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Riwayat Catatan — {selectedStudent.nama}
+            </p>
+            {mnNotesLoading && <Loader2 className="mx-auto h-5 w-5 animate-spin" />}
+            {!mnNotesLoading && mnNotes.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">Belum ada catatan manual untuk siswa ini.</p>
             )}
-
-            <div>
-              <Input
-                ref={catatanRef}
-                placeholder="Keterangan (opsional)..."
-                value={catatan}
-                onChange={(e) => setCatatan(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && mutation.mutate()}
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button className="flex-1" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
-                {mutation.isPending ? 'Menyimpan...' : 'Simpan Penilaian'}
-              </Button>
-              <Button variant="ghost" onClick={() => setSelectedSubitem(null)}>Batal</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Toast sukses ─────────────────────────────────────────────────── */}
-      {lastResult && (
-        <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-          <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
-          <p className="text-sm text-green-700">
-            <span className="font-medium">{lastResult.student}</span>
-            {' '}+{' '}
-            <span className={cn('font-bold', lastResult.poin >= 0 ? 'text-green-600' : 'text-red-600')}>
-              {lastResult.poin >= 0 ? '+' : ''}{lastResult.poin} poin
-            </span>
-            {' '}· {lastResult.subitem}
-          </p>
+            {mnNotes.map(n => (
+              <div key={n.id} className="rounded-lg border border-border px-4 py-3 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', STATUS_COLOR[n.status])}>
+                    {STATUS_LABEL[n.status]}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{n.created_at?.slice(0, 10)}</span>
+                </div>
+                <p className="text-sm">{n.catatan}</p>
+                {n.nilai !== null && (
+                  <p className="text-xs text-muted-foreground">Nilai diajukan: <strong className={n.nilai >= 0 ? 'text-green-600' : 'text-red-600'}>{n.nilai >= 0 ? '+' : ''}{n.nilai}</strong></p>
+                )}
+                {n.status === 'approved' && n.nilai_final !== null && (
+                  <p className="text-xs text-green-700">Nilai final: <strong>{n.nilai_final >= 0 ? '+' : ''}{n.nilai_final}</strong></p>
+                )}
+                {n.admin_catatan && (
+                  <p className="text-xs text-muted-foreground border-l-2 pl-2">Catatan admin: {n.admin_catatan}</p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -546,8 +449,6 @@ export default function KarakterPage() {
           </div>
         </div>
       )}
-
-      </> /* end penilaian tab */}
     </div>
   )
 }

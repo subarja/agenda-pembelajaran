@@ -4,12 +4,17 @@ import {
   BookOpen, ClipboardCheck, Star, AlertTriangle,
   Users, GraduationCap, School, ShieldCheck,
   ChevronRight, TrendingUp, Bell, Heart, TrendingDown,
-  Clock, CheckCircle2, XCircle, Info, BarChart3, Calendar,
+  Clock, CheckCircle2, XCircle, Info, BarChart3, Calendar, Loader2,
 } from 'lucide-react'
 import api from '@/lib/api'
+import { agendaApi } from '@/features/agenda/api'
 import { useAuthStore } from '@/store/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { NotifCard } from '@/components/agenda/NotifCard'
+import { AgendaPerluDiisiList } from '@/components/agenda/AgendaPerluDiisiList'
+import { AgendaHariIniList } from '@/components/agenda/AgendaHariIniList'
+import { cn, toLocalDateStr } from '@/lib/utils'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared: stat card kecil (outline style)
@@ -241,9 +246,18 @@ function WaliKelasDashboard() {
     queryKey: ['ews-wali'],
     queryFn: () => api.get('/ews').then(r => r.data),
   })
-  const { data: scheduleData } = useQuery({
-    queryKey: ['schedules-today'],
-    queryFn: () => api.get('/schedules/today').then(r => r.data),
+  // GK: dulu cuma /schedules/today — jadwal yang telat diisi dari hari sebelumnya
+  // (tapi masih dalam batas admin) tidak pernah kelihatan. Lihat GuruDashboard.
+  // WAJIB pakai `agendaApi.getPerluDiisi()` yang SAMA dengan yang dipakai
+  // AgendaFormPage.tsx untuk query key ini — react-query cache berdasarkan KEY saja,
+  // TIDAK peduli bentuk data queryFn; kalau bentuknya beda (di sini sempat pakai
+  // `api.get(...).then(r => r.data)` yang unwrap satu level lebih dulu), cache dari
+  // dashboard "salah bentuk" kepakai di halaman lain lalu `.data.data`-nya jadi
+  // undefined. Ini akar bug nyata: klik "Isi Agenda" dari sini pernah selalu gagal
+  // ("Tidak ada jadwal mengajar hari ini.") walau sesinya ada, cuma bukan hari ini.
+  const { data: perluDiisiData } = useQuery({
+    queryKey: ['agendas-perlu-diisi'],
+    queryFn: () => agendaApi.getPerluDiisi(),
   })
 
   const ewsSummary  = ewsData?.meta?.summary ?? {}
@@ -254,8 +268,9 @@ function WaliKelasDashboard() {
   const urgentList  = (ewsData?.data ?? [])
     .filter((s: any) => ['merah', 'oranye'].includes(s.level))
     .slice(0, 6)
-  const todaySchedules = scheduleData?.data ?? []
-  const belumIsi = todaySchedules.filter((s: any) => !s.agenda_hari_ini).length
+  const perluDiisi: any[] = perluDiisiData?.data.data ?? []
+  const belumIsi    = perluDiisi.filter(s => s.bisa_diisi).length
+  const lewatBatas  = perluDiisi.filter(s => !s.bisa_diisi).length
 
   const kelasLabel = kap?.wali_kelas_class?.label
     ?? (user?.role === 'wali_kelas' ? 'Wali Kelas' : undefined)
@@ -320,6 +335,9 @@ function WaliKelasDashboard() {
                       <div>
                         <p className="text-sm font-medium leading-tight">{s.nama}</p>
                         <p className="text-xs text-muted-foreground">{s.kelas}</p>
+                        {s.sedang_ditangani_wali_kelas && (
+                          <p className="text-[10px] text-orange-600 font-medium mt-0.5">Proses Penanganan Wali Kelas</p>
+                        )}
                       </div>
                     </div>
                     <Badge className={LEVEL_BADGE[s.level]}>{s.level}</Badge>
@@ -331,48 +349,27 @@ function WaliKelasDashboard() {
         </CardContent>
       </Card>
 
-      {/* Jadwal hari ini */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              Jadwal Mengajar Hari Ini
-            </CardTitle>
-            {belumIsi > 0 && (
-              <Badge className="bg-orange-100 text-orange-700">{belumIsi} belum diisi</Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {todaySchedules.length === 0
-            ? <p className="text-sm text-muted-foreground py-4 text-center">Tidak ada jadwal mengajar hari ini.</p>
-            : (
-              <div className="space-y-2">
-                {todaySchedules.map((s: any) => (
-                  <div key={s.id} className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5 gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{s.subject?.nama}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {s.class?.label} · {s.jam_mulai?.slice(0,5)}–{s.jam_selesai?.slice(0,5)}
-                      </p>
-                    </div>
-                    {s.agenda_hari_ini
-                      ? <Badge className="bg-green-100 text-green-700 shrink-0">✓ Sudah diisi</Badge>
-                      : (
-                        <button onClick={() => navigate(`/agenda/baru?schedule=${s.id}`)}
-                          className="shrink-0 rounded-md bg-primary-600 px-3 py-1 text-xs font-medium text-white hover:bg-primary-700 transition-colors">
-                          Isi Agenda
-                        </button>
-                      )
-                    }
-                  </div>
-                ))}
-              </div>
-            )
-          }
-        </CardContent>
-      </Card>
+      {/* Agenda perlu diisi — hari ini + hari sebelumnya yang masih dalam batas waktu.
+          GK11: tampil sebagai notifikasi (badge jumlah), isi list baru muncul saat diklik,
+          scroll-capped ~3 baris agar tidak memenuhi dashboard bila jumlahnya banyak. */}
+      <NotifCard
+        title="Agenda Perlu Diisi"
+        count={perluDiisi.length}
+        defaultOpen={perluDiisi.length > 0}
+        badges={<>
+          {lewatBatas > 0 && (
+            <Badge className="bg-red-100 text-red-700">{lewatBatas} lewat batas</Badge>
+          )}
+          {belumIsi > 0 && (
+            <Badge className="bg-orange-100 text-orange-700">{belumIsi} belum diisi</Badge>
+          )}
+        </>}
+      >
+        <AgendaPerluDiisiList
+          items={perluDiisi}
+          onSelect={(s) => navigate(`/agenda/baru?schedule=${s.schedule_id}&tanggal=${s.tanggal}`)}
+        />
+      </NotifCard>
 
       {/* Aksi Cepat Wali Kelas */}
       <Card>
@@ -401,9 +398,10 @@ function WaliKelasDashboard() {
 // ─────────────────────────────────────────────────────────────────────────────
 // GURU DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
-function HariEfektifWidget() {
-  const navigate = useNavigate()
-  const { data } = useQuery<{
+// GK16: query academic_year aktif dipakai bersama oleh HariEfektifWidget & SemesterBadge
+// — key sama ('effective-weeks-my') supaya cuma 1x fetch walau dipakai di 2 tempat.
+function useActiveAcademicYear() {
+  return useQuery<{
     data: { class_id: string; class_label: string; total_minggu: number; total_efektif: number; total_mapel: number }[]
     academic_year: { id: string; tahun: string; semester: string } | null
   }>({
@@ -411,6 +409,29 @@ function HariEfektifWidget() {
     queryFn: () => api.get('/effective-days/my-minggu').then(r => r.data),
     staleTime: 10 * 60 * 1000,
   })
+}
+
+// GK16: indikator semester aktif yang jelas & eye-catching di puncak dashboard guru —
+// dulu info ini cuma muncul kecil di subtitle widget Minggu Efektif (dan hilang total
+// kalau guru tidak punya kelas dengan data minggu efektif).
+function SemesterBadge() {
+  const { data } = useActiveAcademicYear()
+  const ay = data?.academic_year
+  if (!ay) return null
+
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-primary-600 to-primary-500 px-4 py-1.5 text-white shadow-sm">
+      <Calendar className="h-3.5 w-3.5" />
+      <span className="text-xs font-semibold tracking-wide">
+        Semester {ay.semester === 'ganjil' ? 'Ganjil' : 'Genap'} · TP {ay.tahun}
+      </span>
+    </div>
+  )
+}
+
+function HariEfektifWidget() {
+  const navigate = useNavigate()
+  const { data } = useActiveAcademicYear()
   const classes = data?.data ?? []
   const ay      = data?.academic_year
   if (classes.length === 0) return null
@@ -431,9 +452,9 @@ function HariEfektifWidget() {
           </button>
         </div>
         {ay && (
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <Badge variant="secondary" className="mt-1 w-fit">
             Semester {ay.semester === 'ganjil' ? 'Ganjil' : 'Genap'} — TP {ay.tahun}
-          </p>
+          </Badge>
         )}
       </CardHeader>
       <CardContent>
@@ -443,14 +464,15 @@ function HariEfektifWidget() {
             <div className="text-xs text-muted-foreground">dari {totalMinggu} total minggu</div>
           </div>
           <button onClick={() => navigate('/kalender')}
-            className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-primary border rounded-md px-2 py-1.5">
+            className="ml-auto flex items-center gap-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors rounded-md px-3 py-2 shadow-sm">
             <Calendar className="h-3.5 w-3.5" /> Lihat Kalender
           </button>
         </div>
         <div className="space-y-1.5">
           {classes.map(c => (
-            <div key={c.class_id} className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground truncate">{c.class_label}</span>
+            <div key={c.class_id} className="flex items-center gap-2 text-sm">
+              <GraduationCap className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground truncate flex-1">{c.class_label}</span>
               <span className="font-semibold text-primary ml-2 shrink-0">{c.total_efektif}/{c.total_minggu}</span>
             </div>
           ))}
@@ -460,13 +482,88 @@ function HariEfektifWidget() {
   )
 }
 
+// GK17: jadwal seminggu penuh (Senin–Sabtu) dengan tanggal konkret per hari — beda dari
+// stat "Jadwal Hari Ini" yang cuma angka, dan beda dari "Agenda Hari Ini" (GK12) yang
+// fokus status isi/belum.
+const HARI_LABEL: Record<string, string> = {
+  senin: 'Senin', selasa: 'Selasa', rabu: 'Rabu', kamis: 'Kamis', jumat: 'Jumat', sabtu: 'Sabtu', minggu: 'Minggu',
+}
+
+function JadwalMingguIniWidget() {
+  const { data } = useQuery({
+    queryKey: ['schedules-this-week'],
+    queryFn: () => agendaApi.getThisWeekSchedules(),
+    staleTime: 10 * 60 * 1000,
+  })
+  const items = data?.data.data ?? []
+  if (items.length === 0) return null
+
+  const grouped = items.reduce<Record<string, typeof items>>((acc, s) => {
+    (acc[s.hari] ??= []).push(s)
+    return acc
+  }, {})
+  const todayStr = toLocalDateStr(new Date())
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-primary" /> Jadwal Minggu Ini
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+        {Object.entries(grouped).map(([hari, list]) => (
+          <div key={hari}>
+            <p className={cn(
+              'text-xs font-semibold uppercase tracking-wide mb-1.5',
+              list[0].tanggal === todayStr ? 'text-primary' : 'text-muted-foreground',
+            )}>
+              {HARI_LABEL[hari] ?? hari}
+              {list[0].tanggal === todayStr && <span className="ml-1.5 rounded-full bg-primary-100 text-primary-700 px-1.5 py-0.5 normal-case font-medium">Hari ini</span>}
+            </p>
+            <div className="space-y-1.5">
+              {list.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{s.subject.nama}</p>
+                    <p className="text-xs text-muted-foreground">{s.class.label}</p>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                    {s.jam_mulai.slice(0, 5)}–{s.jam_selesai.slice(0, 5)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 function GuruDashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
 
+  // WAJIB pakai `agendaApi.getTodaySchedules()` (sama dengan AgendaFormPage.tsx &
+  // AgendaPage.tsx) — query key ini dipakai bersama, kalau bentuk return queryFn beda
+  // (di sini sempat `api.get(...).then(r => r.data)`, unwrap 1x lebih dulu) cache-nya
+  // "salah bentuk" kepakai silang antar halaman. Sama persis akar bug yang ditemukan di
+  // `agendas-perlu-diisi` — lihat [[agenda_perlu_diisi_deadline_visibility]].
   const { data: scheduleData } = useQuery({
     queryKey: ['schedules-today'],
-    queryFn: () => api.get('/schedules/today').then(r => r.data),
+    queryFn: () => agendaApi.getTodaySchedules(),
+  })
+
+  // GK: dashboard dulu cuma lihat /schedules/today — jadwal yang telat diisi dari
+  // hari-hari sebelumnya (tapi masih dalam batas waktu yang diatur admin) jadi TIDAK
+  // PERNAH kelihatan di mana pun, padahal backend sebenarnya masih izinkan diisi.
+  // Endpoint ini mundur sampai batas admin, plus info kapan tepatnya batasnya. WAJIB
+  // pakai `agendaApi.getPerluDiisi()` yang sama dgn AgendaFormPage.tsx — lihat catatan
+  // panjang di WaliKelasDashboard soal kenapa bentuk data query harus konsisten.
+  const { data: perluDiisiData } = useQuery({
+    queryKey: ['agendas-perlu-diisi'],
+    queryFn: () => agendaApi.getPerluDiisi(),
   })
 
   const { data: agendaData } = useQuery({
@@ -474,61 +571,58 @@ function GuruDashboard() {
     queryFn: () => api.get('/agendas?limit=5').then(r => r.data),
   })
 
-  const todaySchedules = scheduleData?.data ?? []
+  const todaySchedules = scheduleData?.data.data ?? []
   const recentAgendas  = agendaData?.data ?? []
   const totalAgenda    = agendaData?.meta?.total ?? 0
-  const belumIsi       = todaySchedules.filter((s: any) => !s.agenda_hari_ini).length
+  const perluDiisi: any[] = perluDiisiData?.data.data ?? []
+  const belumIsi       = perluDiisi.filter(s => s.bisa_diisi).length
+  const lewatBatas      = perluDiisi.filter(s => !s.bisa_diisi).length
 
   const greet = user?.role === 'wali_kelas' ? 'Pantau kelas Anda' : 'Selamat mengajar hari ini'
 
   return (
     <div className="space-y-5">
-      <div>
+      <div className="space-y-2">
         <h1 className="text-xl font-bold">{greet}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Halo, <span className="font-medium">{user?.nama}</span></p>
+        {/* GK16: semester aktif harus jelas terlihat di puncak dashboard */}
+        <SemesterBadge />
       </div>
 
-      {/* Jadwal hari ini */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Jadwal Hari Ini</CardTitle>
-            {belumIsi > 0 && (
-              <Badge className="bg-orange-100 text-orange-700">{belumIsi} belum diisi</Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {todaySchedules.length === 0
-            ? <p className="text-sm text-muted-foreground py-4 text-center">Tidak ada jadwal mengajar hari ini.</p>
-            : (
-              <div className="space-y-2">
-                {todaySchedules.map((s: any) => (
-                  <div key={s.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-medium">{s.subject?.nama}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {s.class?.label} · {s.jam_mulai?.slice(0,5)}–{s.jam_selesai?.slice(0,5)}
-                      </p>
-                    </div>
-                    {s.agenda_hari_ini
-                      ? <Badge className="bg-green-100 text-green-700">Sudah diisi</Badge>
-                      : (
-                        <button
-                          onClick={() => navigate(`/agenda/baru?schedule=${s.id}`)}
-                          className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-white hover:bg-primary/90"
-                        >
-                          Isi Agenda
-                        </button>
-                      )
-                    }
-                  </div>
-                ))}
-              </div>
-            )
-          }
-        </CardContent>
-      </Card>
+      {/* Agenda perlu diisi — mencakup hari ini + hari sebelumnya yang masih dalam
+          batas waktu (atau baru saja lewat, biar kelihatan yang kelewat).
+          GK11: notifikasi + badge jumlah, list muncul saat diklik, scroll-capped. */}
+      <NotifCard
+        title="Agenda Perlu Diisi"
+        count={perluDiisi.length}
+        defaultOpen={perluDiisi.length > 0}
+        badges={<>
+          {lewatBatas > 0 && (
+            <Badge className="bg-red-100 text-red-700">{lewatBatas} lewat batas</Badge>
+          )}
+          {belumIsi > 0 && (
+            <Badge className="bg-orange-100 text-orange-700">{belumIsi} belum diisi</Badge>
+          )}
+        </>}
+      >
+        <AgendaPerluDiisiList
+          items={perluDiisi}
+          onSelect={(s) => navigate(`/agenda/baru?schedule=${s.schedule_id}&tanggal=${s.tanggal}`)}
+        />
+      </NotifCard>
+
+      {/* GK12: Agenda Hari Ini — beda dari "Jadwal Hari Ini" (stat count), ini daftar
+          per-sesi dengan status isi/belum, klik langsung ke form fokus (GK13). */}
+      <NotifCard title="Agenda Hari Ini" count={todaySchedules.length} defaultOpen={todaySchedules.length > 0}>
+        <AgendaHariIniList
+          items={todaySchedules}
+          onSelect={(s) => navigate(`/agenda/baru?schedule=${s.id}`)}
+          onViewFilled={(s) => navigate(`/agenda/${s.agenda_hari_ini!.id}`)}
+        />
+      </NotifCard>
+
+      {/* GK17: Jadwal Minggu Ini */}
+      <JadwalMingguIniWidget />
 
       {/* Stat mini */}
       <div className="grid grid-cols-2 gap-3">
@@ -725,9 +819,12 @@ function BkDashboard() {
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-2">
           {[
+            // "Data Siswa" (/siswa) SENGAJA dihapus dari sini — halaman itu khusus wali
+            // kelas (kelola foto+profil), BK yang bukan wali kelas selalu ditolak
+            // backend-nya. BK sudah cukup lewat EWS Siswa (lihat data) & Catatan BK
+            // (Murid Konseling). Sama seperti perbaikan nav-config.ts.
             { label: 'Catatan BK',  path: '/catatan-bk', color: 'bg-teal-50 text-teal-700 border-teal-200' },
             { label: 'EWS Siswa',   path: '/ews',        color: 'bg-red-50 text-red-700 border-red-200' },
-            { label: 'Data Siswa',  path: '/siswa',      color: 'bg-blue-50 text-blue-700 border-blue-200' },
             { label: 'Laporan',     path: '/laporan',    color: 'bg-green-50 text-green-700 border-green-200' },
           ].map(a => (
             <button key={a.label} onClick={() => navigate(a.path)}
@@ -1330,7 +1427,17 @@ function OrangTuaDashboard() {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user)
-  if (!user) return null
+  // `user` bisa sesaat null saat rehidrasi Zustand persist dari localStorage belum
+  // selesai (async) walau token/isAuthenticated sudah true — dulu `return null` di sini
+  // bikin layar putih kosong sekejap sebelum dashboard muncul. Tampilkan spinner supaya
+  // selalu ada sesuatu yang terlihat, bukan blank.
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    )
+  }
 
   const kap = user.kapabilitas
 

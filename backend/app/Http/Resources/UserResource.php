@@ -45,6 +45,9 @@ class UserResource extends JsonResource
                 'id'    => $this->student->uuid,
                 'nis'   => $this->student->nis,
                 'nisn'  => $this->student->nisn,
+                // Foto RESMI siswa (kolom students.foto, dikelola admin/wali kelas) — beda
+                // dari foto_url di atas (users.foto) yang untuk siswa sengaja tidak dipakai.
+                'foto_url' => $this->student->foto ? Storage::disk('public')->url($this->student->foto) : null,
                 'kelas' => $this->student->schoolClass
                     ? [
                         'tingkat' => $this->student->schoolClass->tingkat->value,

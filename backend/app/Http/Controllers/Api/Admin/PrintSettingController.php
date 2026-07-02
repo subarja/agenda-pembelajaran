@@ -10,13 +10,13 @@ use Illuminate\Http\Request;
 
 class PrintSettingController extends Controller
 {
-    // ── GET /admin/print-settings ──────────────────────────────────────────────
-    public function show(): JsonResponse
+    // ── GET /print-settings — per-akun (GK30), semua role login boleh akses ─────
+    public function show(Request $request): JsonResponse
     {
-        return response()->json(['data' => $this->format(PrintSetting::instance())]);
+        return response()->json(['data' => $this->format(PrintSetting::instance($request->user()->id))]);
     }
 
-    // ── PUT /admin/print-settings ───────────────────────────────────────────────
+    // ── PUT /print-settings — hanya mengubah baris milik user itu sendiri ───────
     public function update(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -29,7 +29,7 @@ class PrintSettingController extends Controller
             'kop_position'      => ['required', 'in:left,center,right'],
         ]);
 
-        $setting = PrintSetting::instance();
+        $setting = PrintSetting::instance($request->user()->id);
         $setting->update($data);
 
         return response()->json(['message' => 'Pengaturan cetak disimpan.', 'data' => $this->format($setting)]);

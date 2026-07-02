@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, BookOpen, Clock, CheckCircle2, FileEdit, X } from 'lucide-react'
+import { Plus, BookOpen, CheckCircle2, FileEdit, X } from 'lucide-react'
 import { agendaApi } from '@/features/agenda/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AgendaPerluDiisiList } from '@/components/agenda/AgendaPerluDiisiList'
+import { AgendaHariIniList } from '@/components/agenda/AgendaHariIniList'
 
 const statusBadge = {
   submitted: { label: 'Selesai', variant: 'hijau'  as const },
@@ -66,6 +69,7 @@ function formatTanggal(iso: string) {
 
 export default function AgendaPage() {
   const navigate = useNavigate()
+  const [isiDialogOpen, setIsiDialogOpen] = useState(false)
 
   const [page, setPage]               = useState(1)
   const [kelas, setKelas]             = useState('')
@@ -86,6 +90,11 @@ export default function AgendaPage() {
     queryFn: () => agendaApi.getTodaySchedules(),
   })
 
+  const { data: perluDiisiRes } = useQuery({
+    queryKey: ['agendas-perlu-diisi'],
+    queryFn: () => agendaApi.getPerluDiisi(),
+  })
+
   const { data: classesRes } = useQuery({
     queryKey: ['agenda-my-classes'],
     queryFn: () => agendaApi.getMyClasses(),
@@ -103,50 +112,67 @@ export default function AgendaPage() {
   })
 
   const todaySchedules = schedulesRes?.data.data ?? []
+  const perluDiisi     = perluDiisiRes?.data.data ?? []
   const agendas = agendasRes?.data.data ?? []
   const meta    = agendasRes?.data.meta
-
-  const unfilledToday = todaySchedules.filter((s) => !s.agenda_hari_ini)
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Agenda Pembelajaran</h1>
-        <Button size="sm" onClick={() => navigate('/agenda/baru')}>
+        <Button size="sm" onClick={() => setIsiDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Isi Agenda
         </Button>
       </div>
 
-      {/* ── Jadwal belum diisi hari ini ──────────────────────────────── */}
-      {unfilledToday.length > 0 && (
+      {/* ── GK14: klik "+ Isi Agenda" munculkan Agenda Perlu Diisi (GK11) &
+          Agenda Hari Ini (GK12); pilih satu → lanjut ke form fokus (GK13). ────── */}
+      <Dialog open={isiDialogOpen} onOpenChange={setIsiDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Isi Agenda</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            {perluDiisi.length > 0 && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  Agenda Perlu Diisi
+                  <span className="rounded-full bg-orange-100 text-orange-700 text-xs font-medium px-1.5 py-0.5">{perluDiisi.length}</span>
+                </Label>
+                <AgendaPerluDiisiList
+                  items={perluDiisi}
+                  onSelect={(s) => { setIsiDialogOpen(false); navigate(`/agenda/baru?schedule=${s.schedule_id}&tanggal=${s.tanggal}`) }}
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Agenda Hari Ini</Label>
+              <AgendaHariIniList
+                items={todaySchedules}
+                onSelect={(s) => { setIsiDialogOpen(false); navigate(`/agenda/baru?schedule=${s.id}`) }}
+                onViewFilled={(s) => { setIsiDialogOpen(false); navigate(`/agenda/${s.agenda_hari_ini!.id}`) }}
+              />
+            </div>
+            {perluDiisi.length === 0 && todaySchedules.length === 0 && (
+              <Button variant="outline" className="w-full" onClick={() => { setIsiDialogOpen(false); navigate('/agenda/baru') }}>
+                Isi Agenda Manual
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Agenda perlu diisi ───────────────────────────────────────── */}
+      {perluDiisi.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            Belum diisi hari ini
+            Agenda Perlu Diisi
           </p>
-          {unfilledToday.map((s) => (
-            <Card key={s.id} className="border-amber-200 bg-amber-50">
-              <CardContent className="p-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-                    <Clock className="h-3 w-3" />
-                    {s.jam_mulai.slice(0, 5)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{s.subject.nama}</p>
-                    <p className="text-xs text-muted-foreground">{s.class.label}</p>
-                  </div>
-                </div>
-                <Button
-                  size="sm" variant="outline"
-                  className="shrink-0 border-amber-400 text-amber-700 hover:bg-amber-100"
-                  onClick={() => navigate(`/agenda/baru?schedule=${s.id}`)}
-                >
-                  Isi Sekarang
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+          <AgendaPerluDiisiList
+            items={perluDiisi}
+            onSelect={(s) => navigate(`/agenda/baru?schedule=${s.schedule_id}&tanggal=${s.tanggal}`)}
+          />
         </div>
       )}
 
@@ -229,50 +255,55 @@ export default function AgendaPage() {
           </div>
         )}
 
-        {agendas.map((agenda) => {
-          const badge = statusBadge[agenda.status]
-          return (
-            <Card
-              key={agenda.id}
-              className="cursor-pointer hover:border-primary-200 transition-colors"
-              onClick={() => navigate(`/agenda/${agenda.id}`)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-sm font-semibold truncate">
-                        {agenda.schedule?.subject.nama ?? '—'}
-                      </p>
-                      <Badge variant={badge.variant} className="shrink-0">
-                        {badge.label}
-                      </Badge>
+        {agendas.length > 0 && (
+          // GK18: 3 baris teratas terlihat, sisanya (hingga 15/halaman) dijangkau via scroll
+          <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+            {agendas.map((agenda) => {
+              const badge = statusBadge[agenda.status]
+              return (
+                <Card
+                  key={agenda.id}
+                  className="cursor-pointer hover:border-primary-200 transition-colors"
+                  onClick={() => navigate(`/agenda/${agenda.id}`)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-sm font-semibold truncate">
+                            {agenda.schedule?.subject.nama ?? '—'}
+                          </p>
+                          <Badge variant={badge.variant} className="shrink-0">
+                            {badge.label}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {agenda.schedule?.class.label} · {formatTanggal(agenda.tanggal)}
+                        </p>
+                        {agenda.learning_objectives.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {agenda.learning_objectives.length} TP dicapai
+                          </p>
+                        )}
+                        {agenda.resume_kbm && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                            {agenda.resume_kbm}
+                          </p>
+                        )}
+                      </div>
+                      <div className="shrink-0">
+                        {agenda.status === 'submitted'
+                          ? <CheckCircle2 className="h-5 w-5 text-ews-hijau" />
+                          : <FileEdit className="h-5 w-5 text-ews-kuning" />
+                        }
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {agenda.schedule?.class.label} · {formatTanggal(agenda.tanggal)}
-                    </p>
-                    {agenda.learning_objectives.length > 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {agenda.learning_objectives.length} TP dicapai
-                      </p>
-                    )}
-                    {agenda.resume_kbm && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                        {agenda.resume_kbm}
-                      </p>
-                    )}
-                  </div>
-                  <div className="shrink-0">
-                    {agenda.status === 'submitted'
-                      ? <CheckCircle2 className="h-5 w-5 text-ews-hijau" />
-                      : <FileEdit className="h-5 w-5 text-ews-kuning" />
-                    }
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
 
         {meta && <Pagination meta={meta} page={page} onPage={setPage} />}
       </div>

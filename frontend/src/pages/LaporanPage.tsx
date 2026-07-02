@@ -5,10 +5,10 @@ import api from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn, toLocalDateStr } from '@/lib/utils'
+import { toLocalDateStr } from '@/lib/utils'
 import { usePdfPreview } from '@/hooks/usePdfPreview'
 
-type ReportType = 'jurnal' | 'rekap_agenda' | 'kehadiran' | 'karakter' | 'ews'
+type ReportType = 'rekap_agenda' | 'kehadiran' | 'karakter' | 'nilai_tambah' | 'ews'
 
 interface ReportMeta {
   id: ReportType
@@ -22,16 +22,6 @@ interface ReportMeta {
 }
 
 const REPORTS: ReportMeta[] = [
-  {
-    id: 'jurnal',
-    label: 'Jurnal Mengajar (Resmi)',
-    desc: 'Laporan jurnal mengajar sesuai format Bab XIII — kop sekolah, tabel pertemuan, ringkasan TP, blok tanda tangan. Siap diserahkan ke Kepala Sekolah.',
-    needsClass: true,
-    needsDate: true,
-    classLabel: 'Kelas (kosong = semua kelas diampu)',
-    allowAllClass: true,
-    roles: ['guru', 'wali_kelas', 'wakasek', 'admin'],
-  },
   {
     id: 'rekap_agenda',
     label: 'Rekap Agenda Saya',
@@ -52,6 +42,14 @@ const REPORTS: ReportMeta[] = [
     id: 'karakter',
     label: 'Rekap Karakter Siswa',
     desc: 'Akumulasi poin karakter per siswa dan per kategori.',
+    needsClass: true,
+    needsDate: false,
+    roles: ['guru', 'wali_kelas', 'wakasek', 'bk', 'admin'],
+  },
+  {
+    id: 'nilai_tambah',
+    label: 'Laporan Nilai Tambah',
+    desc: 'Daftar poin karakter manual (Nilai Tambah) yang sudah diberikan ke siswa — langsung final, tanpa approval admin.',
     needsClass: true,
     needsDate: false,
     roles: ['guru', 'wali_kelas', 'wakasek', 'bk', 'admin'],
@@ -130,7 +128,8 @@ export default function LaporanPage() {
   const userRole = user?.role ?? ''
   const kap      = user?.kapabilitas
   const isAdmin  = userRole === 'admin'
-  const pdfPreview = usePdfPreview({ printSettings: isAdmin })
+  // GK30: pengaturan kertas per-akun — semua role login boleh atur miliknya sendiri.
+  const pdfPreview = usePdfPreview({ printSettings: true })
 
   const availableReports = REPORTS.filter((r) => {
     if (r.roles.includes(userRole)) return true
@@ -158,7 +157,7 @@ export default function LaporanPage() {
   const allTeachers = teachersRes?.data.data ?? []
 
   // Laporan yang menggunakan kelas dari jadwal guru (bukan semua kelas)
-  const useGuruClasses = type === 'jurnal' || (!isAdmin && (type === 'kehadiran' || type === 'karakter' || type === 'ews'))
+  const useGuruClasses = !isAdmin && (type === 'kehadiran' || type === 'karakter' || type === 'nilai_tambah' || type === 'ews')
 
   // Untuk laporan jurnal/kehadiran/karakter guru — kelas berdasarkan guru terpilih (atau guru sendiri)
   const { data: guruContextsRes } = useQuery({
@@ -179,7 +178,7 @@ export default function LaporanPage() {
   const displayClasses = useGuruClasses ? guruClasses : allClasses
 
   // Tipe laporan yang butuh guru (untuk admin)
-  const needsTeacher = isAdmin && (type === 'jurnal' || type === 'rekap_agenda')
+  const needsTeacher = isAdmin && type === 'rekap_agenda'
 
   async function download(format: 'pdf' | 'excel') {
     if (needsTeacher && !teacherId) {
@@ -192,9 +191,8 @@ export default function LaporanPage() {
     }
 
     let endpoint = '/reports/agenda'
-    if (type === 'jurnal')            endpoint = '/reports/jurnal'
-    else if (type === 'rekap_agenda') endpoint = '/reports/agenda'
-    else                              endpoint = `/reports/${type}`
+    if (type === 'rekap_agenda') endpoint = '/reports/agenda'
+    else                         endpoint = `/reports/${type}`
 
     const params = new URLSearchParams({ format })
     if (needsTeacher && teacherId)    params.set('teacher_id', teacherId)
@@ -237,34 +235,22 @@ export default function LaporanPage() {
     <div className="max-w-lg space-y-5">
       <h1 className="text-xl font-bold">Laporan</h1>
 
-      {/* Pilih jenis laporan */}
-      <div className="space-y-2">
-        <Label>Jenis Laporan</Label>
-        <div className="space-y-2">
+      {/* Pilih jenis laporan (GK28: dropdown, bukan daftar kartu) */}
+      <div className="space-y-1.5">
+        <Label htmlFor="jenis-laporan">Jenis Laporan</Label>
+        <select
+          id="jenis-laporan"
+          value={type}
+          onChange={(e) => { setType(e.target.value as ReportType); setClassId(''); setTeacherId(''); setError('') }}
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           {availableReports.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => { setType(r.id); setClassId(''); setTeacherId(''); setError('') }}
-              className={cn(
-                'w-full text-left rounded-lg border p-3 transition-colors',
-                type === r.id
-                  ? 'border-primary-600 bg-primary-50'
-                  : 'border-border hover:border-primary-200',
-              )}
-            >
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{r.label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{r.desc}</p>
-                </div>
-                {r.id === 'jurnal' && (
-                  <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Resmi</span>
-                )}
-              </div>
-            </button>
+            <option key={r.id} value={r.id}>{r.label}</option>
           ))}
-        </div>
+        </select>
+        {selected && (
+          <p className="text-xs text-muted-foreground leading-relaxed">{selected.desc}</p>
+        )}
       </div>
 
       {/* Filter */}
@@ -370,12 +356,6 @@ export default function LaporanPage() {
           <div className="space-y-1">
             <p className="text-xs font-medium">{selected.label}</p>
             <p className="text-xs text-muted-foreground">{selected.desc}</p>
-            {type === 'jurnal' && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Format sesuai <strong>Bab XIII RPD</strong>: kop SMK Negeri 2 Cimahi, tabel 1 baris/pertemuan,
-                ringkasan otomatis (total sesi, TP dibahas, % kehadiran mengajar), dan blok tanda tangan 3 kolom.
-              </p>
-            )}
             {type === 'kehadiran' && (
               <p className="text-xs text-muted-foreground mt-1">
                 Kolom <strong>Tanggal Tidak Hadir</strong>: S=Sakit · I=Izin · A=Alpha

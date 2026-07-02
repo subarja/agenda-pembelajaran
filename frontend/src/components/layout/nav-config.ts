@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
-  MessageSquare, Calendar, BarChart3, TrendingUp,
+  MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -19,6 +19,7 @@ const allNav: Record<string, NavItem> = {
   presensi:      { label: 'Presensi',        path: '/presensi',        icon: ClipboardCheck },
   presensiHarian:{ label: 'Presensi Harian', path: '/presensi-harian', icon: CalendarCheck },
   karakter:      { label: 'Karakter',        path: '/karakter',        icon: Star },
+  nilaiTambah:   { label: 'Nilai Tambah',    path: '/nilai-tambah',    icon: PlusCircle },
   siswa:         { label: 'Siswa',           path: '/siswa',           icon: Users },
   ews:           { label: 'EWS Siswa',       path: '/ews',             icon: AlertTriangle },
   ewsGuru:       { label: 'EWS Guru',        path: '/ews-guru',        icon: UserCog },
@@ -30,6 +31,8 @@ const allNav: Record<string, NavItem> = {
   hariEfektif:   { label: 'Minggu Efektif', path: '/hari-efektif',    icon: BarChart3 },
   pengaturan:    { label: 'Pengaturan',      path: '/pengaturan',      icon: Settings },
   profil:        { label: 'Profil',          path: '/profil',          icon: User },
+  jadwalSaya:    { label: 'Jadwal Saya',     path: '/jadwal-saya',     icon: FileText },
+  refleksi:      { label: 'Refleksi Mingguan', path: '/refleksi-mingguan', icon: BookOpenCheck },
 }
 
 function withSection(item: NavItem, label: string): NavItem {
@@ -43,43 +46,51 @@ export function getNavForUser(user: UserType): NavItem[] {
   const items: NavItem[] = [allNav.dashboard]
 
   if (role === 'guru') {
-    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.laporan, allNav.kalender, allNav.hariEfektif)
+    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya)
 
     if (kap?.is_wali_kelas && kap?.is_bk) {
       // keduanya
       items.push(
         withSection(allNav.presensiHarian, 'Menu Wali Kelas'),
-        allNav.ews, allNav.siswa,
+        allNav.ews, allNav.siswa, allNav.refleksi,
         withSection(allNav.catatanBK, 'Menu BK'),
       )
     } else if (kap?.is_wali_kelas) {
       items.push(
         withSection(allNav.presensiHarian, 'Menu Wali Kelas'),
-        allNav.ews, allNav.siswa,
+        allNav.ews, allNav.siswa, allNav.refleksi,
       )
     } else if (kap?.is_bk) {
+      // BK (bukan wali kelas) TIDAK dapat allNav.siswa — halaman itu
+      // (StudentPhotoManagePage, kelola foto+profil siswa) khusus wali kelas,
+      // backend-nya (myClassStudents()) menolak non-wali-kelas dgn pesan "Anda bukan
+      // wali kelas aktif". Dulu BK tetap dapat link ini di sidebar padahal selalu
+      // berujung ditolak — BK sudah cukup lewat "EWS Siswa" (lihat kondisi siswa) dan
+      // "Catatan BK" (kelola catatan + Murid Konseling, lihat Isu GK8).
       items.push(
-        withSection(allNav.siswa, 'Menu BK'),
-        allNav.ews, allNav.catatanBK,
+        withSection(allNav.ews, 'Menu BK'),
+        allNav.catatanBK,
       )
     }
   } else if (role === 'wali_kelas') {
     // Legacy role — backward compat
-    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.laporan)
+    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.laporan)
     items.push(
       withSection(allNav.presensiHarian, 'Menu Wali Kelas'),
-      allNav.ews, allNav.siswa,
+      allNav.ews, allNav.siswa, allNav.refleksi,
     )
   } else if (role === 'bk') {
-    // Legacy role — backward compat
+    // Legacy role — backward compat (sama alasan seperti di atas, BK tidak dapat siswa)
     items.push(allNav.laporan)
     items.push(
-      withSection(allNav.siswa, 'Menu BK'),
-      allNav.ews, allNav.catatanBK,
+      withSection(allNav.ews, 'Menu BK'),
+      allNav.catatanBK,
     )
   } else if (role === 'admin' || role === 'wakasek') {
     items.push(allNav.ews, allNav.ewsGuru, allNav.laporan, allNav.rekapPerkembangan, allNav.kalender, allNav.hariEfektif, allNav.admin)
-  } else if (role === 'siswa' || role === 'orang_tua') {
+  } else if (role === 'siswa') {
+    items.push(allNav.jadwalSaya)
+  } else if (role === 'orang_tua') {
     // minimal — hanya dashboard + profil
   }
 

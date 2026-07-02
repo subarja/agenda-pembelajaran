@@ -1,13 +1,17 @@
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Calendar, Clock, Users, CheckCircle2,
-  ClipboardCheck, FileText, Star, AlertCircle, Target,
+  ClipboardCheck, FileText, Star, AlertCircle, Target, Plus, Trash2,
 } from 'lucide-react'
 import { agendaApi } from '@/features/agenda/api'
 import { presensiApi } from '@/features/presensi/api'
+import type { StudentScoreInput } from '@/features/agenda/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AgendaDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const { data: agendaResp, isLoading: loadAgenda } = useQuery({
     queryKey: ['agenda', id],
@@ -35,6 +40,51 @@ export default function AgendaDetailPage() {
   })
 
   const agenda = agendaResp?.data.data
+
+  // ── Isi Nilai Aktivitas (GK13): dipindah kesini dari form isi-agenda cepat supaya
+  // pengisian agenda tetap fokus TP + kegiatan + presensi. Opsional, kapan saja.
+  const [editingNilai, setEditingNilai] = useState(false)
+  const [scores, setScores] = useState<StudentScoreInput[]>([])
+  const [pickerStudentId, setPickerStudentId] = useState('')
+  const [pickerNilai, setPickerNilai] = useState('')
+  const [pickerCatatan, setPickerCatatan] = useState('')
+  const [showPicker, setShowPicker] = useState(false)
+
+  const { data: studentsRes } = useQuery({
+    queryKey: ['students', agenda?.schedule?.class.id],
+    queryFn: () => agendaApi.getStudents(agenda!.schedule!.class.id),
+    enabled: editingNilai && !!agenda?.schedule?.class.id,
+  })
+  const students = studentsRes?.data.data ?? []
+
+  const nilaiMutation = useMutation({
+    mutationFn: (data: StudentScoreInput[]) => agendaApi.updateAgenda(id!, { student_scores: data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agenda', id] })
+      setEditingNilai(false)
+    },
+  })
+
+  function startEditNilai() {
+    setScores((agenda?.student_scores ?? []).map((s) => ({ student_id: s.student_id, nilai: s.nilai, catatan: s.catatan ?? '' })))
+    setEditingNilai(true)
+  }
+
+  function addScore() {
+    if (!pickerStudentId || pickerNilai === '') return
+    const nilai = parseInt(pickerNilai, 10)
+    if (isNaN(nilai)) return
+    setScores((prev) => [
+      ...prev.filter((s) => s.student_id !== pickerStudentId),
+      { student_id: pickerStudentId, nilai, catatan: pickerCatatan },
+    ])
+    setPickerStudentId(''); setPickerNilai(''); setPickerCatatan('')
+    setShowPicker(false)
+  }
+
+  function removeScore(studentId: string) {
+    setScores((prev) => prev.filter((s) => s.student_id !== studentId))
+  }
 
   const { data: presensiResp, isLoading: loadPresensi } = useQuery({
     queryKey: ['presensi', id],
@@ -197,33 +247,133 @@ export default function AgendaDetailPage() {
         </Card>
       )}
 
-      {/* Nilai Siswa */}
-      {agenda.student_scores && agenda.student_scores.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
+      {/* Nilai Aktivitas — opsional, terpisah dari alur isi-agenda cepat (GK13) */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
               <Star className="h-4 w-4 text-primary" />
               Nilai Aktivitas
             </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-1.5">
-            {agenda.student_scores.map((s) => (
-              <div key={s.student_id} className="flex items-center justify-between gap-2 text-sm">
-                <div className="min-w-0">
-                  <span className="font-medium">{s.nama}</span>
-                  {s.catatan && <span className="text-xs text-muted-foreground ml-2">— {s.catatan}</span>}
-                </div>
-                <span className={cn(
-                  'font-bold text-sm shrink-0',
-                  s.nilai >= 80 ? 'text-green-700' : s.nilai >= 60 ? 'text-yellow-700' : 'text-red-700',
-                )}>
-                  {s.nilai}
-                </span>
+            {!editingNilai && (
+              <Button variant="outline" size="sm" onClick={startEditNilai}>
+                {agenda.student_scores.length > 0 ? 'Edit' : 'Isi Nilai Aktivitas'}
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-1.5">
+          {!editingNilai && agenda.student_scores.length === 0 && (
+            <p className="text-sm text-muted-foreground">Belum ada nilai aktivitas untuk sesi ini.</p>
+          )}
+
+          {!editingNilai && agenda.student_scores.map((s) => (
+            <div key={s.student_id} className="flex items-center justify-between gap-2 text-sm">
+              <div className="min-w-0">
+                <span className="font-medium">{s.nama}</span>
+                {s.catatan && <span className="text-xs text-muted-foreground ml-2">— {s.catatan}</span>}
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+              <span className={cn(
+                'font-bold text-sm shrink-0',
+                s.nilai >= 80 ? 'text-green-700' : s.nilai >= 60 ? 'text-yellow-700' : 'text-red-700',
+              )}>
+                {s.nilai}
+              </span>
+            </div>
+          ))}
+
+          {editingNilai && (
+            <div className="space-y-2">
+              {scores.map((score) => {
+                const student = students.find((s) => s.id === score.student_id)
+                    ?? agenda.student_scores.find((s) => s.student_id === score.student_id)
+                return (
+                  <div key={score.student_id}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{student?.nama ?? '—'}</p>
+                      {score.catatan && (
+                        <p className="text-xs text-muted-foreground truncate">{score.catatan}</p>
+                      )}
+                    </div>
+                    <span className={cn(
+                      'text-sm font-bold shrink-0 tabular-nums',
+                      score.nilai >= 0 ? 'text-green-600' : 'text-red-600',
+                    )}>
+                      {score.nilai >= 0 ? '+' : ''}{score.nilai}
+                    </span>
+                    <button type="button" onClick={() => removeScore(score.student_id)}
+                      className="text-muted-foreground hover:text-red-500 shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )
+              })}
+
+              {showPicker ? (
+                <Card className="border-primary-200">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>Pilih Siswa</Label>
+                      <select value={pickerStudentId}
+                        onChange={(e) => setPickerStudentId(e.target.value)}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="">— Pilih siswa —</option>
+                        {students
+                          .filter((s) => !scores.find((sc) => sc.student_id === s.id))
+                          .map((s) => (
+                            <option key={s.id} value={s.id}>{s.nama} ({s.nis})</option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Nilai <span className="text-muted-foreground font-normal">(contoh: 85 atau -20)</span></Label>
+                      <Input type="number" placeholder="mis: 85 atau -20"
+                        value={pickerNilai} onChange={(e) => setPickerNilai(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Keterangan <span className="text-muted-foreground font-normal">(opsional)</span></Label>
+                      <Input placeholder="mis: Aktif berdiskusi / Tidak mengerjakan tugas"
+                        value={pickerCatatan} onChange={(e) => setPickerCatatan(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="button" size="sm" onClick={addScore}
+                        disabled={!pickerStudentId || pickerNilai === ''}
+                      >
+                        Tambahkan
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => {
+                        setShowPicker(false)
+                        setPickerStudentId(''); setPickerNilai(''); setPickerCatatan('')
+                      }}>
+                        Batal
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowPicker(true)}>
+                  <Plus className="h-3 w-3" /> Tambah Nilai Siswa
+                </Button>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" disabled={nilaiMutation.isPending} onClick={() => nilaiMutation.mutate(scores)}>
+                  {nilaiMutation.isPending ? 'Menyimpan...' : 'Simpan Nilai'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingNilai(false)}>
+                  Batal
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

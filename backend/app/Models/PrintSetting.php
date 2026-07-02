@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class PrintSetting extends Model
 {
     protected $fillable = [
+        'user_id',
         'paper_size',
         'margin_top', 'margin_bottom', 'margin_left', 'margin_right',
         'kop_width_percent', 'kop_position',
@@ -23,9 +24,12 @@ class PrintSetting extends Model
         ];
     }
 
-    public static function instance(): self
+    // GK30: pengaturan kertas per-akun — tiap user (guru/wali kelas/BK/admin) punya
+    // barisnya sendiri, terisolasi penuh dari user lain (yang lain tetap default sampai
+    // dia ubah sendiri). $userId null (jarang dipakai, cuma fallback) = baris global lama.
+    public static function instance(?int $userId = null): self
     {
-        return static::firstOrCreate([], [
+        return static::firstOrCreate(['user_id' => $userId], [
             'paper_size' => 'A4',
             'margin_top' => 1.5, 'margin_bottom' => 1.5,
             'margin_left' => 2.0, 'margin_right' => 2.0,

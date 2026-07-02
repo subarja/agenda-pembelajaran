@@ -11,7 +11,7 @@ class CharacterManualNote extends Model
     use HasUuid;
 
     protected $fillable = [
-        'student_id', 'teacher_id', 'catatan', 'nilai',
+        'student_id', 'teacher_id', 'sumber', 'catatan', 'nilai',
         'status', 'admin_catatan', 'nilai_final',
         'reviewed_by', 'reviewed_at',
     ];

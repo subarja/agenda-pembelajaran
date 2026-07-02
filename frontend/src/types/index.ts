@@ -53,6 +53,7 @@ export interface StudentProfile {
   nis: string
   nisn: string | null
   kelas: { tingkat: string; jurusan: string; rombel: string } | null
+  foto_url: string | null
 }
 
 export interface LinkedStudentProfile {

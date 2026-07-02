@@ -55,16 +55,24 @@ export default function EwsDetailPage() {
   const qc = useQueryClient()
   const user = useAuthStore(s => s.user)
   const role = user?.role ?? ''
+  const kap  = user?.kapabilitas
   const isAdmin = ['admin', 'wakasek'].includes(role)
-  const isWali  = ['wali_kelas', 'admin', 'wakasek', 'bk'].includes(role)
+  // 'wali_kelas' dan 'bk' BUKAN nilai role asli di sistem ini (role guru sungguhan
+  // selalu 'guru', status wali-kelas/BK adalah KAPABILITAS terpisah dari
+  // classes.wali_kelas_id / teachers.is_bk) — cek literal role di sini tidak akan
+  // pernah cocok utk akun guru sungguhan. Lihat Isu GK6.
+  const isWaliKelasCap = kap?.is_wali_kelas ?? false
+  const isBkCap         = kap?.is_bk ?? false
 
   const [activeDim, setActiveDim] = useState<DimKey | null>(null)
-  const pdfPreview = usePdfPreview({ printSettings: isAdmin })
+  // GK30: pengaturan kertas per-akun — semua role login boleh atur miliknya sendiri.
+  const pdfPreview = usePdfPreview({ printSettings: true })
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['ews-detail', studentId],
     queryFn: () => ewsApi.getEwsDetail(studentId!),
     enabled: !!studentId,
+    retry: false,
   })
 
   const d = data?.data.data
@@ -90,7 +98,16 @@ export default function EwsDetailPage() {
       {[1,2,3].map(i => <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />)}
     </div>
   )
-  if (!d) return null
+  // Dulu `return null` di sini bikin halaman blank putih permanen kalau query gagal
+  // (mis. 403 akses ditolak) — mirip bug GK2, tampilkan pesan yang jelas alih-alih blank.
+  if (error || !d) return (
+    <div className="rounded-xl border bg-card flex flex-col items-center justify-center gap-2 py-24 text-muted-foreground max-w-xl">
+      <AlertTriangle className="h-8 w-8" />
+      <p className="text-sm font-medium">
+        {(error as any)?.response?.data?.message ?? 'Gagal memuat detail EWS siswa ini.'}
+      </p>
+    </div>
+  )
 
   const dim = d.dimensions
   const rekomendasi: any[] = (d as any).rekomendasi ?? []
@@ -111,9 +128,8 @@ export default function EwsDetailPage() {
       {/* Student card */}
       <Card>
         <CardContent className="p-4 flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-lg">
-            {d.student.nama.charAt(0)}
-          </div>
+          <img src={d.student.foto_url || '/images/default-avatar.jpg'} alt={d.student.nama}
+            className="w-[20mm] h-auto shrink-0 rounded-md border" />
           <div className="flex-1 min-w-0">
             <p className="font-semibold truncate">{d.student.nama}</p>
             <p className="text-sm text-muted-foreground">{d.student.nis}{d.student.kelas && ` · ${d.student.kelas}`}</p>
@@ -193,15 +209,25 @@ export default function EwsDetailPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 pt-0">
+          {/* GK6: wali kelas bisa buka kasus penanganan kapan pun, tidak perlu menunggu
+              ambang otomatis (siswa "hijau" pun boleh) */}
+          {isWaliKelasCap && (
+            <NewCaseForm
+              studentId={studentId!}
+              onCreated={() => qc.invalidateQueries({ queryKey: ['ews-detail', studentId] })}
+            />
+          )}
+
           {rekomendasi.length === 0
-            ? <p className="text-sm text-muted-foreground text-center py-4">Tidak ada rekomendasi. Siswa dalam kondisi aman.</p>
+            ? <p className="text-sm text-muted-foreground text-center py-4">Tidak ada rekomendasi tersimpan.</p>
             : rekomendasi.map((r: any) => (
               <RecommendationBlock
                 key={r.id}
                 rec={r}
                 studentId={studentId!}
                 isAdmin={isAdmin}
-                isWali={isWali}
+                isWaliKelasCap={isWaliKelasCap}
+                isBkCap={isBkCap}
                 onRefresh={() => qc.invalidateQueries({ queryKey: ['ews-detail', studentId] })}
               />
             ))
@@ -495,9 +521,45 @@ function NilaiDetail({ data }: { data: any }) {
   )
 }
 
+// ── NewCaseForm — GK6: wali kelas buka kasus penanganan manual kapan pun ───────
+function NewCaseForm({ studentId, onCreated }: { studentId: string; onCreated: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [alasan, setAlasan] = useState('')
+
+  const create = useMutation({
+    mutationFn: () => api.post(`/students/${studentId}/case`, { alasan }),
+    onSuccess: () => { setOpen(false); setAlasan(''); onCreated() },
+  })
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 rounded-md border border-primary bg-primary/5 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/10 w-full justify-center">
+        <Plus className="h-3.5 w-3.5" /> Buat Kasus Penanganan Baru
+      </button>
+    )
+  }
+
+  return (
+    <div className="rounded-md border p-3 bg-muted/30">
+      <p className="text-xs font-semibold mb-2">Kasus Penanganan Baru</p>
+      <Field label="Alasan / Deskripsi Kasus *">
+        <textarea className={inputCls} rows={3} value={alasan} onChange={e => setAlasan(e.target.value)}
+          placeholder="Mis. sering terlambat, kurang aktif di kelas, dsb. Tidak harus menunggu status EWS memburuk." />
+      </Field>
+      <div className="flex gap-2">
+        <button onClick={() => create.mutate()} disabled={!alasan.trim() || create.isPending} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50">
+          Buat Kasus
+        </button>
+        <button onClick={() => setOpen(false)} className="rounded-md border px-3 py-1.5 text-xs">Batal</button>
+      </div>
+    </div>
+  )
+}
+
 // ── RecommendationBlock ────────────────────────────────────────────────────────
-function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
-  rec: any; studentId?: string; isAdmin: boolean; isWali: boolean; onRefresh: () => void
+function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh }: {
+  rec: any; studentId?: string; isAdmin: boolean
+  isWaliKelasCap: boolean; isBkCap: boolean; onRefresh: () => void
 }) {
   const [expanded, setExpanded]           = useState(true)
   const [showAdminForm, setAdminForm]     = useState(false)
@@ -510,8 +572,13 @@ function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
   const [sessionForm, setSessionFormData] = useState({ tanggal: '', catatan: '', links: [] as { url: string; keterangan: string }[] })
   const statusCfg = STATUS_CONFIG[rec.status] ?? STATUS_CONFIG.pending
 
+  // Key HARUS beda dari HariEfektifPage.tsx yg juga pakai 'admin-teachers-list' tapi
+  // per_page=all — key literal sama + parameter beda = react-query bisa pakai cache
+  // "salah" punya halaman lain (data guru kepotong 100 vs seharusnya semua, atau
+  // sebaliknya), tergantung halaman mana yang duluan di-visit dalam sesi yang sama.
+  // Sama kelas bug dengan [[agenda_perlu_diisi_deadline_visibility]].
   const { data: teacherData } = useQuery({
-    queryKey: ['admin-teachers-list'],
+    queryKey: ['admin-teachers-list-100'],
     queryFn: () => api.get('/admin/teachers?per_page=100').then(r => r.data.data as any[]),
     enabled: showHandlerForm,
   })
@@ -527,9 +594,24 @@ function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
   const deleteSession = useMutation({ mutationFn: (id: string) => api.delete(`/recommendations/${rec.id}/sessions/${id}`), onSuccess: () => onRefresh() })
   const updateStatus  = useMutation({ mutationFn: (status: string) => api.put(`/recommendations/${rec.id}/status`, { status }), onSuccess: () => onRefresh() })
 
+  // GK8-GK11: eskalasi ke BK
+  const [resumeText, setResumeText] = useState('')
+  const [showBkSelesaiForm, setShowBkSelesaiForm] = useState(false)
+  const ajukanKonseling = useMutation({ mutationFn: () => api.put(`/recommendations/${rec.id}/ajukan-konseling`, {}), onSuccess: () => onRefresh() })
+  const bkTerima        = useMutation({ mutationFn: () => api.put(`/recommendations/${rec.id}/bk-terima`, {}), onSuccess: () => onRefresh() })
+  const bkSelesai       = useMutation({ mutationFn: () => api.put(`/recommendations/${rec.id}/bk-selesai`, { resume: resumeText }), onSuccess: () => { setResumeText(''); onRefresh() } })
+
   const isPending = rec.status === 'pending'
   const isProses  = rec.status === 'proses'
   const isDone    = ['selesai', 'diabaikan'].includes(rec.status)
+  const isBkLocked = rec.input_wali_kelas_terkunci as boolean
+  const BK_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
+    none:     { label: '', cls: '' },
+    diajukan: { label: 'Diajukan ke BK', cls: 'bg-purple-100 text-purple-700' },
+    diterima: { label: 'Proses Penanganan BK', cls: 'bg-indigo-100 text-indigo-700' },
+    selesai:  { label: 'Penanganan BK Selesai', cls: 'bg-teal-100 text-teal-700' },
+  }
+  const bkBadge = BK_STATUS_LABEL[rec.bk_status] ?? BK_STATUS_LABEL.none
 
   return (
     <div className={cn('rounded-lg border', rec.status === 'pending' ? 'border-red-200' : rec.status === 'menunggu_verifikasi' ? 'border-blue-200' : rec.status === 'selesai' ? 'border-green-200' : 'border-border')}>
@@ -538,6 +620,13 @@ function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <Badge className={cn('text-xs', statusCfg.cls)}>{statusCfg.label}</Badge>
+            {/* GK7: status "Proses Penanganan Wali Kelas" tampil selama belum ditandai
+                selesai/diabaikan DAN belum dieskalasi ke BK — hilang begitu wali kelas
+                menandai selesai, tapi riwayatnya tetap ada. */}
+            {isProses && rec.bk_status === 'none' && (
+              <Badge className="text-xs bg-orange-100 text-orange-700">Proses Penanganan Wali Kelas</Badge>
+            )}
+            {bkBadge.label && <Badge className={cn('text-xs', bkBadge.cls)}>{bkBadge.label}</Badge>}
             <span className="text-xs text-muted-foreground">Akumulasi: {rec.akumulasi} poin</span>
             <span className="text-xs text-muted-foreground">{rec.dibuat_pada}</span>
           </div>
@@ -548,6 +637,11 @@ function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
           {rec.verified_by && (
             <p className="text-xs text-green-700 mt-1">
               <CheckCircle2 className="inline h-3 w-3 mr-0.5" />Diverifikasi oleh {rec.verified_by} ({rec.verified_at})
+            </p>
+          )}
+          {rec.status === 'selesai' && rec.ditangani_pada && !rec.verified_by && (
+            <p className="text-xs text-green-700 mt-1">
+              <CheckCircle2 className="inline h-3 w-3 mr-0.5" />Diselesaikan oleh wali kelas pada {rec.ditangani_pada}
             </p>
           )}
         </div>
@@ -640,10 +734,15 @@ function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
                         </div>
                       </div>
                     ) : (
-                      <div className="rounded-md border-l-2 border-primary pl-3 py-2 bg-muted/20">
+                      <div className={cn('rounded-md border-l-2 pl-3 py-2', s.is_resume ? 'border-teal-500 bg-teal-50' : s.jenis === 'bk' ? 'border-indigo-400 bg-indigo-50/50' : 'border-primary bg-muted/20')}>
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1">
-                            <p className="text-xs text-muted-foreground mb-1"><strong>{s.tanggal}</strong> · {s.handled_by}</p>
+                            <p className="text-xs text-muted-foreground mb-1">
+                              {s.is_resume
+                                ? <span className="font-semibold text-teal-700">Resume BK</span>
+                                : s.jenis === 'bk' ? <span className="font-semibold text-indigo-700">[BK]</span> : null}
+                              {' '}<strong>{s.tanggal}</strong> · {s.handled_by}
+                            </p>
                             <p className="text-sm leading-relaxed whitespace-pre-line">{s.catatan}</p>
                             {/* Links */}
                             {(s.links ?? []).length > 0 && (
@@ -663,7 +762,7 @@ function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
                               </div>
                             )}
                           </div>
-                          {isWali && !isDone && (
+                          {!s.is_resume && !isDone && ((s.jenis === 'wali_kelas' && isWaliKelasCap && !isBkLocked) || (s.jenis === 'bk' && rec.is_my_bk_case) || isAdmin) && (
                             <div className="flex gap-1 shrink-0">
                               <button onClick={() => setEditSession({ ...s, links: s.links ?? [] })} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></button>
                               <button onClick={() => window.confirm('Hapus sesi ini?') && deleteSession.mutate(s.id)} className="rounded p-1 hover:bg-red-100"><Trash2 className="h-3.5 w-3.5 text-red-500" /></button>
@@ -678,8 +777,15 @@ function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
             </div>
           )}
 
-          {/* Form tambah sesi */}
-          {isWali && !isDone && showSessionForm && (
+          {/* GK9: input wali kelas dikunci begitu BK menerima kasus */}
+          {isBkLocked && isWaliKelasCap && !rec.is_my_bk_case && (
+            <div className="rounded-md border border-dashed border-indigo-300 bg-indigo-50/50 px-3 py-3 text-center">
+              <p className="text-xs text-indigo-700">Proses penanganan bersama BK....</p>
+            </div>
+          )}
+
+          {/* Form tambah sesi — wali kelas (belum dikunci) ATAU BK yang sedang menangani */}
+          {((isWaliKelasCap && !isBkLocked) || (isBkCap && rec.is_my_bk_case && rec.bk_status === 'diterima')) && !isDone && showSessionForm && (
             <div className="rounded-md border p-3 bg-muted/30">
               <p className="text-xs font-semibold mb-2">Tambah Catatan Penanganan</p>
               <Field label="Tanggal Penanganan"><input className={inputCls} type="date" value={sessionForm.tanggal} onChange={e => setSessionFormData(f => ({ ...f, tanggal: e.target.value }))} /></Field>
@@ -724,14 +830,19 @@ function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
                 </button>
               </>
             )}
-            {isWali && !isDone && (
+            {((isWaliKelasCap && !isBkLocked) || (isBkCap && rec.is_my_bk_case && rec.bk_status === 'diterima')) && !isDone && (
               <button onClick={() => setSessionForm(v => !v)} className="flex items-center gap-1 rounded-md border border-primary bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10">
                 <Plus className="h-3.5 w-3.5" />Tambah Catatan Penanganan
               </button>
             )}
-            {isWali && (isProses || isPending) && rec.handling_sessions?.length > 0 && (
+            {isWaliKelasCap && (isProses || isPending) && rec.handling_sessions?.length > 0 && (
               <button onClick={() => updateStatus.mutate('menunggu_verifikasi')} disabled={updateStatus.isPending} className="flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100">
                 <Clock className="h-3.5 w-3.5" />Tandai Menunggu Verifikasi
+              </button>
+            )}
+            {isWaliKelasCap && !isDone && (isProses || rec.status === 'menunggu_verifikasi') && (
+              <button onClick={() => updateStatus.mutate('selesai')} disabled={updateStatus.isPending} className="flex items-center gap-1 rounded-md border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100">
+                <CheckCircle2 className="h-3.5 w-3.5" />Tandai Selesai
               </button>
             )}
             {isAdmin && rec.status === 'menunggu_verifikasi' && (
@@ -739,10 +850,50 @@ function RecommendationBlock({ rec, isAdmin, isWali, onRefresh }: {
                 <ShieldCheck className="h-3.5 w-3.5" />Verifikasi Selesai
               </button>
             )}
-            {!isDone && isWali && (
+            {!isDone && (isWaliKelasCap || isAdmin) && (
               <button onClick={() => window.confirm('Abaikan rekomendasi ini?') && updateStatus.mutate('diabaikan')} className="rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted">Abaikan</button>
             )}
+            {/* GK8: ajukan konseling ke BK setelah minimal 3 catatan wali kelas */}
+            {isWaliKelasCap && rec.bisa_ajukan_konseling && (
+              <button onClick={() => window.confirm('Ajukan konseling ke Guru BK untuk kasus ini?') && ajukanKonseling.mutate()} disabled={ajukanKonseling.isPending}
+                className="flex items-center gap-1 rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100">
+                <UserPlus className="h-3.5 w-3.5" />Ajukan Konseling
+              </button>
+            )}
+            {isWaliKelasCap && rec.bk_status === 'diajukan' && (
+              <span className="text-xs text-muted-foreground italic self-center">Menunggu Guru BK menerima pengajuan konseling ({rec.diajukan_konseling_pada})...</span>
+            )}
+            {/* GK9: BK terima pengajuan konseling */}
+            {isBkCap && rec.bisa_terima_konseling && (
+              <button onClick={() => bkTerima.mutate()} disabled={bkTerima.isPending}
+                className="flex items-center gap-1 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100">
+                <UserPlus className="h-3.5 w-3.5" />Terima Konseling
+              </button>
+            )}
+            {/* GK11: BK tandai selesai (wajib isi resume) */}
+            {rec.is_my_bk_case && rec.bk_status === 'diterima' && (
+              <button onClick={() => setShowBkSelesaiForm(v => !v)} className="flex items-center gap-1 rounded-md border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-100">
+                <CheckCircle2 className="h-3.5 w-3.5" />Tandai Selesai (BK)
+              </button>
+            )}
           </div>
+
+          {/* Form resume BK (GK11) */}
+          {rec.is_my_bk_case && rec.bk_status === 'diterima' && showBkSelesaiForm && (
+            <div className="rounded-md border border-teal-300 bg-teal-50/50 p-3">
+              <p className="text-xs font-semibold mb-2 text-teal-800">Resume Penanganan BK (wajib diisi sebelum menandai selesai)</p>
+              <Field label="Resume *">
+                <textarea className={inputCls} rows={4} value={resumeText} onChange={e => setResumeText(e.target.value)}
+                  placeholder="Ringkasan hasil penanganan — akan muncul di riwayat wali kelas sebagai 'Resume BK'." />
+              </Field>
+              <div className="flex gap-2">
+                <button onClick={() => bkSelesai.mutate()} disabled={!resumeText.trim() || bkSelesai.isPending} className="rounded-md bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50">
+                  Kirim Resume &amp; Tandai Selesai
+                </button>
+                <button onClick={() => setShowBkSelesaiForm(false)} className="rounded-md border px-3 py-1.5 text-xs">Batal</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

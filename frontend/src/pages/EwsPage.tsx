@@ -26,21 +26,34 @@ export default function EwsPage() {
   const navigate = useNavigate()
   const user     = useAuthStore(s => s.user)
   const isAdmin  = user?.role === 'admin' || user?.role === 'wakasek'
+  // GK3: backend sudah membatasi akses (guru biasa dapat list kosong, bukan bocor data),
+  // tapi tampilan "Tidak ada data EWS" membingungkan — tegaskan di frontend bahwa ini
+  // soal AKSES, bukan data yang memang kosong, kalau ada yang nyasar buka /ews langsung.
+  const kap = user?.kapabilitas
+  const punyaAkses = isAdmin || kap?.is_wali_kelas || kap?.is_bk
   const [filterLevel, setFilterLevel] = useState<EwsLevel | null>(null)
+  const [searchQ, setSearchQ]         = useState('')
   const [perPage, setPerPage]         = useState<PerPage>(25)
   const [page, setPage]               = useState(1)
   const [exporting, setExporting]     = useState<'excel' | 'pdf' | null>(null)
-  const pdfPreview = usePdfPreview({ printSettings: isAdmin })
+  // GK30: pengaturan kertas per-akun — semua role login boleh atur miliknya sendiri.
+  const pdfPreview = usePdfPreview({ printSettings: true })
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['ews', filterLevel],
     queryFn: () => ewsApi.getEws(filterLevel ? { level: filterLevel } : {}),
   })
 
-  const allStudents = data?.data.data ?? []
+  const rawStudents = data?.data.data ?? []
   const summary     = data?.data.meta.summary
+  // GK27: pencarian nama/NIS — filter client-side karena data sudah di-fetch penuh
+  // (paginasi di halaman ini pun murni potongan array di client, bukan dari server).
+  const q = searchQ.trim().toLowerCase()
+  const allStudents = q
+    ? rawStudents.filter((s) => s.nama.toLowerCase().includes(q) || s.nis.toLowerCase().includes(q))
+    : rawStudents
 
-  useEffect(() => { setPage(1) }, [filterLevel, perPage])
+  useEffect(() => { setPage(1) }, [filterLevel, searchQ, perPage])
 
   const handleExport = async (format: 'excel' | 'pdf') => {
     const params = new URLSearchParams({ format })
@@ -72,6 +85,16 @@ export default function EwsPage() {
     : allStudents.slice((page - 1) * perPage, page * perPage)
 
   const safePage = Math.min(page, Math.max(1, totalPages))
+
+  if (!punyaAkses) {
+    return (
+      <div className="rounded-xl border bg-card flex flex-col items-center justify-center gap-2 py-24 text-muted-foreground">
+        <AlertTriangle className="h-8 w-8" />
+        <p className="text-sm font-medium">Anda tidak memiliki akses ke EWS</p>
+        <p className="text-xs">EWS hanya untuk wali kelas (kelas yang diwalikan), Guru BK, dan admin.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -128,6 +151,13 @@ export default function EwsPage() {
           })}
         </div>
       )}
+
+      {/* ── Pencarian ────────────────────────────────────────────────────── */}
+      <input
+        type="text" value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
+        placeholder="Cari nama atau NIS siswa..."
+        className="h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
 
       {/* ── Filter + per-page bar ───────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -192,9 +222,11 @@ export default function EwsPage() {
           <AlertTriangle className="h-10 w-10 text-muted-foreground mb-3" />
           <p className="text-sm font-medium">Tidak ada data EWS</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {filterLevel
-              ? `Tidak ada siswa dengan level ${LEVEL_CONFIG[filterLevel].label}`
-              : 'Belum ada siswa atau tahun ajaran aktif.'}
+            {q
+              ? 'Tidak ada siswa yang cocok dengan pencarian.'
+              : filterLevel
+                ? `Tidak ada siswa dengan level ${LEVEL_CONFIG[filterLevel].label}`
+                : 'Belum ada siswa atau tahun ajaran aktif.'}
           </p>
         </div>
       )}
@@ -212,6 +244,7 @@ export default function EwsPage() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground w-5 text-right shrink-0">{nomor}</span>
+                  <img src={s.foto_url || '/images/default-avatar.jpg'} alt={s.nama} className="w-[20mm] h-auto shrink-0 rounded border" />
                   <div className={cn('h-3 w-3 shrink-0 rounded-full', cfg.dot)} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -224,6 +257,9 @@ export default function EwsPage() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">{s.nis}{s.kelas && ` · ${s.kelas}`}</p>
+                    {s.sedang_ditangani_wali_kelas && (
+                      <p className="text-[11px] text-orange-600 font-medium mt-0.5">Proses Penanganan Wali Kelas</p>
+                    )}
                     <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                       <Metric label="Kehadiran" value={`${s.kehadiran_score}%`} warn={s.kehadiran_score < 80} />
                       <Metric

@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, Plus, Trash2, UserCheck } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Check, ChevronLeft } from 'lucide-react'
 import { agendaApi } from '@/features/agenda/api'
-import type { AgendaFormData, StudentScoreInput } from '@/features/agenda/types'
+import { presensiApi } from '@/features/presensi/api'
+import type { AgendaFormData } from '@/features/agenda/types'
+import type { PresensiSubmitRecord } from '@/features/presensi/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
+import { AgendaPerluDiisiList } from '@/components/agenda/AgendaPerluDiisiList'
+import { AgendaHariIniList } from '@/components/agenda/AgendaHariIniList'
+import { PresensiToggleList, STATUS_CYCLE } from '@/components/presensi/PresensiToggleList'
 import { cn, toLocalDateStr } from '@/lib/utils'
 
 export default function AgendaFormPage() {
@@ -15,20 +20,23 @@ export default function AgendaFormPage() {
   const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const preselected = searchParams.get('schedule') ?? ''
+  // Dulu TIDAK DIBACA sama sekali — link dari dashboard "Agenda Perlu Diisi" mengirim
+  // ?schedule=...&tanggal=..., tapi form ini cuma pakai `schedule` lalu default tanggal
+  // ke HARI INI. Kalau sesi yang dituju bukan hari ini, `selectedSchedule` gagal
+  // ke-resolve (tidak match ke `schedules` [hari ini] ATAUPUN `selectedTertunda` yang
+  // masih kosong) — makanya muncul "Tidak ada jadwal mengajar hari ini." walau sebenarnya
+  // ada, cuma bukan hari ini.
+  const preselectedTanggal = searchParams.get('tanggal') ?? ''
 
   const [form, setForm] = useState<AgendaFormData>({
     schedule_id: preselected,
-    tanggal: toLocalDateStr(new Date()),
+    tanggal: preselectedTanggal || toLocalDateStr(new Date()),
     resume_kbm: '',
     learning_objective_ids: [],
     status: 'submitted',
-    student_scores: [],
   })
   const [error, setError] = useState('')
-  const [showStudentPicker, setShowStudentPicker] = useState(false)
-  const [pickerStudentId, setPickerStudentId] = useState('')
-  const [pickerNilai, setPickerNilai] = useState('')
-  const [pickerCatatan, setPickerCatatan] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const { data: schedulesRes } = useQuery({
     queryKey: ['schedules-today'],
@@ -36,13 +44,74 @@ export default function AgendaFormPage() {
   })
   const schedules = schedulesRes?.data.data ?? []
 
+  // Sesi tertunda dari hari-hari sebelumnya (masih dalam batas waktu admin) — dulu
+  // form ini HANYA menampilkan jadwal hari ini, jadi guru yang telat isi kemarin/H-2
+  // tidak punya cara memilihnya sama sekali walau backend masih mengizinkan.
+  const { data: perluDiisiRes } = useQuery({
+    queryKey: ['agendas-perlu-diisi'],
+    queryFn: () => agendaApi.getPerluDiisi(),
+  })
+  const todayStr = toLocalDateStr(new Date())
+  const sesiTertunda = (perluDiisiRes?.data.data ?? []).filter((s) => s.tanggal !== todayStr && s.bisa_diisi)
+
+  const [selectedTertunda, setSelectedTertunda] = useState<typeof sesiTertunda[number] | null>(null)
+
   useEffect(() => {
     if (!form.schedule_id && schedules.length === 1 && !schedules[0].agenda_hari_ini) {
       setForm((f) => ({ ...f, schedule_id: schedules[0].id }))
     }
   }, [schedules, form.schedule_id])
 
-  const selectedSchedule = schedules.find((s) => s.id === form.schedule_id)
+  // Kalau dibuka dari link dashboard (?schedule=...&tanggal=...) yang menunjuk ke sesi
+  // BUKAN hari ini, cari objeknya di daftar perlu-diisi supaya `selectedSchedule` bisa
+  // ke-resolve dan form-nya benar-benar terbuka (bukan "Tidak ada jadwal mengajar hari
+  // ini." padahal sesinya ada, cuma bukan hari ini).
+  useEffect(() => {
+    if (!preselected || !preselectedTanggal || preselectedTanggal === todayStr) return
+    if (selectedTertunda) return
+    const match = (perluDiisiRes?.data.data ?? []).find(
+      (s) => s.schedule_id === preselected && s.tanggal === preselectedTanggal,
+    )
+    if (match) pilihTertunda(match)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perluDiisiRes, preselected, preselectedTanggal])
+
+  function pilihTertunda(s: typeof sesiTertunda[number]) {
+    setSelectedTertunda(s)
+    setForm((f) => ({
+      ...f, schedule_id: s.schedule_id, tanggal: s.tanggal,
+      learning_objective_ids: [],
+    }))
+  }
+
+  function pilihHariIni(s: (typeof schedules)[number]) {
+    setSelectedTertunda(null)
+    setForm((f) => ({
+      ...f, schedule_id: s.id, tanggal: todayStr,
+      learning_objective_ids: [],
+    }))
+  }
+
+  function gantiSesi() {
+    setSelectedTertunda(null)
+    setForm((f) => ({ ...f, schedule_id: '', learning_objective_ids: [] }))
+    setError('')
+  }
+
+  const scheduleHariIni = schedules.find((s) => s.id === form.schedule_id)
+  // Normalisasi 2 sumber data (jadwal hari ini vs sesi tertunda) ke bentuk yang sama
+  // supaya bagian form di bawah tidak perlu tahu asalnya dari mana.
+  const selectedSchedule = scheduleHariIni
+    ? scheduleHariIni
+    : (selectedTertunda && selectedTertunda.schedule_id === form.schedule_id)
+      ? {
+          id: selectedTertunda.schedule_id,
+          subject: { id: '', kode: '', nama: selectedTertunda.mapel },
+          class: { id: selectedTertunda.class_id, tingkat: '', jurusan: '', rombel: '', label: selectedTertunda.kelas },
+          jam_mulai: selectedTertunda.jam_mulai, jam_selesai: selectedTertunda.jam_selesai,
+          agenda_hari_ini: null,
+        }
+      : undefined
   const existingAgendaId = selectedSchedule?.agenda_hari_ini?.id ?? null
 
   const { data: loRes } = useQuery({
@@ -59,17 +128,36 @@ export default function AgendaFormPage() {
   })
   const students = studentsRes?.data.data ?? []
 
-  const mutation = useMutation({
-    mutationFn: (data: AgendaFormData) => agendaApi.createAgenda(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agendas'] })
-      queryClient.invalidateQueries({ queryKey: ['schedules-today'] })
-      navigate('/agenda')
-    },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      setError(err.response?.data?.message ?? 'Gagal menyimpan agenda.')
-    },
-  })
+  // ── Presensi (GK13/GK22): diisi LANGSUNG saat isi agenda, bukan langkah terpisah
+  // setelahnya — default semua hadir, guru tap yang tidak hadir saja.
+  const [presensiRecords, setPresensiRecords] = useState<Record<string, PresensiSubmitRecord>>({})
+  useEffect(() => {
+    setPresensiRecords((prev) => {
+      const next: Record<string, PresensiSubmitRecord> = {}
+      students.forEach((s) => {
+        next[s.id] = prev[s.id] ?? { student_id: s.id, status: 'hadir', durasi_terlambat: 0, catatan: '' }
+      })
+      return next
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentsRes])
+
+  function cyclePresensi(studentId: string) {
+    setPresensiRecords((prev) => {
+      const current = prev[studentId]?.status ?? 'hadir'
+      const idx = STATUS_CYCLE.indexOf(current)
+      const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
+      return { ...prev, [studentId]: { ...prev[studentId], student_id: studentId, status: next, durasi_terlambat: 0, catatan: '' } }
+    })
+  }
+
+  function setAllHadir() {
+    const reset: Record<string, PresensiSubmitRecord> = {}
+    students.forEach((s) => {
+      reset[s.id] = { student_id: s.id, status: 'hadir', durasi_terlambat: 0, catatan: '' }
+    })
+    setPresensiRecords(reset)
+  }
 
   function toggleLO(id: string) {
     setForm((f) => ({
@@ -80,31 +168,30 @@ export default function AgendaFormPage() {
     }))
   }
 
-  function addStudentScore() {
-    if (!pickerStudentId || pickerNilai === '') return
-    const nilai = parseInt(pickerNilai, 10)
-    if (isNaN(nilai)) return
-    setForm((f) => {
-      const updated: StudentScoreInput[] = f.student_scores.filter(
-        (s) => s.student_id !== pickerStudentId,
-      )
-      updated.push({ student_id: pickerStudentId, nilai, catatan: pickerCatatan })
-      return { ...f, student_scores: updated }
-    })
-    setPickerStudentId(''); setPickerNilai(''); setPickerCatatan('')
-    setShowStudentPicker(false)
-  }
-
-  function removeScore(studentId: string) {
-    setForm((f) => ({ ...f, student_scores: f.student_scores.filter((s) => s.student_id !== studentId) }))
-  }
-
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     if (!form.schedule_id) { setError('Pilih jadwal terlebih dahulu.'); return }
-    mutation.mutate(form)
+    setSubmitting(true)
+    try {
+      const res = await agendaApi.createAgenda(form)
+      const newAgendaId = res.data.data.id
+      if (students.length > 0) {
+        await presensiApi.submitPresensi(newAgendaId, Object.values(presensiRecords))
+      }
+      queryClient.invalidateQueries({ queryKey: ['agendas'] })
+      queryClient.invalidateQueries({ queryKey: ['schedules-today'] })
+      queryClient.invalidateQueries({ queryKey: ['agendas-perlu-diisi'] })
+      navigate('/agenda')
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      setError(message ?? 'Gagal menyimpan agenda.')
+    } finally {
+      setSubmitting(false)
+    }
   }
+
+  const belumPilihSesi = !selectedSchedule
 
   return (
     <div className="max-w-lg space-y-5">
@@ -115,230 +202,136 @@ export default function AgendaFormPage() {
         <h1 className="text-xl font-bold">Isi Agenda</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-
-        {/* ── Pilih Jadwal ─────────────────────────────────────────────────── */}
-        <div className="space-y-2">
-          <Label>Jadwal Hari Ini</Label>
-          {schedules.length === 0 && (
-            <p className="text-sm text-muted-foreground">Tidak ada jadwal mengajar hari ini.</p>
+      {/* ── Pilih sesi (hanya sebelum ada yang terpilih) ───────────────────
+          GK13: jangan munculkan agenda hari ini/lalu lain saat sedang fokus mengisi
+          satu sesi — list ini disembunyikan begitu satu sesi dipilih. */}
+      {belumPilihSesi && (
+        <div className="space-y-5">
+          {sesiTertunda.length > 0 && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                Sesi Tertunda
+                <span className="rounded-full bg-orange-100 text-orange-700 text-xs font-medium px-1.5 py-0.5">{sesiTertunda.length}</span>
+              </Label>
+              <AgendaPerluDiisiList items={sesiTertunda} onSelect={pilihTertunda} scrollCap={false} />
+            </div>
           )}
-          {schedules.map((s) => {
-            const sudahDiisi = !!s.agenda_hari_ini
-            return (
-              <button
-                key={s.id} type="button"
-                disabled={sudahDiisi && form.schedule_id !== s.id}
-                onClick={() => !sudahDiisi && setForm((f) => ({
-                  ...f, schedule_id: s.id, learning_objective_ids: [], student_scores: [],
-                }))}
-                className={cn(
-                  'w-full text-left rounded-lg border p-3 transition-colors',
-                  form.schedule_id === s.id && !sudahDiisi
-                    ? 'border-primary-600 bg-primary-50'
-                    : sudahDiisi
-                      ? 'border-border bg-muted opacity-70'
-                      : 'border-border hover:border-primary-200',
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{s.subject.nama}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {s.class.label} · {s.jam_mulai.slice(0, 5)}–{s.jam_selesai.slice(0, 5)}
-                    </p>
-                  </div>
-                  {sudahDiisi ? (
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Sudah diisi</p>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/agenda/${s.agenda_hari_ini!.id}`) }}
-                        className="text-xs text-primary-600 hover:underline"
-                      >
-                        Lihat / Edit →
-                      </button>
-                    </div>
-                  ) : form.schedule_id === s.id ? (
-                    <Check className="h-4 w-4 text-primary-600 shrink-0" />
-                  ) : null}
-                </div>
-              </button>
-            )
-          })}
+
+          <div className="space-y-2">
+            <Label>Jadwal Hari Ini</Label>
+            <AgendaHariIniList
+              items={schedules}
+              onSelect={pilihHariIni}
+              onViewFilled={(s) => navigate(`/agenda/${s.agenda_hari_ini!.id}`)}
+              scrollCap={false}
+            />
+          </div>
         </div>
+      )}
 
-        {/* ── Konten form (hanya jika jadwal dipilih dan belum diisi) ────── */}
-        {selectedSchedule && !existingAgendaId && (
-          <>
-            <div className="space-y-1.5">
-              <Label htmlFor="tanggal">Tanggal</Label>
-              <Input id="tanggal" type="date" value={form.tanggal}
-                onChange={(e) => setForm((f) => ({ ...f, tanggal: e.target.value }))}
-              />
+      {/* ── Sesi terpilih: ringkas + form fokus ─────────────────────────── */}
+      {selectedSchedule && !existingAgendaId && (
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <button
+            type="button" onClick={gantiSesi}
+            className="w-full flex items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2.5 text-left"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">{selectedSchedule.subject.nama} · {selectedSchedule.class.label}</p>
+              <p className="text-xs text-muted-foreground">
+                {form.tanggal} · {selectedSchedule.jam_mulai.slice(0, 5)}–{selectedSchedule.jam_selesai.slice(0, 5)}
+              </p>
             </div>
+            <span className="shrink-0 flex items-center gap-1 text-xs text-primary-700">
+              <ChevronLeft className="h-3.5 w-3.5" /> Ganti sesi
+            </span>
+          </button>
 
-            {/* ── TP ─────────────────────────────────────────────────────── */}
-            <div className="space-y-2">
-              <Label>
-                Tujuan Pembelajaran Dicapai
-                <span className="text-muted-foreground font-normal ml-1">(opsional)</span>
-              </Label>
-              {learningObjectives.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Belum ada TP untuk jadwal ini.</p>
-              ) : (
-                <div className="space-y-2">
-                  {learningObjectives.map((lo) => {
-                    const selected = form.learning_objective_ids.includes(lo.id)
-                    return (
-                      <button key={lo.id} type="button" onClick={() => toggleLO(lo.id)}
-                        className={cn(
-                          'w-full text-left rounded-lg border p-3 transition-colors',
-                          selected ? 'border-primary-600 bg-primary-50' : 'border-border hover:border-primary-200',
-                        )}
-                      >
-                        <div className="flex items-start gap-2">
-                          <div className={cn(
-                            'mt-0.5 h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center',
-                            selected ? 'border-primary-600 bg-primary-600' : 'border-muted-foreground',
-                          )}>
-                            {selected && <Check className="h-2.5 w-2.5 text-white" />}
-                          </div>
-                          <div>
-                            <p className="text-xs font-medium text-muted-foreground">{lo.kode}</p>
-                            <p className="text-sm">{lo.deskripsi}</p>
-                          </div>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="tanggal">Tanggal</Label>
+            <Input id="tanggal" type="date" value={form.tanggal}
+              onChange={(e) => setForm((f) => ({ ...f, tanggal: e.target.value }))}
+            />
+          </div>
 
-            {/* ── Resume KBM ─────────────────────────────────────────────── */}
-            <div className="space-y-1.5">
-              <Label htmlFor="resume">
-                Resume KBM
-                <span className="text-muted-foreground font-normal ml-1">(opsional)</span>
-              </Label>
-              <textarea id="resume" rows={3}
-                value={form.resume_kbm}
-                onChange={(e) => setForm((f) => ({ ...f, resume_kbm: e.target.value }))}
-                placeholder="Ringkasan kegiatan belajar mengajar..."
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-              />
-            </div>
-
-            {/* ── Nilai Siswa ────────────────────────────────────────────── */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>
-                  Nilai Siswa
-                  <span className="text-muted-foreground font-normal ml-1">(boleh + atau −)</span>
-                </Label>
-                <Button type="button" variant="outline" size="sm"
-                  onClick={() => setShowStudentPicker(true)}
-                  disabled={showStudentPicker}
-                >
-                  <Plus className="h-3 w-3" /> Tambah
-                </Button>
-              </div>
-
-              {form.student_scores.map((score) => {
-                const student = students.find((s) => s.id === score.student_id)
-                return (
-                  <div key={score.student_id}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
-                  >
-                    <UserCheck className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{student?.nama ?? '—'}</p>
-                      {score.catatan && (
-                        <p className="text-xs text-muted-foreground truncate">{score.catatan}</p>
+          {/* ── TP ─────────────────────────────────────────────────────── */}
+          <div className="space-y-2">
+            <Label>
+              Tujuan Pembelajaran Dicapai
+              <span className="text-muted-foreground font-normal ml-1">(opsional)</span>
+            </Label>
+            {learningObjectives.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada TP untuk jadwal ini.</p>
+            ) : (
+              <div className="space-y-2">
+                {learningObjectives.map((lo) => {
+                  const selected = form.learning_objective_ids.includes(lo.id)
+                  return (
+                    <button key={lo.id} type="button" onClick={() => toggleLO(lo.id)}
+                      className={cn(
+                        'w-full text-left rounded-lg border p-3 transition-colors',
+                        selected ? 'border-primary-600 bg-primary-50' : 'border-border hover:border-primary-200',
                       )}
-                    </div>
-                    <span className={cn(
-                      'text-sm font-bold shrink-0 tabular-nums',
-                      score.nilai >= 0 ? 'text-green-600' : 'text-red-600',
-                    )}>
-                      {score.nilai >= 0 ? '+' : ''}{score.nilai}
-                    </span>
-                    <button type="button" onClick={() => removeScore(score.student_id)}
-                      className="text-muted-foreground hover:text-red-500 shrink-0"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <div className="flex items-start gap-2">
+                        <div className={cn(
+                          'mt-0.5 h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center',
+                          selected ? 'border-primary-600 bg-primary-600' : 'border-muted-foreground',
+                        )}>
+                          {selected && <Check className="h-2.5 w-2.5 text-white" />}
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground">{lo.kode}</p>
+                          <p className="text-sm">{lo.deskripsi}</p>
+                        </div>
+                      </div>
                     </button>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
+            )}
+          </div>
 
-              {showStudentPicker && (
-                <Card className="border-primary-200">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="space-y-1.5">
-                      <Label>Pilih Siswa</Label>
-                      <select value={pickerStudentId}
-                        onChange={(e) => setPickerStudentId(e.target.value)}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <option value="">— Pilih siswa —</option>
-                        {students
-                          .filter((s) => !form.student_scores.find((sc) => sc.student_id === s.id))
-                          .map((s) => (
-                            <option key={s.id} value={s.id}>{s.nama} ({s.nis})</option>
-                          ))}
-                      </select>
-                    </div>
+          {/* ── Resume KBM ─────────────────────────────────────────────── */}
+          <div className="space-y-1.5">
+            <Label htmlFor="resume">
+              Catatan Kegiatan
+              <span className="text-muted-foreground font-normal ml-1">(opsional)</span>
+            </Label>
+            <textarea id="resume" rows={3}
+              value={form.resume_kbm}
+              onChange={(e) => setForm((f) => ({ ...f, resume_kbm: e.target.value }))}
+              placeholder="Ringkasan kegiatan belajar mengajar..."
+              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+            />
+          </div>
 
-                    <div className="space-y-1.5">
-                      <Label>Nilai <span className="text-muted-foreground font-normal">(contoh: 85 atau -20)</span></Label>
-                      <Input type="number" placeholder="mis: 85 atau -20"
-                        value={pickerNilai} onChange={(e) => setPickerNilai(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label>Keterangan <span className="text-muted-foreground font-normal">(opsional)</span></Label>
-                      <Input placeholder="mis: Aktif berdiskusi / Tidak mengerjakan tugas"
-                        value={pickerCatatan} onChange={(e) => setPickerCatatan(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button type="button" size="sm" onClick={addStudentScore}
-                        disabled={!pickerStudentId || pickerNilai === ''}
-                      >
-                        Tambahkan
-                      </Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => {
-                        setShowStudentPicker(false)
-                        setPickerStudentId(''); setPickerNilai(''); setPickerCatatan('')
-                      }}>
-                        Batal
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+          {/* ── Presensi ───────────────────────────────────────────────── */}
+          {students.length > 0 && (
+            <div className="space-y-2">
+              <Label>Presensi Siswa</Label>
+              <PresensiToggleList
+                students={students.map((s) => ({ student_id: s.id, nama: s.nama, nis: s.nis }))}
+                records={presensiRecords}
+                onCycle={cyclePresensi}
+                onSetAllHadir={setAllHadir}
+              />
             </div>
-          </>
-        )}
+          )}
 
-        {error && (
-          <Card className="border-red-200 bg-red-50">
-            <CardContent className="p-3">
-              <p className="text-sm text-red-600">{error}</p>
-            </CardContent>
-          </Card>
-        )}
+          {error && (
+            <Card className="border-red-200 bg-red-50">
+              <CardContent className="p-3">
+                <p className="text-sm text-red-600">{error}</p>
+              </CardContent>
+            </Card>
+          )}
 
-        {selectedSchedule && !existingAgendaId && (
-          <Button type="submit" disabled={mutation.isPending} className="w-full">
-            {mutation.isPending ? 'Menyimpan...' : 'Simpan Agenda'}
+          <Button type="submit" disabled={submitting} className="w-full">
+            {submitting ? 'Menyimpan...' : 'Simpan Agenda'}
           </Button>
-        )}
-      </form>
+        </form>
+      )}
     </div>
   )
 }

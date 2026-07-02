@@ -5,12 +5,14 @@ export interface EwsStudent {
   nama: string
   nis: string
   kelas: string | null
+  foto_url?: string | null
   level: EwsLevel
   kehadiran_score: number
   karakter_score: number
   catatan_count: number
   nilai_score: number | null
   warning_count: number
+  sedang_ditangani_wali_kelas?: boolean
 }
 
 export interface EwsDimension {
@@ -25,7 +27,7 @@ export interface EwsDimension {
 }
 
 export interface EwsDetail {
-  student: { id: string; nama: string; nis: string; kelas: string | null }
+  student: { id: string; nama: string; nis: string; kelas: string | null; foto_url: string | null }
   level: EwsLevel
   dimensions: {
     kehadiran: EwsDimension & { total: number; hadir: number; alpha: number; sakit: number; izin: number }

@@ -17,7 +17,7 @@ class SchoolClass extends Model
     protected $table = 'classes';
 
     protected $fillable = [
-        'tingkat', 'jurusan', 'rombel',
+        'tingkat', 'jurusan', 'rombel', 'jadwal_pdf',
         'wali_kelas_id', 'academic_year_id',
         'created_by', 'updated_by',
     ];
@@ -72,5 +72,24 @@ class SchoolClass extends Model
         });
 
         return $match?->program_keahlian;
+    }
+
+    /**
+     * "Inisial Kelas" (kolom `kode` di program_keahlians, mis. "RPL"/"DKV") untuk jurusan
+     * kelas ini — dipakai buat cocokkan nama file jadwal PDF masal (mis. "XII-RPL-A.pdf")
+     * ke kelas yang tepat. Null kalau tidak ada Program Keahlian yang cocok.
+     */
+    public function programKeahlianKode(): ?string
+    {
+        $jurusan = mb_strtolower(trim($this->jurusan));
+        if ($jurusan === '') return null;
+
+        $match = ProgramKeahlian::get()->first(function ($pk) use ($jurusan) {
+            $konsentrasi = mb_strtolower(trim($pk->konsentrasi));
+            return $konsentrasi !== ''
+                && (str_contains($konsentrasi, $jurusan) || str_contains($jurusan, $konsentrasi));
+        });
+
+        return $match?->kode;
     }
 }

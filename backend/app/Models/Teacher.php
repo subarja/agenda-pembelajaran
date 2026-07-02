@@ -17,7 +17,7 @@ class Teacher extends Model
         'user_id', 'gelar_depan', 'gelar_belakang',
         'nip', 'nuptk', 'mapel_utama', 'nomor_hp', 'is_bk',
         'jk', 'tempat_lahir', 'tanggal_lahir', 'status_kepegawaian',
-        'jenis_ptk', 'agama', 'nik',
+        'jenis_ptk', 'agama', 'nik', 'jadwal_pdf',
         'created_by', 'updated_by',
     ];
 

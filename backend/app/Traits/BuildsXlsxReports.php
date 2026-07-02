@@ -10,6 +10,7 @@ use OpenSpout\Common\Entity\Style\BorderWidth;
 use OpenSpout\Common\Entity\Style\CellAlignment;
 use OpenSpout\Common\Entity\Style\CellVerticalAlignment;
 use OpenSpout\Common\Entity\Style\Style;
+use OpenSpout\Writer\XLSX\Options;
 use OpenSpout\Writer\XLSX\Writer;
 
 /**
@@ -90,5 +91,27 @@ trait BuildsXlsxReports
         foreach ($widths as $col => $width) {
             $writer->getOptions()->setColumnWidth($width, $col);
         }
+    }
+
+    /**
+     * Bungkus penulisan file XLSX ke tempfile lalu stream sebagai download — dipakai
+     * SEMUA controller export Excel (awalnya cuma di ReportController, sekarang di
+     * trait supaya controller baru manapun yang `use BuildsXlsxReports` bisa pakai
+     * tanpa duplikasi, lihat WeeklyReflectionController).
+     */
+    protected function streamXlsx(string $filename, callable $callback): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        return response()->streamDownload(function () use ($callback) {
+            $tmp     = tempnam(sys_get_temp_dir(), 'xlsx_');
+            $writer  = new Writer(new Options());
+            $writer->openToFile($tmp);
+            $callback($writer);
+            $writer->close();
+            readfile($tmp);
+            unlink($tmp);
+        }, $filename, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
     }
 }

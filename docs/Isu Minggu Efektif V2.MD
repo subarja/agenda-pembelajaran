@@ -1,3 +1,0 @@
-Isu V2-1: untuk memastikan hasil cetak pdf rapi, tolong buatkan pengaturan untuk ukuran kertas A4 (210 x 297 mm) atau kertas F4 (210 x 330 mm), margin atas, bawah, kanan, kiri, serta persentase ukuran kop surat dan posisinya (rata kiri, tengan, kanan)., sediakan halaman preview cetak pdfnya dengan pengaturan margin dan kertas supaya saya bisa atur dan lihat langsung hasilnya.
-Isu V2-2: untuk hasil export excel masih kurang Rapi, saya sertakan hasilnya di folder doc/Hasil Export Minggu Efektif (rapikan siap cetak, sertakan gambar kop surat)
-Isu V2-3: saat download PDF selalu muncul "Gagal mengunduh export admin." warna merah padahal pdf berhasil terdownload

@@ -8,7 +8,11 @@ RUN apk add --no-cache \
         oniguruma-dev \
         icu-dev \
         postgresql16-client \
+        libpng-dev \
+        libjpeg-turbo-dev \
+        freetype-dev \
         $PHPIZE_DEPS \
+    && docker-php-ext-configure gd --with-jpeg --with-freetype \
     && docker-php-ext-install \
         pdo_pgsql \
         pgsql \
@@ -18,10 +22,15 @@ RUN apk add --no-cache \
         zip \
         pcntl \
         intl \
+        gd \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apk del $PHPIZE_DEPS \
     && rm -rf /var/cache/apk/*
+
+# Default php:8.4-cli-alpine sangat ketat utk upload masal (max_file_uploads=20,
+# post_max_size=8M) — cukup bikin bulk-upload foto siswa/guru gagal diam-diam.
+COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

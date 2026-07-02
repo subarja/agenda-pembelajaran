@@ -55,14 +55,31 @@ class EwsController extends Controller
 
         match ($user->role) {
             UserRole::WaliKelas => $query->whereHas('schoolClass', fn ($q) => $q->where('wali_kelas_id', $user->id)),
+            // EWS HANYA untuk wali kelas (kelas yang diwalikelasinya) dan guru BK (kelas
+            // tempat dia mengajar BK, dari Schedule — sama seperti pola routing BK di
+            // GK8) — guru biasa (bukan keduanya) TIDAK dapat akses EWS sama sekali, walau
+            // sebelumnya bisa lihat EWS semua kelas yang dia ajar (bug, lihat Isu GK3).
             UserRole::Guru      => (function () use ($query, $user) {
-                $teacherId = Teacher::where('user_id', $user->id)->value('id');
-                if (! $teacherId) {
+                $teacher = Teacher::where('user_id', $user->id)->first();
+                if (! $teacher) {
                     $query->whereRaw('1=0');
                     return;
                 }
-                $classIds = Schedule::where('teacher_id', $teacherId)->where('aktif', true)->pluck('class_id')->unique()->values();
-                $query->whereIn('class_id', $classIds);
+
+                $kelasWaliIds = \App\Models\SchoolClass::where('wali_kelas_id', $user->id)->pluck('id');
+
+                if ($teacher->is_bk) {
+                    $classIds = Schedule::where('teacher_id', $teacher->id)->where('aktif', true)->pluck('class_id')->unique()->values();
+                    $query->where(fn ($q) => $q->whereIn('class_id', $kelasWaliIds)->orWhereIn('class_id', $classIds));
+                    return;
+                }
+
+                if ($kelasWaliIds->isNotEmpty()) {
+                    $query->whereIn('class_id', $kelasWaliIds);
+                    return;
+                }
+
+                $query->whereRaw('1=0');
             })(),
             UserRole::Siswa     => $query->whereHas('user', fn ($q) => $q->where('id', $user->id)),
             UserRole::OrangTua  => $user->linked_student_id
@@ -87,12 +104,17 @@ class EwsController extends Controller
         $charData  = $this->batchCharacter($studentIds);
         $noteData  = $this->batchNotes($studentIds);
         $nilaiData = $this->batchNilai($studentIds);
+        // GK7: siswa mana yang sedang punya penanganan wali-kelas aktif (belum
+        // selesai/diabaikan, belum dieskalasi ke BK) — dipakai badge dashboard.
+        $sedangDitangani = Recommendation::whereIn('student_id', $studentIds)
+            ->where('status', 'proses')->where('bk_status', 'none')
+            ->pluck('student_id')->unique()->flip();
         // ───────────────────────────────────────────────────────────────────
 
         $now        = now()->toDateTimeString();
         $upsertRows = [];
 
-        $results = $students->map(function ($s) use ($ay, $attData, $charData, $noteData, $nilaiData, $now, &$upsertRows) {
+        $results = $students->map(function ($s) use ($ay, $attData, $charData, $noteData, $nilaiData, $sedangDitangani, $now, &$upsertRows) {
             $kehadiran = $this->calcKehadiranBatch($s->id, $attData);
             $karakter  = $this->calcKarakterBatch($s->id, $charData);
             $catatan   = $this->calcCatatanBatch($s->id, $noteData);
@@ -119,12 +141,14 @@ class EwsController extends Controller
                 'kelas'           => $s->schoolClass
                     ? "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}"
                     : null,
+                'foto_url'        => $s->foto ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->foto) : null,
                 'level'           => $level,
                 'kehadiran_score' => round($kehadiran['score'], 1),
                 'karakter_score'  => $karakter['score'],
                 'catatan_count'   => $catatan['count'],
                 'nilai_score'     => $nilai['score'] !== null ? round($nilai['score'], 1) : null,
                 'warning_count'   => $kehadiran['warning'] + $karakter['warning'] + $catatan['warning'] + $nilai['warning'],
+                'sedang_ditangani_wali_kelas' => $sedangDitangani->has($s->id),
             ];
         });
 
@@ -168,15 +192,8 @@ class EwsController extends Controller
 
         $user = $request->user();
 
-        if ($user->role === UserRole::Siswa) {
-            $own = Student::where('user_id', $user->id)->first();
-            if (! $own || $own->id !== $student->id) {
-                return response()->json(['message' => 'Akses ditolak.'], 403);
-            }
-        } elseif ($user->role === UserRole::OrangTua) {
-            if (! $user->linked_student_id || $user->linked_student_id !== $student->id) {
-                return response()->json(['message' => 'Akses ditolak.'], 403);
-            }
+        if ($resp = $this->authorizeEwsStudentAccess($user, $student)) {
+            return $resp;
         }
 
         $ay = AcademicYear::where('aktif', true)->first();
@@ -250,37 +267,78 @@ class EwsController extends Controller
                 'nilai'   => $n->nilai,
             ]);
 
+        // Viewer BK/admin menentukan sesi BK mana yang boleh dilihat (GK10) — sesi
+        // wali-kelas selalu terlihat semua pihak yang boleh buka halaman ini, sesi BK
+        // (jenis=bk) HANYA terlihat oleh BK yang menangani kasus itu + admin/wakasek,
+        // KECUALI sesi resume (is_resume) yang memang sengaja diteruskan ke wali kelas
+        // begitu BK menandai selesai (GK11).
+        $viewerTeacher = $user->teacher;
+        $viewerIsAdmin = in_array($user->role->value, ['admin', 'wakasek'], true);
+
+        // Guru BK boleh menerima pengajuan konseling hanya jika ia benar-benar mengajar
+        // BK di kelas siswa ini (routing berbasis jadwal, sama seperti GK8/GK9).
+        $viewerIsRelevantBk = $viewerTeacher?->is_bk && Schedule::where('teacher_id', $viewerTeacher->id)
+            ->where('class_id', $student->class_id)->where('aktif', true)->exists();
+
         $rekomendasi = Recommendation::where('student_id', $student->id)
-            ->with(['threshold', 'suggestedHandlers', 'handlingSessions.handler', 'verifiedBy'])
+            ->with(['threshold', 'suggestedHandlers', 'handlingSessions.handler', 'verifiedBy', 'bkTeacher.user'])
             ->orderByRaw("CASE status WHEN 'pending' THEN 0 WHEN 'proses' THEN 1 WHEN 'menunggu_verifikasi' THEN 2 ELSE 3 END")
             ->orderByDesc('created_at')
             ->get()
-            ->map(fn ($r) => [
-                'id'                 => $r->uuid,
-                'rekomendasi'        => $r->threshold->rekomendasi,
-                'sifat'              => $r->threshold->sifat->value,
-                'akumulasi'          => $r->akumulasi_saat_trigger,
-                'status'             => $r->status->value,
-                'catatan_admin'      => $r->catatan_admin,
-                'dibuat_pada'        => $r->created_at->format('Y-m-d'),
-                'verified_by'        => $r->verifiedBy?->nama,
-                'verified_at'        => $r->verified_at?->format('Y-m-d'),
-                'suggested_handlers' => $r->suggestedHandlers->map(fn ($u) => [
-                    'id'   => $u->uuid,
-                    'nama' => $u->nama,
-                    'role' => $u->role->value,
-                ]),
-                'handling_sessions'  => $r->handlingSessions->map(fn ($s) => [
-                    'id'           => $s->uuid,
-                    'tanggal'      => $s->tanggal->format('Y-m-d'),
-                    'catatan'      => $s->catatan,
-                    'link_dokumen' => $s->link_dokumen,
-                    'link_foto'    => $s->link_foto,
-                    'links'        => $s->links ?? [],
-                    'handled_by'   => $s->handler->nama,
-                    'created_at'   => $s->created_at->format('Y-m-d H:i'),
-                ]),
-            ]);
+            ->map(function ($r) use ($viewerTeacher, $viewerIsAdmin, $viewerIsRelevantBk) {
+                $waliKelasSessionCount = $r->handlingSessions
+                    ->filter(fn ($s) => $s->jenis === \App\Enums\HandlingSessionJenis::WaliKelas)
+                    ->count();
+
+                $visibleSessions = $r->handlingSessions->filter(function ($s) use ($viewerIsAdmin, $viewerTeacher, $r) {
+                    if ($viewerIsAdmin) return true;
+                    if ($s->jenis === \App\Enums\HandlingSessionJenis::WaliKelas) return true;
+                    if ($s->is_resume) return true;
+                    return $viewerTeacher && $r->bk_teacher_id === $viewerTeacher->id;
+                })->values();
+
+                return [
+                    'id'                       => $r->uuid,
+                    'rekomendasi'              => $r->threshold?->rekomendasi ?? $r->alasan_manual ?? 'Kasus manual (tanpa ambang otomatis)',
+                    'sifat'                    => $r->threshold?->sifat->value ?? 'manual',
+                    'akumulasi'                => $r->akumulasi_saat_trigger,
+                    'status'                   => $r->status->value,
+                    'catatan_admin'            => $r->catatan_admin,
+                    'dibuat_pada'              => $r->created_at->format('Y-m-d'),
+                    'ditangani_pada'           => $r->ditangani_pada?->format('Y-m-d H:i'),
+                    'verified_by'              => $r->verifiedBy?->nama,
+                    'verified_at'              => $r->verified_at?->format('Y-m-d'),
+                    // GK7-GK11: status eskalasi BK
+                    'bk_status'                => $r->bk_status->value,
+                    'bk_teacher_nama'          => $r->bkTeacher?->user?->nama,
+                    'is_my_bk_case'            => $viewerTeacher && $r->bk_teacher_id === $viewerTeacher->id,
+                    'bisa_terima_konseling'    => (bool) ($viewerIsRelevantBk && $r->bk_status === \App\Enums\BkStatus::Diajukan),
+                    'diajukan_konseling_pada'  => $r->diajukan_konseling_pada?->format('Y-m-d H:i'),
+                    'diterima_bk_pada'         => $r->diterima_bk_pada?->format('Y-m-d H:i'),
+                    'bk_selesai_pada'          => $r->bk_selesai_pada?->format('Y-m-d H:i'),
+                    'resume_bk'                => $r->bk_status->value === 'selesai' ? $r->resume_bk : null,
+                    'wali_kelas_session_count' => $waliKelasSessionCount,
+                    'bisa_ajukan_konseling'    => $r->bk_status->value === 'none' && $waliKelasSessionCount >= 3,
+                    'input_wali_kelas_terkunci'=> in_array($r->bk_status->value, ['diterima', 'selesai'], true),
+                    'suggested_handlers'       => $r->suggestedHandlers->map(fn ($u) => [
+                        'id'   => $u->uuid,
+                        'nama' => $u->nama,
+                        'role' => $u->role->value,
+                    ]),
+                    'handling_sessions'        => $visibleSessions->map(fn ($s) => [
+                        'id'           => $s->uuid,
+                        'jenis'        => $s->jenis->value,
+                        'is_resume'    => $s->is_resume,
+                        'tanggal'      => $s->tanggal->format('Y-m-d'),
+                        'catatan'      => $s->catatan,
+                        'link_dokumen' => $s->link_dokumen,
+                        'link_foto'    => $s->link_foto,
+                        'links'        => $s->links ?? [],
+                        'handled_by'   => $s->handler->nama,
+                        'created_at'   => $s->created_at->format('Y-m-d H:i'),
+                    ])->values(),
+                ];
+            });
 
         return response()->json([
             'data' => [
@@ -291,6 +349,7 @@ class EwsController extends Controller
                     'kelas' => $student->schoolClass
                         ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
                         : null,
+                    'foto_url' => $student->foto ? \Illuminate\Support\Facades\Storage::disk('public')->url($student->foto) : null,
                 ],
                 'level'            => $level,
                 'dimensions'       => [
@@ -319,12 +378,18 @@ class EwsController extends Controller
             ->with(['user:id,nama', 'schoolClass'])
             ->firstOrFail();
 
+        // GK3: dulu TIDAK ADA otorisasi sama sekali di sini — guru manapun bisa cetak
+        // PDF dimensi EWS siswa manapun via URL langsung. Sama seperti show().
+        if ($this->authorizeEwsStudentAccess($request->user(), $student) !== null) {
+            abort(403, 'Anda tidak memiliki akses ke EWS siswa ini.');
+        }
+
         $generated = now('Asia/Jakarta')->format('d M Y H:i');
         $namaFile  = "EWS_{$dim}_{$student->user->nama}";
         $kelas     = $student->schoolClass
             ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
             : '—';
-        $printSettings = PrintSetting::instance();
+        $printSettings = PrintSetting::instance($request->user()->id);
         $paperDims     = $printSettings->paperDimensionsPt();
 
         if ($dim === 'kehadiran') {
@@ -421,7 +486,7 @@ class EwsController extends Controller
                 $byJurusan[$jurusan][] = $r;
             }
             $ayLabel = $ay ? "Semester {$ay->semester->value} — TP {$ay->tahun}" : '';
-            $printSettings = PrintSetting::instance();
+            $printSettings = PrintSetting::instance($request->user()->id);
             $legend = $this->ewsSiswaLegend();
             $pdf = Pdf::loadView('reports.ews_siswa', compact('rows', 'byJurusan', 'ayLabel', 'printSettings', 'legend'))
                 ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
@@ -630,5 +695,35 @@ class EwsController extends Controller
             $warnings === 1 => 'kuning',
             default         => 'hijau',
         };
+    }
+
+    /**
+     * GK3: satu titik otorisasi untuk SEMUA endpoint EWS per-siswa (show, dimensionPdf,
+     * dan siapa pun lagi nanti) — supaya tidak ada lagi endpoint yang lupa dijaga seperti
+     * yang ditemukan saat verifikasi ulang (dimensionPdf() dulu TANPA otorisasi sama
+     * sekali). Kembalikan JsonResponse 403 kalau ditolak, null kalau boleh lanjut.
+     */
+    private function authorizeEwsStudentAccess(\App\Models\User $user, Student $student): ?JsonResponse
+    {
+        if ($user->role === UserRole::Siswa) {
+            $own = Student::where('user_id', $user->id)->first();
+            if (! $own || $own->id !== $student->id) {
+                return response()->json(['message' => 'Akses ditolak.'], 403);
+            }
+        } elseif ($user->role === UserRole::OrangTua) {
+            if (! $user->linked_student_id || $user->linked_student_id !== $student->id) {
+                return response()->json(['message' => 'Akses ditolak.'], 403);
+            }
+        } elseif ($user->role === UserRole::Guru) {
+            $teacher = Teacher::where('user_id', $user->id)->first();
+            $isWaliKelasnya = $student->schoolClass?->wali_kelas_id === $user->id;
+            $isBkRelevan = $teacher?->is_bk && $student->schoolClass && Schedule::where('teacher_id', $teacher->id)
+                ->where('class_id', $student->schoolClass->id)->where('aktif', true)->exists();
+            if (! $isWaliKelasnya && ! $isBkRelevan) {
+                return response()->json(['message' => 'Anda tidak memiliki akses ke EWS siswa ini.'], 403);
+            }
+        }
+
+        return null;
     }
 }

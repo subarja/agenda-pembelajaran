@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, Plus, Lock, Edit2, Trash2, Loader2 } from 'lucide-react'
+import { Search, Plus, Lock, Edit2, Trash2, Loader2, MessageCircle } from 'lucide-react'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { cn, toLocalDateStr } from '@/lib/utils'
 
 interface StudentItem { id: string; nama: string; nis: string; kelas: string | null }
@@ -134,6 +136,11 @@ export default function StudentCaseNotesPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Catatan BK & Wali Kelas</h1>
       </div>
+
+      {/* GK8/GK9: Murid Konseling — kasus yang diajukan wali kelas & sedang/sudah
+          ditangani BK ini (terpisah dari Catatan BK biasa di bawah, yang tidak
+          terhubung ke alur eskalasi Rekomendasi & Riwayat Penanganan). */}
+      {isBk && <MuridKonselingCard />}
 
       {/* Pilih Siswa */}
       <Card>
@@ -285,5 +292,74 @@ export default function StudentCaseNotesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+// ── Murid Konseling (GK8/GK9) ──────────────────────────────────────────────────
+interface KonselingItem {
+  id: string
+  student: { id: string; nama: string; kelas: string | null }
+  bk_status: 'diajukan' | 'diterima' | 'selesai'
+  diajukan_konseling_pada: string | null
+  diterima_bk_pada: string | null
+  bk_selesai_pada: string | null
+  is_mine: boolean
+}
+
+const BK_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
+  diajukan: { label: 'Menunggu Diterima', cls: 'bg-purple-100 text-purple-700' },
+  diterima: { label: 'Sedang Ditangani', cls: 'bg-indigo-100 text-indigo-700' },
+  selesai:  { label: 'Selesai', cls: 'bg-teal-100 text-teal-700' },
+}
+
+function MuridKonselingCard() {
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+
+  const { data, isLoading } = useQuery<{ data: KonselingItem[] }>({
+    queryKey: ['bk-konseling'],
+    queryFn: () => api.get('/bk/konseling').then(r => r.data),
+  })
+
+  const terima = useMutation({
+    mutationFn: (id: string) => api.put(`/recommendations/${id}/bk-terima`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bk-konseling'] }),
+  })
+
+  const items = data?.data ?? []
+  if (isLoading) return <div className="h-16 rounded-lg bg-muted animate-pulse" />
+  if (items.length === 0) return null
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <MessageCircle className="h-4 w-4" />
+          Murid Konseling
+          {items.filter(i => i.bk_status === 'diajukan').length > 0 && (
+            <Badge className="bg-purple-100 text-purple-700">{items.filter(i => i.bk_status === 'diajukan').length} baru diajukan</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 pt-0">
+        {items.map(item => {
+          const cfg = BK_STATUS_LABEL[item.bk_status]
+          return (
+            <div key={item.id} className="flex items-center justify-between gap-2 rounded-md border p-3">
+              <div className="min-w-0 flex-1 cursor-pointer" onClick={() => navigate(`/ews/${item.student.id}`)}>
+                <p className="text-sm font-medium">{item.student.nama}</p>
+                <p className="text-xs text-muted-foreground">{item.student.kelas}</p>
+              </div>
+              <Badge className={cn('text-xs shrink-0', cfg?.cls)}>{cfg?.label ?? item.bk_status}</Badge>
+              {item.bk_status === 'diajukan' && (
+                <Button size="sm" onClick={() => terima.mutate(item.id)} disabled={terima.isPending}>
+                  Terima
+                </Button>
+              )}
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
   )
 }

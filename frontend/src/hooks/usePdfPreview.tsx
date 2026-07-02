@@ -41,7 +41,8 @@ export function usePdfPreview(options?: { printSettings?: boolean }) {
   const [lastOpen, setLastOpen] = useState<{ endpoint: string; filename: string } | null>(null)
 
   // ── Pengaturan Cetak (opsional — cuma dipakai halaman yang PDF-nya konsumsi
-  // PrintSetting, mis. Minggu Efektif; endpoint /admin/print-settings admin-only) ──
+  // PrintSetting; GK30: per-akun, endpoint /print-settings terbuka utk semua role
+  // login — tiap user cuma bisa ubah barisnya sendiri, tidak memengaruhi user lain) ──
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<PrintSettingsData | null>(null)
   const [settingsLoading, setSettingsLoading] = useState(false)
@@ -91,7 +92,7 @@ export function usePdfPreview(options?: { printSettings?: boolean }) {
     if (settings) return
     setSettingsLoading(true)
     try {
-      const resp = await api.get('/admin/print-settings')
+      const resp = await api.get('/print-settings')
       setSettings(resp.data.data)
     } catch {
       setError('Gagal memuat pengaturan cetak.')
@@ -104,7 +105,7 @@ export function usePdfPreview(options?: { printSettings?: boolean }) {
     if (!settings) return
     setSavingSettings(true)
     try {
-      await api.put('/admin/print-settings', settings)
+      await api.put('/print-settings', settings)
       setSettingsOpen(false)
       if (lastOpen) await openPreview(lastOpen.endpoint, lastOpen.filename)
     } catch (e: any) {

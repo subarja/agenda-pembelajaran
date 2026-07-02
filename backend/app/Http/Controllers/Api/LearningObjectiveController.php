@@ -298,12 +298,46 @@ class LearningObjectiveController extends Controller
     }
 
     // ── Template Excel ────────────────────────────────────────────────────────
-    public function template(): BinaryFileResponse
+    // GK21: identitas mapel/fase/semester disematkan di nama file DAN baris info di
+    // sheet (styling abu-abu "read-only" secara konvensi — OpenSpout tidak mendukung
+    // proteksi sel/sheet, jadi ini bukan penguncian teknis, hanya penanda visual).
+    public function template(Request $request): BinaryFileResponse
     {
+        $subjectNama  = 'Umum';
+        $faseLabel    = '';
+        $semesterLabel = '';
+        $filenameParts = ['Template_TP'];
+
+        if ($request->filled('subject_id')) {
+            $subject = Subject::where('uuid', $request->subject_id)->first();
+            if ($subject) {
+                $subjectNama = $subject->nama;
+                $filenameParts[] = preg_replace('/[^A-Za-z0-9]+/', '_', $subject->nama);
+            }
+        }
+        if ($request->filled('fase')) {
+            $faseLabel = $request->fase === 'E' ? 'Fase E (Kelas X)' : 'Fase F (Kelas XI & XII)';
+            $filenameParts[] = 'Fase' . $request->fase;
+        }
+        if ($request->filled('semester')) {
+            $semesterLabel = ucfirst($request->semester);
+            $filenameParts[] = ucfirst($request->semester);
+        }
+
+        $filename = implode('_', $filenameParts) . '.xlsx';
+
         $tempFile = tempnam(sys_get_temp_dir(), 'tp_tpl_');
         $writer   = new XlsxWriter();
         $writer->openToFile($tempFile);
         $this->xlsxSetColumnWidths($writer, [1 => 10, 2 => 55, 3 => 10]);
+
+        $infoStyle = (new \OpenSpout\Common\Entity\Style\Style())
+            ->withBackgroundColor('F1F5F9')->withFontColor('64748B')->withFontItalic(true);
+        $writer->addRow(Row::fromValuesWithStyle(['Mata Pelajaran:', $subjectNama, ''], $infoStyle));
+        $writer->addRow(Row::fromValuesWithStyle(['Fase:', $faseLabel ?: '-', ''], $infoStyle));
+        $writer->addRow(Row::fromValuesWithStyle(['Semester:', $semesterLabel ?: '-', ''], $infoStyle));
+        $writer->addRow(Row::fromValuesWithStyle(['', '', ''], $infoStyle));
+
         $writer->addRow(Row::fromValuesWithStyle(['kode', 'deskripsi', 'urutan'], $this->xlsxHeaderStyle()));
         $cellStyle = $this->xlsxCellStyle();
         $writer->addRow(Row::fromValuesWithStyle(['3.1', 'Peserta didik mampu memahami konsep dasar pemrograman', '1'], $cellStyle));
@@ -311,7 +345,7 @@ class LearningObjectiveController extends Controller
         $writer->addRow(Row::fromValuesWithStyle(['4.1', 'Peserta didik mampu membuat program sederhana', '3'], $cellStyle));
         $writer->close();
 
-        return response()->download($tempFile, 'template_tujuan_pembelajaran.xlsx', [
+        return response()->download($tempFile, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ])->deleteFileAfterSend(true);
     }
@@ -342,13 +376,23 @@ class LearningObjectiveController extends Controller
         $updated  = 0;
         $errors   = [];
         $rowNum   = 0;
+        $headerFound = false;
 
         foreach ($reader->getSheetIterator() as $sheet) {
             foreach ($sheet->getRowIterator() as $row) {
                 $rowNum++;
-                if ($rowNum === 1) continue;
+                $values = $row->toArray();
 
-                $values    = $row->toArray();
+                // GK21: template sekarang punya baris info identitas (Mata Pelajaran/
+                // Fase/Semester) sebelum header — lewati semua baris sampai ketemu
+                // baris header literal "kode" di kolom pertama, baru mulai baca data.
+                if (! $headerFound) {
+                    if (trim((string) ($values[0] ?? '')) === 'kode') {
+                        $headerFound = true;
+                    }
+                    continue;
+                }
+
                 $kode      = trim((string) ($values[0] ?? ''));
                 $deskripsi = trim((string) ($values[1] ?? ''));
                 $urutan    = (isset($values[2]) && $values[2] !== '') ? (int) $values[2] : null;

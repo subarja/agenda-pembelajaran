@@ -47,6 +47,38 @@ class CharacterManualNoteController extends Controller
         ], 201);
     }
 
+    // POST /character-manual-notes/nilai-tambah — GK32: mirip catatan manual, tapi
+    // TIDAK butuh approval admin (langsung final) & deskripsi opsional.
+    public function storeNilaiTambah(Request $request): JsonResponse
+    {
+        $teacher = $request->user()->teacher;
+        abort_if(! $teacher, 403, 'Hanya guru yang dapat menambahkan nilai tambah.');
+
+        $data = $request->validate([
+            'student_id' => ['required', 'string'],
+            'nilai'      => ['required', 'integer', 'min:-20', 'max:20'],
+            'catatan'    => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $student = Student::where('uuid', $data['student_id'])->with('user')->firstOrFail();
+
+        $note = CharacterManualNote::create([
+            'student_id'  => $student->id,
+            'teacher_id'  => $teacher->id,
+            'sumber'      => 'nilai_tambah',
+            'catatan'     => $data['catatan'] ?? '',
+            'nilai'       => $data['nilai'],
+            'nilai_final' => $data['nilai'],
+            'status'      => 'approved',
+            'reviewed_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Nilai tambah berhasil disimpan.',
+            'data'    => $this->formatNote($note->load(['student.user', 'teacher.user'])),
+        ], 201);
+    }
+
     // GET /character-manual-notes?student_id=xxx — guru & BK/wali kelas lihat per siswa
     public function index(Request $request): JsonResponse
     {

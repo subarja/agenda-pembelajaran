@@ -40,6 +40,10 @@ export default function ProfilePage() {
   if (!user) return null
 
   const initials = user.nama.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()
+  const isSiswa = user.role === 'siswa'
+  // Siswa: foto RESMI (dikelola admin/wali kelas, kolom students.foto) — bukan
+  // users.foto yang dipakai role lain, supaya siswa tidak bisa ganti foto sendiri.
+  const displayFotoUrl = isSiswa ? (user.student?.foto_url ?? null) : user.foto_url
 
   async function handleLogout() {
     try { await authApi.logout() } finally { clearAuth(); navigate('/login') }
@@ -140,17 +144,24 @@ export default function ProfilePage() {
         <CardContent className="p-6 flex flex-col items-center gap-3">
           <div className="relative">
             <Avatar className="h-20 w-20">
-              {user.foto_url && <AvatarImage src={user.foto_url} alt={user.nama} />}
+              {displayFotoUrl && <AvatarImage src={displayFotoUrl} alt={user.nama} />}
               <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
             </Avatar>
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-primary-600 text-white hover:bg-primary-700"
-            >
-              <Camera className="h-3.5 w-3.5" />
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+            {!isSiswa && (
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-primary-600 text-white hover:bg-primary-700"
+              >
+                <Camera className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={handlePhotoChange} />
           </div>
+          {isSiswa && (
+            <p className="text-xs text-muted-foreground -mt-1">
+              Foto siswa hanya bisa diganti oleh admin atau wali kelas.
+            </p>
+          )}
           <div className="text-center">
             <p className="font-semibold leading-tight">
               {[user.teacher?.gelar_depan, user.nama].filter(Boolean).join(' ')}

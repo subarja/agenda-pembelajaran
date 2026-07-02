@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Admin\CharacterAdminController;
 use App\Http\Controllers\Api\Admin\ClassAdminController;
 use App\Http\Controllers\Api\Admin\ImportController;
 use App\Http\Controllers\Api\Admin\ScheduleAdminController;
+use App\Http\Controllers\Api\Admin\ScheduleBulkUploadController;
 use App\Http\Controllers\Api\Admin\StudentAdminController;
 use App\Http\Controllers\Api\Admin\SubjectAdminController;
 use App\Http\Controllers\Api\Admin\TeacherAdminController;
@@ -31,6 +32,9 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\StudentPhotoController;
+use App\Http\Controllers\Api\WeeklyReflectionController;
+use App\Http\Controllers\Api\Admin\PhotoBulkUploadController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\RecommendationController;
 use App\Http\Controllers\Api\StudentRekapController;
@@ -69,12 +73,26 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ── Jadwal ────────────────────────────────────────────────────────────────
     Route::get('schedules/today',         [ScheduleController::class, 'today']);
+    Route::get('schedules/this-week',     [ScheduleController::class, 'thisWeek']);
     Route::get('schedules/today-student', [ScheduleController::class, 'todayStudent']);
+    Route::get('schedules/my-pdf',        [ScheduleController::class, 'myPdf']);
 
     // ── Siswa ─────────────────────────────────────────────────────────────────
     Route::get('students',                                        [StudentController::class, 'index']);
     Route::get('students/{uuid}/rekap',                           [StudentRekapController::class, 'show']);
     Route::put('students/{uuid}/rekap/rekomendasi/{rekUuid}',     [StudentRekapController::class, 'updateRekomendasi']);
+
+    // ── Foto & Profil Siswa (admin ATAU wali kelas siswa ybs — bukan siswa sendiri) ─
+    Route::get('my-class/students',           [StudentPhotoController::class, 'myClassStudents']);
+    Route::post('students/{uuid}/photo',      [StudentPhotoController::class, 'update']);
+    Route::put('students/{uuid}/profile',     [StudentPhotoController::class, 'updateProfile']);
+
+    // ── Refleksi Mingguan (wali kelas saja — dijaga di controller) ─────────────
+    Route::get('weekly-reflections/export',   [WeeklyReflectionController::class, 'export']);
+    Route::get('weekly-reflections',          [WeeklyReflectionController::class, 'index']);
+    Route::post('weekly-reflections',         [WeeklyReflectionController::class, 'store']);
+    Route::put('weekly-reflections/{uuid}',   [WeeklyReflectionController::class, 'update']);
+    Route::delete('weekly-reflections/{uuid}',[WeeklyReflectionController::class, 'destroy']);
 
     // ── Kalender & Minggu Efektif (semua role terautentikasi) ───────────────────
     Route::get('calendar/events',                   [CalendarController::class, 'events']);
@@ -96,6 +114,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ── Agenda ────────────────────────────────────────────────────────────────
     Route::get('agendas/my-classes',  [AgendaController::class, 'myClasses']);
+    Route::get('agendas/perlu-diisi', [AgendaController::class, 'perluDiisi']);
     Route::get('agendas',             [AgendaController::class, 'index']);
     Route::post('agendas',            [AgendaController::class, 'store']);
     Route::get('agendas/{uuid}',      [AgendaController::class, 'show']);
@@ -121,8 +140,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('character-summary',        [CharacterController::class, 'summary']);
 
     // ── Catatan Manual Karakter (guru submit, admin review) ───────────────────
-    Route::post('character-manual-notes',  [CharacterManualNoteController::class, 'store']);
-    Route::get('character-manual-notes',   [CharacterManualNoteController::class, 'index']);
+    Route::post('character-manual-notes',              [CharacterManualNoteController::class, 'store']);
+    Route::get('character-manual-notes',               [CharacterManualNoteController::class, 'index']);
+    Route::post('character-manual-notes/nilai-tambah', [CharacterManualNoteController::class, 'storeNilaiTambah']);
 
     // ── Catatan Kasus Siswa (BK & Wali Kelas) ─────────────────────────────────
     Route::get('student-case-notes',                 [StudentCaseNoteController::class, 'index']);
@@ -142,11 +162,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('reports/guru-contexts',     [ReportController::class, 'guruContexts']);
     Route::get('reports/kehadiran',         [ReportController::class, 'kehadiran']);
     Route::get('reports/karakter',          [ReportController::class, 'karakter']);
+    Route::get('reports/nilai_tambah',      [ReportController::class, 'nilaiTambah']);
     Route::get('reports/ews',               [ReportController::class, 'ews']);
     Route::get('reports/agenda',            [ReportController::class, 'agenda']);
-    Route::get('reports/jurnal',            [ReportController::class, 'jurnal']);
 
     // ── Rekomendasi & Penanganan ──────────────────────────────────────────────
+    Route::post('students/{uuid}/case',                   [RecommendationController::class, 'storeManual']);
     Route::put('recommendations/{uuid}/admin-note',       [RecommendationController::class, 'updateAdminNote']);
     Route::put('recommendations/{uuid}/handlers',         [RecommendationController::class, 'updateHandlers']);
     Route::put('recommendations/{uuid}/verify',           [RecommendationController::class, 'verify']);
@@ -156,11 +177,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('recommendations/{uuid}/sessions/{sid}',[RecommendationController::class, 'deleteSession']);
     Route::get('students/{uuid}/handling-report',         [RecommendationController::class, 'handlingReport']);
 
+    // ── Eskalasi Konseling ke BK (GK8-GK11) ────────────────────────────────────
+    Route::get('bk/konseling',                             [RecommendationController::class, 'myKonseling']);
+    Route::put('recommendations/{uuid}/ajukan-konseling',  [RecommendationController::class, 'ajukanKonseling']);
+    Route::put('recommendations/{uuid}/bk-terima',         [RecommendationController::class, 'bkTerima']);
+    Route::put('recommendations/{uuid}/bk-selesai',        [RecommendationController::class, 'bkSelesai']);
+
     // ── Notifikasi ────────────────────────────────────────────────────────────
     Route::get('notifications',              [NotificationController::class, 'index']);
     Route::put('notifications/read-all',     [NotificationController::class, 'markAllRead']);
     Route::put('notifications/{id}/read',    [NotificationController::class, 'markRead']);
     Route::delete('notifications/{id}',      [NotificationController::class, 'destroy']);
+
+    // ── Pengaturan Cetak PDF — per-akun (GK30), semua role login boleh akses ───
+    // Dulu di bawah grup admin-only karena baris settingnya GLOBAL (satu guru bisa
+    // ubah format kertas semua orang) — sekarang PrintSetting::instance($userId)
+    // per-user, jadi aman dibuka ke semua role.
+    Route::get('print-settings',             [PrintSettingController::class, 'show']);
+    Route::put('print-settings',             [PrintSettingController::class, 'update']);
+    Route::get('print-settings/preview',     [PrintSettingController::class, 'preview']);
 
     // ── Admin (hanya admin & wakasek) ─────────────────────────────────────────
     Route::middleware('role:admin,wakasek')->prefix('admin')->group(function () {
@@ -197,11 +232,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('effective-days/umum',                       [EffectiveDayController::class, 'umum']);
         Route::get('effective-days/export-umum',                [EffectiveDayController::class, 'exportUmum']);
 
-        // ── Pengaturan Cetak PDF (ukuran kertas, margin, kop surat) ────────────────
-        Route::get('print-settings',                            [PrintSettingController::class, 'show']);
-        Route::put('print-settings',                            [PrintSettingController::class, 'update']);
-        Route::get('print-settings/preview',                    [PrintSettingController::class, 'preview']);
-
         // ── Pengaturan Waktu Pengisian Agenda (batas hari/jam pasca jadwal) ────────
         Route::get('agenda-fill-settings',                      [AgendaFillSettingController::class, 'show']);
         Route::put('agenda-fill-settings',                      [AgendaFillSettingController::class, 'update']);
@@ -236,18 +266,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('teachers',                   [TeacherAdminController::class, 'store']);
         Route::put('teachers/{uuid}',             [TeacherAdminController::class, 'update']);
         Route::delete('teachers/{uuid}',          [TeacherAdminController::class, 'destroy']);
+        Route::post('teachers/{uuid}/photo',      [TeacherAdminController::class, 'updatePhoto']);
+        Route::post('teachers/photos/bulk',       [PhotoBulkUploadController::class, 'teachers']);
+        Route::post('teachers/schedules/bulk',    [ScheduleBulkUploadController::class, 'teachers']);
 
         // Siswa
         Route::get('students',                    [StudentAdminController::class, 'index']);
         Route::post('students',                   [StudentAdminController::class, 'store']);
         Route::put('students/{uuid}',             [StudentAdminController::class, 'update']);
         Route::delete('students/{uuid}',          [StudentAdminController::class, 'destroy']);
+        Route::post('students/photos/bulk',       [PhotoBulkUploadController::class, 'students']);
 
         // Kelas
         Route::get('classes',                     [ClassAdminController::class, 'index']);
         Route::post('classes',                    [ClassAdminController::class, 'store']);
         Route::put('classes/{uuid}',              [ClassAdminController::class, 'update']);
         Route::delete('classes/{uuid}',           [ClassAdminController::class, 'destroy']);
+        Route::post('classes/schedules/bulk',     [ScheduleBulkUploadController::class, 'classes']);
 
         // Mata Pelajaran
         Route::get('subjects',                    [SubjectAdminController::class, 'index']);

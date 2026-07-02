@@ -195,8 +195,8 @@ class StudentRekapController extends Controller
 
         return $recs->map(fn ($r) => [
             'id'             => $r->uuid,
-            'rekomendasi'    => $r->threshold->rekomendasi,
-            'sifat'          => $r->threshold->sifat->value,
+            'rekomendasi'    => $r->threshold?->rekomendasi ?? $r->alasan_manual ?? 'Kasus manual (tanpa ambang otomatis)',
+            'sifat'          => $r->threshold?->sifat->value ?? 'manual',
             'akumulasi'      => $r->akumulasi_saat_trigger,
             'status'         => $r->status->value,
             'ditugaskan_ke'  => $r->assignedTo?->nama,
@@ -238,8 +238,17 @@ class StudentRekapController extends Controller
     // ── Update status rekomendasi ─────────────────────────────────────────────
     public function updateRekomendasi(Request $request, string $studentUuid, string $rekUuid): JsonResponse
     {
-        $student = Student::where('uuid', $studentUuid)->firstOrFail();
+        $student = Student::where('uuid', $studentUuid)->with('schoolClass')->firstOrFail();
         $rek     = Recommendation::where('uuid', $rekUuid)->where('student_id', $student->id)->firstOrFail();
+
+        // Dulu TIDAK ADA otorisasi sama sekali — guru mana pun (bukan cuma wali kelas
+        // siswa ybs) bisa langsung ubah status rekomendasi ke "selesai". Ditemukan saat
+        // audit ulang GK3/GK7 — samakan aturannya dengan RecommendationController::
+        // updateStatus() (endpoint yang lebih baru utk kasus yang sama).
+        $user    = $request->user();
+        $isAdmin = in_array($user->role->value, ['admin', 'wakasek'], true);
+        $isWali  = $student->schoolClass?->wali_kelas_id === $user->id;
+        abort_if(! $isAdmin && ! $isWali, 403, 'Hanya wali kelas siswa ini yang dapat mengubah status rekomendasi.');
 
         $data = $request->validate([
             'status'             => ['required', 'in:pending,proses,selesai,diabaikan'],

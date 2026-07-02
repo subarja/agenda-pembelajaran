@@ -15,6 +15,7 @@ export interface AdminTeacher {
   id: string; nama: string; email: string; role: string
   status: string; nip: string; mapel_utama: string; nomor_hp: string | null
   gelar_depan: string | null; gelar_belakang: string | null; is_bk?: boolean
+  foto_url: string | null
 }
 
 export interface AdminManualNote {
@@ -31,6 +32,7 @@ export interface AdminStudent {
   nis: string; nisn: string | null; angkatan: number | null
   wali_nama: string | null; wali_kontak: string | null
   kelas: { id: string; label: string } | null
+  foto_url: string | null
 }
 
 export interface AdminClass {

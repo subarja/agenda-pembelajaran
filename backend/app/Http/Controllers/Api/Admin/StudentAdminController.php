@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class StudentAdminController extends Controller
 {
@@ -182,6 +183,7 @@ class StudentAdminController extends Controller
                 'id' => $s->schoolClass->uuid,
                 'label' => $s->schoolClass->tingkat->value.' '.$s->schoolClass->jurusan.' - '.$s->schoolClass->rombel,
             ] : null,
+            'foto_url' => $s->foto ? Storage::disk('public')->url($s->foto) : null,
         ];
     }
 }

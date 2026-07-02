@@ -8,6 +8,7 @@
   $mLeft = $ps->margin_left ?? 2; $mRight = $ps->margin_right ?? 2;
   $kopWidth = $ps->kop_width_percent ?? 100;
   $kopAlign = $ps->kop_position ?? 'center';
+  $fotoPath = $student->foto ? \Illuminate\Support\Facades\Storage::disk('public')->path($student->foto) : public_path('images/default_avatar.jpg');
 @endphp
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -67,6 +68,9 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
 <div class="profil-siswa">
   <table>
     <tr>
+      <td rowspan="3" style="width:23mm; vertical-align:top; padding-right:3mm;">
+        <img src="file://{{ $fotoPath }}" style="width:20mm; height:auto; border:1px solid #ccc;">
+      </td>
       <td>Nama Siswa</td><td>:</td>
       <td><strong>{{ $student->user->nama }}</strong></td>
       <td style="width:20px"></td>
@@ -177,13 +181,13 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
 
   <div class="rek-body">
     <div class="rek-info">
-      <span>Akumulasi poin saat trigger: <strong>{{ $rek->akumulasi_saat_trigger }}</strong></span>
+      <span>Akumulasi poin saat trigger: <strong>{{ $rek->akumulasi_saat_trigger ?? '—' }}</strong></span>
       @if($rek->verifiedBy)
         <span>Diverifikasi oleh: <strong>{{ $rek->verifiedBy->nama }}</strong> ({{ $rek->verified_at?->format('d M Y') }})</span>
       @endif
     </div>
 
-    <div class="rek-teks">{{ $rek->threshold->rekomendasi }}</div>
+    <div class="rek-teks">{{ $rek->threshold->rekomendasi ?? $rek->alasan_manual ?? 'Kasus manual (tanpa ambang otomatis)' }}</div>
 
     @if($rek->suggestedHandlers->count() > 0)
     <div class="handlers">
@@ -207,7 +211,13 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
         @foreach($rek->handlingSessions as $j => $sesi)
         <div class="sesi-item">
           <div class="sesi-meta">
-            Sesi {{ $j + 1 }} &nbsp;&middot;&nbsp;
+            Sesi {{ $j + 1 }}
+            @if($sesi->is_resume)
+              &nbsp;&middot;&nbsp; <strong style="color:#1f4e79">[Resume BK]</strong>
+            @elseif($sesi->jenis->value === 'bk')
+              &nbsp;&middot;&nbsp; <strong>[BK]</strong>
+            @endif
+            &nbsp;&middot;&nbsp;
             <strong>{{ $sesi->tanggal->format('d M Y') }}</strong> &nbsp;&middot;&nbsp;
             Oleh: <strong>{{ $sesi->handler->nama }}</strong>
           </div>

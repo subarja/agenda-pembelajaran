@@ -19,7 +19,7 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, HasUuid, Notifiable, SoftDeletes;
 
     protected $fillable = [
-        'nama', 'email', 'password', 'role', 'status', 'nomor_hp',
+        'nama', 'email', 'password', 'role', 'status', 'nomor_hp', 'foto',
         'linked_student_id', 'current_academic_year_id', 'created_by', 'updated_by',
     ];
 

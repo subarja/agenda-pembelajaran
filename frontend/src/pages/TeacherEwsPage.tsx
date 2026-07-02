@@ -22,6 +22,7 @@ interface TeacherEws {
   total_jadwal: number; total_diisi: number; total_tersubmit: number; total_draft: number; total_kosong: number
   pct_terisi: number | null; level: string
   last_login: string; last_login_date: string | null; last_login_raw: string | null
+  foto_url: string | null
 }
 
 const PER_PAGE_OPTIONS = [25, 50, 100, 'semua'] as const
@@ -35,6 +36,7 @@ export default function TeacherEwsPage() {
   const [mulai, setMulai]        = useState(thirtyAgo)
   const [akhir, setAkhir]        = useState(today)
   const [filterLevel, setFilter] = useState<string | null>(null)
+  const [searchQ, setSearchQ]    = useState('')
   const [perPage, setPerPage]    = useState<PerPage>(25)
   const [page, setPage]          = useState(1)
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
@@ -49,9 +51,12 @@ export default function TeacherEwsPage() {
 
   const teachers: TeacherEws[] = data?.data ?? []
   const summary  = data?.meta?.summary ?? {}
-  const filtered = filterLevel ? teachers.filter(t => t.level === filterLevel) : teachers
+  const q = searchQ.trim().toLowerCase()
+  const filtered = teachers
+    .filter(t => !filterLevel || t.level === filterLevel)
+    .filter(t => !q || t.nama.toLowerCase().includes(q) || t.nip.toLowerCase().includes(q))
 
-  useEffect(() => { setPage(1) }, [filterLevel, perPage, mulai, akhir])
+  useEffect(() => { setPage(1) }, [filterLevel, searchQ, perPage, mulai, akhir])
 
   const handleExport = async (format: 'excel' | 'pdf') => {
     const params = new URLSearchParams({ format, tanggal_mulai: mulai, tanggal_akhir: akhir })
@@ -134,6 +139,12 @@ export default function TeacherEwsPage() {
           <label className="block text-xs font-medium text-muted-foreground mb-1">Sampai</label>
           <input type="date" value={akhir} onChange={e => setAkhir(e.target.value)}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
+        </div>
+        <div className="flex-1 min-w-[180px]">
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Cari Guru</label>
+          <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)}
+            placeholder="Nama atau NIP..."
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" />
         </div>
       </div>
 
@@ -240,6 +251,7 @@ export default function TeacherEwsPage() {
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <span className="text-xs text-muted-foreground w-5 text-right shrink-0 mt-1">{nomor}</span>
+                    <img src={t.foto_url || '/images/default-avatar.jpg'} alt={t.nama} className="w-[20mm] h-auto shrink-0 rounded border mt-0.5" />
                     <div className={cn('mt-1 h-3 w-3 shrink-0 rounded-full', cfg.dot)} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">

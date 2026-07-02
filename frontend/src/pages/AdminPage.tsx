@@ -1,6 +1,7 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText } from 'lucide-react'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
 import type {
@@ -11,10 +12,16 @@ import type {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PasswordInput } from '@/components/ui/password-input'
+import PhotoEditWidget from '@/components/PhotoEditWidget'
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF']
+
+// GK26: notifikasi nilai manual (ManualNoteSubmittedNotification) mengirim
+// `?tab=nilai-manual` — dulu AdminPage sama sekali tidak baca query param ini jadi klik
+// notif selalu mendarat di tab default (Guru), bukan tab Nilai Manual yang dimaksud.
+const TAB_SLUG_TO_LABEL: Record<string, string> = { 'nilai-manual': 'Nilai Manual' }
 
 // ── Simple modal ──────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -398,6 +405,15 @@ function GuruTab() {
 
       {modal && (
         <Modal title={modal === 'add' ? 'Tambah Guru' : 'Edit Guru'} onClose={() => setModal(null)}>
+          {modal === 'edit' && selected && (
+            <Field label="Foto Guru">
+              <PhotoEditWidget
+                fotoUrl={selected.foto_url}
+                uploadEndpoint={`/admin/teachers/${selected.id}/photo`}
+                onUploaded={() => qc.invalidateQueries({ queryKey: ['admin-teachers'] })}
+              />
+            </Field>
+          )}
           <Field label="Nama Lengkap (tanpa gelar)"><input className={inputCls} value={form.nama} onChange={e => setForm(f => ({ ...f, nama: e.target.value }))} /></Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Gelar Depan"><input className={inputCls} placeholder="mis: Drs., Dr., H." value={form.gelar_depan} onChange={e => setForm(f => ({ ...f, gelar_depan: e.target.value }))} /></Field>
@@ -573,6 +589,15 @@ function SiswaTab() {
 
       {modal && (
         <Modal title={modal === 'add' ? 'Tambah Siswa' : 'Edit Siswa'} onClose={() => setModal(null)}>
+          {modal === 'edit' && selected && (
+            <Field label="Foto Siswa">
+              <PhotoEditWidget
+                fotoUrl={selected.foto_url}
+                uploadEndpoint={`/students/${selected.id}/photo`}
+                onUploaded={() => qc.invalidateQueries({ queryKey: ['admin-students'] })}
+              />
+            </Field>
+          )}
           <Field label="Nama"><input className={inputCls} value={form.nama} onChange={e => setForm(f => ({ ...f, nama: e.target.value }))} /></Field>
           <Field label="NIS"><input className={inputCls} value={form.nis} onChange={e => setForm(f => ({ ...f, nis: e.target.value }))} /></Field>
           <Field label="NISN (opsional)"><input className={inputCls} value={form.nisn} onChange={e => setForm(f => ({ ...f, nisn: e.target.value }))} /></Field>
@@ -1610,6 +1635,426 @@ function PengaturanAgendaTab() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TAB: FOTO SISWA & GURU (upload masal)
+// ─────────────────────────────────────────────────────────────────────────────
+interface PhotoUploadResult {
+  message: string
+  summary: { total: number; berhasil: number; gagal: number }
+  berhasil: { file: string; nama: string; nisn?: string; cocok_dengan?: string }[]
+  gagal: { file: string; alasan: string }[]
+}
+
+function FotoBulkUploadTab() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground space-y-1">
+        <p className="font-medium text-foreground">Ketentuan foto:</p>
+        <p>Format JPG, JPEG, atau PNG — maksimal <strong>50KB per foto</strong>.</p>
+        <p>Rasio yang disarankan <strong>3x4</strong> (potret, seperti pas foto ukuran 3x4 cm) supaya tampil rapi di semua tempat (nilai, EWS, laporan cetak).</p>
+        <p>Nama file foto <strong>siswa</strong> harus persis sama dengan <strong>NISN</strong> siswa (mis. <code>0012345678.jpg</code>). Nama file foto <strong>guru</strong> harus sama dengan <strong>NIP</strong>, atau <strong>email</strong> kalau guru tidak punya NIP.</p>
+        <p>Foto yang berhasil dicocokkan akan <strong>menimpa foto lama</strong> (kalau ada) atau <strong>mengisi yang masih kosong</strong>. File yang tidak cocok dengan siapa pun, atau tidak ada fotonya sama sekali, cukup dilewati — tidak perlu upload sekaligus semua, bisa bertahap kapan saja.</p>
+        <p>Tombol "Pilih Folder Foto" otomatis menelusuri <strong>semua sub-folder di dalamnya</strong> (sub, sub-sub, dst.) — jadi foto boleh dikelompokkan per kelas/rombel dalam folder-folder terpisah, tidak ada yang terlewat.</p>
+      </div>
+
+      <BulkPhotoUploadSection
+        title="Upload Foto Siswa"
+        description="Cocokkan berdasarkan NISN"
+        endpoint="/admin/students/photos/bulk"
+        matchColumnLabel="NISN"
+      />
+
+      <BulkPhotoUploadSection
+        title="Upload Foto Guru"
+        description="Cocokkan berdasarkan NIP (atau email kalau tidak punya NIP)"
+        endpoint="/admin/teachers/photos/bulk"
+        matchColumnLabel="NIP / Email"
+      />
+    </div>
+  )
+}
+
+// Kirim dalam batch, BUKAN satu request raksasa — sekolah bisa punya 1700+ siswa, dan
+// satu request berisi ribuan file gampang kena limit server (max_file_uploads,
+// post_max_size) atau timeout, hasilnya blank/gagal tanpa pesan jelas. Batch juga kasih
+// progress yang terlihat ke admin, bukan cuma "loading" diam selama beberapa menit.
+const PHOTO_BATCH_SIZE = 100
+
+function BulkPhotoUploadSection({ title, description, endpoint, matchColumnLabel }: {
+  title: string; description: string; endpoint: string; matchColumnLabel: string
+}) {
+  const [files, setFiles] = useState<File[]>([])
+  const [result, setResult] = useState<PhotoUploadResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState<{ batch: number; totalBatch: number; filesDone: number } | null>(null)
+  const folderRef = useRef<HTMLInputElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  async function startUpload() {
+    setUploading(true)
+    setError(null)
+    setResult(null)
+
+    const batches: File[][] = []
+    for (let i = 0; i < files.length; i += PHOTO_BATCH_SIZE) batches.push(files.slice(i, i + PHOTO_BATCH_SIZE))
+
+    const merged: PhotoUploadResult = { message: '', summary: { total: 0, berhasil: 0, gagal: 0 }, berhasil: [], gagal: [] }
+
+    for (let i = 0; i < batches.length; i++) {
+      setProgress({ batch: i + 1, totalBatch: batches.length, filesDone: i * PHOTO_BATCH_SIZE })
+      try {
+        const form = new FormData()
+        batches[i].forEach(f => form.append('photos[]', f))
+        const resp = await api.post<PhotoUploadResult>(endpoint, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        merged.berhasil.push(...resp.data.berhasil)
+        merged.gagal.push(...resp.data.gagal)
+      } catch (err: any) {
+        // Satu batch gagal (mis. jaringan putus) TIDAK membatalkan batch lain — catat
+        // semua file di batch itu sebagai gagal, lanjut ke batch berikutnya.
+        const reason = err?.response?.data?.message ?? 'Gagal mengunggah batch ini (kemungkinan jaringan terputus) — coba upload ulang file yang gagal.'
+        batches[i].forEach(f => merged.gagal.push({ file: f.name, alasan: reason }))
+      }
+    }
+
+    merged.summary = {
+      total: merged.berhasil.length + merged.gagal.length,
+      berhasil: merged.berhasil.length,
+      gagal: merged.gagal.length,
+    }
+    merged.message = 'Proses upload selesai.'
+
+    setResult(merged)
+    setProgress(null)
+    setUploading(false)
+  }
+
+  function pickFiles(list: FileList | null) {
+    if (!list || list.length === 0) return
+    // Cuma ambil file gambar — folder bisa berisi file lain yang bukan foto (mis. .DS_Store).
+    setFiles(Array.from(list).filter(f => /\.(jpg|jpeg|png)$/i.test(f.name)))
+    setResult(null)
+    setError(null)
+  }
+
+  return (
+    <div className="rounded-lg border p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-sm flex items-center gap-1.5"><ImageIcon className="h-4 w-4" />{title}</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={() => folderRef.current?.click()}>
+          <FolderOpen className="mr-1.5 h-4 w-4" />Pilih Folder Foto
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+          <Upload className="mr-1.5 h-4 w-4" />Pilih File Satu-satu
+        </Button>
+        {/* @ts-expect-error webkitdirectory bukan atribut React standar tapi didukung Chrome/Edge */}
+        <input ref={folderRef} type="file" webkitdirectory="" multiple className="hidden"
+          onChange={(e) => pickFiles(e.target.files)} />
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png" multiple className="hidden"
+          onChange={(e) => pickFiles(e.target.files)} />
+      </div>
+
+      {files.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {files.length} file foto dipilih (termasuk dari sub-folder di dalamnya, sampai sub-sub-folder — tidak ada yang terlewat; file lain yang bukan .jpg/.jpeg/.png otomatis diabaikan).
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button size="sm" disabled={files.length === 0 || uploading} onClick={startUpload}>
+          {uploading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Upload className="mr-1.5 h-4 w-4" />}
+          Upload {files.length > 0 ? `(${files.length} foto)` : ''}
+        </Button>
+        {(files.length > 0 || result || error) && !uploading && (
+          <button
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => { setFiles([]); setResult(null); setError(null); if (folderRef.current) folderRef.current.value = ''; if (fileRef.current) fileRef.current.value = '' }}
+          >
+            Reset
+          </button>
+        )}
+      </div>
+
+      {progress && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Mengupload batch {progress.batch} dari {progress.totalBatch}
+            {' '}({Math.min(progress.filesDone + PHOTO_BATCH_SIZE, files.length)} / {files.length} foto)...
+          </p>
+          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${Math.min(100, ((progress.batch) / progress.totalBatch) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 flex gap-2 text-xs text-red-700">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />{error}
+        </div>
+      )}
+
+      {result && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <PhotoStatCard label="Total File" value={result.summary.total} tone="muted" />
+            <PhotoStatCard label="Berhasil" value={result.summary.berhasil} tone="green" />
+            <PhotoStatCard label="Gagal" value={result.summary.gagal} tone="red" />
+          </div>
+
+          {result.berhasil.length > 0 && (
+            <div className="rounded-md border border-green-200 bg-green-50 p-2.5 max-h-48 overflow-y-auto">
+              <p className="text-xs font-medium text-green-800 mb-1.5">Berhasil ({result.berhasil.length})</p>
+              <ul className="text-xs text-green-700 space-y-0.5">
+                {result.berhasil.slice(0, 300).map((b, i) => (
+                  <li key={i}>{b.file} → {b.nama} ({matchColumnLabel}: {b.nisn ?? b.cocok_dengan})</li>
+                ))}
+                {result.berhasil.length > 300 && (
+                  <li className="italic text-green-600">...dan {result.berhasil.length - 300} lainnya (daftar dipersingkat, semua tetap tersimpan).</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {result.gagal.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 max-h-48 overflow-y-auto">
+              <p className="text-xs font-medium text-amber-800 mb-1.5">Gagal / dilewati ({result.gagal.length})</p>
+              <ul className="text-xs text-amber-700 space-y-0.5">
+                {result.gagal.slice(0, 300).map((g, i) => (
+                  <li key={i}>{g.file} — {g.alasan}</li>
+                ))}
+                {result.gagal.length > 300 && (
+                  <li className="italic text-amber-600">...dan {result.gagal.length - 300} lainnya (daftar dipersingkat).</li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PhotoStatCard({ label, value, tone }: { label: string; value: number; tone: 'muted' | 'green' | 'red' }) {
+  const toneCls = tone === 'green' ? 'text-green-700' : tone === 'red' ? 'text-red-700' : 'text-foreground'
+  return (
+    <div className="rounded-md border bg-white p-3 text-center">
+      <p className={cn('text-xl font-bold', toneCls)}>{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB: JADWAL PDF (upload masal file PDF jadwal guru & kelas)
+// ─────────────────────────────────────────────────────────────────────────────
+interface ScheduleUploadResult {
+  message: string
+  summary: { total: number; berhasil: number; gagal: number }
+  berhasil: { file: string; nama?: string; nip?: string; kelas?: string }[]
+  gagal: { file: string; alasan: string }[]
+}
+
+function JadwalPdfBulkUploadTab() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground space-y-1">
+        <p className="font-medium text-foreground">Ketentuan file jadwal:</p>
+        <p>File harus <strong>PDF</strong>, maksimal <strong>10MB per file</strong>.</p>
+        <p>Nama file jadwal <strong>guru</strong> harus diawali <strong>NIP</strong>, format <code>NIP-Nama.pdf</code> (mis. <code>196701052025212001-Cucu Lasmanawati.pdf</code>) — bagian nama boleh apa saja, yang dibaca cuma NIP di depan.</p>
+        <p>Nama file jadwal <strong>kelas</strong> harus format <code>Tingkat-KodeJurusan-Rombel.pdf</code> (mis. <code>XII-RPL-A.pdf</code>) — kode jurusan dicocokkan ke kolom "Inisial Kelas" di data Program Keahlian.</p>
+        <p>File yang berhasil dicocokkan akan <strong>menimpa jadwal lama</strong> (kalau ada). File yang tidak cocok cukup dilewati dengan alasan yang jelas — tidak membatalkan file lain.</p>
+        <p>Jadwal yang sudah terupload akan muncul di halaman <strong>"Jadwal Saya"</strong> milik guru/siswa terkait (bisa dilihat langsung/embed di halaman, dan diunduh).</p>
+      </div>
+
+      <BulkScheduleUploadSection
+        title="Upload Jadwal Guru"
+        description="Cocokkan berdasarkan NIP di awal nama file"
+        endpoint="/admin/teachers/schedules/bulk"
+        renderBerhasil={(b) => `${b.file} → ${b.nama} (NIP: ${b.nip})`}
+      />
+
+      <BulkScheduleUploadSection
+        title="Upload Jadwal Kelas"
+        description="Cocokkan berdasarkan tingkat + kode jurusan + rombel"
+        endpoint="/admin/classes/schedules/bulk"
+        renderBerhasil={(b) => `${b.file} → ${b.kelas}`}
+      />
+    </div>
+  )
+}
+
+// PDF jauh lebih besar dari foto (sampai 10MB/file) — batasi tiap batch berdasarkan
+// TOTAL ukuran (bukan cuma jumlah file) supaya tidak melebihi post_max_size server,
+// mengikuti pelajaran dari kasus upload 1700+ foto sekaligus yang bikin blank putih.
+const PDF_BATCH_MAX_BYTES = 40 * 1024 * 1024 // 40MB/batch
+const PDF_BATCH_MAX_COUNT = 20
+
+function buildSizeAwareBatches(files: File[]): File[][] {
+  const batches: File[][] = []
+  let current: File[] = []
+  let currentBytes = 0
+  for (const f of files) {
+    if (current.length > 0 && (currentBytes + f.size > PDF_BATCH_MAX_BYTES || current.length >= PDF_BATCH_MAX_COUNT)) {
+      batches.push(current)
+      current = []
+      currentBytes = 0
+    }
+    current.push(f)
+    currentBytes += f.size
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
+
+function BulkScheduleUploadSection({ title, description, endpoint, renderBerhasil }: {
+  title: string; description: string; endpoint: string
+  renderBerhasil: (b: ScheduleUploadResult['berhasil'][number]) => string
+}) {
+  const [files, setFiles] = useState<File[]>([])
+  const [result, setResult] = useState<ScheduleUploadResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState<{ batch: number; totalBatch: number } | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  async function startUpload() {
+    setUploading(true)
+    setError(null)
+    setResult(null)
+
+    const batches = buildSizeAwareBatches(files)
+    const merged: ScheduleUploadResult = { message: '', summary: { total: 0, berhasil: 0, gagal: 0 }, berhasil: [], gagal: [] }
+
+    for (let i = 0; i < batches.length; i++) {
+      setProgress({ batch: i + 1, totalBatch: batches.length })
+      try {
+        const form = new FormData()
+        batches[i].forEach(f => form.append('files[]', f))
+        const resp = await api.post<ScheduleUploadResult>(endpoint, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        merged.berhasil.push(...resp.data.berhasil)
+        merged.gagal.push(...resp.data.gagal)
+      } catch (err: any) {
+        const reason = err?.response?.data?.message ?? 'Gagal mengunggah batch ini (kemungkinan jaringan terputus) — coba upload ulang file yang gagal.'
+        batches[i].forEach(f => merged.gagal.push({ file: f.name, alasan: reason }))
+      }
+    }
+
+    merged.summary = {
+      total: merged.berhasil.length + merged.gagal.length,
+      berhasil: merged.berhasil.length,
+      gagal: merged.gagal.length,
+    }
+    merged.message = 'Proses upload selesai.'
+
+    setResult(merged)
+    setProgress(null)
+    setUploading(false)
+  }
+
+  function pickFiles(list: FileList | null) {
+    if (!list || list.length === 0) return
+    setFiles(Array.from(list).filter(f => /\.pdf$/i.test(f.name)))
+    setResult(null)
+    setError(null)
+  }
+
+  return (
+    <div className="rounded-lg border p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-sm flex items-center gap-1.5"><FileText className="h-4 w-4" />{title}</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+          <Upload className="mr-1.5 h-4 w-4" />Pilih File PDF
+        </Button>
+        <input ref={fileRef} type="file" accept="application/pdf" multiple className="hidden"
+          onChange={(e) => pickFiles(e.target.files)} />
+      </div>
+
+      {files.length > 0 && (
+        <p className="text-xs text-muted-foreground">{files.length} file PDF dipilih.</p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button size="sm" disabled={files.length === 0 || uploading} onClick={startUpload}>
+          {uploading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Upload className="mr-1.5 h-4 w-4" />}
+          Upload {files.length > 0 ? `(${files.length} file)` : ''}
+        </Button>
+        {(files.length > 0 || result || error) && !uploading && (
+          <button
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => { setFiles([]); setResult(null); setError(null); if (fileRef.current) fileRef.current.value = '' }}
+          >
+            Reset
+          </button>
+        )}
+      </div>
+
+      {progress && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Mengupload batch {progress.batch} dari {progress.totalBatch}...</p>
+          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, (progress.batch / progress.totalBatch) * 100)}%` }} />
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 flex gap-2 text-xs text-red-700">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />{error}
+        </div>
+      )}
+
+      {result && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <PhotoStatCard label="Total File" value={result.summary.total} tone="muted" />
+            <PhotoStatCard label="Berhasil" value={result.summary.berhasil} tone="green" />
+            <PhotoStatCard label="Gagal" value={result.summary.gagal} tone="red" />
+          </div>
+
+          {result.berhasil.length > 0 && (
+            <div className="rounded-md border border-green-200 bg-green-50 p-2.5 max-h-48 overflow-y-auto">
+              <p className="text-xs font-medium text-green-800 mb-1.5">Berhasil ({result.berhasil.length})</p>
+              <ul className="text-xs text-green-700 space-y-0.5">
+                {result.berhasil.slice(0, 300).map((b, i) => <li key={i}>{renderBerhasil(b)}</li>)}
+                {result.berhasil.length > 300 && (
+                  <li className="italic text-green-600">...dan {result.berhasil.length - 300} lainnya (daftar dipersingkat, semua tetap tersimpan).</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {result.gagal.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 max-h-48 overflow-y-auto">
+              <p className="text-xs font-medium text-amber-800 mb-1.5">Gagal / dilewati ({result.gagal.length})</p>
+              <ul className="text-xs text-amber-700 space-y-0.5">
+                {result.gagal.slice(0, 300).map((g, i) => <li key={i}>{g.file} — {g.alasan}</li>)}
+                {result.gagal.length > 300 && (
+                  <li className="italic text-amber-600">...dan {result.gagal.length - 300} lainnya (daftar dipersingkat).</li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB: PENGGUNA (Admin, BK, Orang Tua)
 // ─────────────────────────────────────────────────────────────────────────────
 function PenggunaTab() {
@@ -2353,7 +2798,13 @@ function CatatanManualTab() {
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState(0)
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState(() => {
+    const slug  = searchParams.get('tab')
+    const label = slug ? TAB_SLUG_TO_LABEL[slug] : null
+    const idx   = label ? TABS.indexOf(label) : -1
+    return idx >= 0 ? idx : 0
+  })
   const qc = useQueryClient()
 
   // Ganti tab kembali ke atas — kalau tab sebelumnya panjang (scroll turun) dan tab
@@ -2445,6 +2896,8 @@ export default function AdminPage() {
         {activeTab === 11 && <KalenderAdminTab />}
         {activeTab === 12 && <BackupRestoreTab />}
         {activeTab === 13 && <PengaturanAgendaTab />}
+        {activeTab === 14 && <FotoBulkUploadTab />}
+        {activeTab === 15 && <JadwalPdfBulkUploadTab />}
       </div>
     </div>
   )

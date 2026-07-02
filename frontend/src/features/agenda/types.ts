@@ -6,6 +6,36 @@ export interface ScheduleToday {
   subject: { id: string; kode: string; nama: string }
   class: { id: string; tingkat: string; jurusan: string; rombel: string; label: string }
   agenda_hari_ini: { id: string; status: string } | null
+  deadline_isi_agenda: string | null
+}
+
+// GK17: satu baris jadwal minggu berjalan, dengan tanggal konkret per hari (beda dari
+// ScheduleToday yang cuma hari ini).
+export interface ScheduleWeek {
+  id: string
+  hari: string
+  tanggal: string
+  jam_mulai: string
+  jam_selesai: string
+  subject: { id: string; kode: string; nama: string }
+  class: { id: string; label: string }
+}
+
+// Sesi terjadwal yang BELUM diisi, mundur sampai batas waktu yang diatur admin —
+// beda dari ScheduleToday (cuma hari ini) supaya jadwal yang telat diisi kemarin/H-2
+// tetap kelihatan & bisa dipilih dari form "Isi Agenda", bukan cuma hari ini.
+export interface AgendaPerluDiisi {
+  schedule_id: string
+  tanggal: string
+  hari: string
+  jam_mulai: string
+  jam_selesai: string
+  class_id: string
+  kelas: string
+  mapel: string
+  deadline: string
+  bisa_diisi: boolean
+  jam_tersisa: number | null
 }
 
 export interface LearningObjective {
@@ -14,6 +44,8 @@ export interface LearningObjective {
   deskripsi: string
   urutan: number
   semester: string
+  fase?: 'E' | 'F'
+  aktif?: boolean
   updated_by?: string | null
   updated_at?: string | null
 }
@@ -22,6 +54,7 @@ export interface StudentItem {
   id: string
   nis: string
   nama: string
+  foto_url?: string | null
 }
 
 export interface StudentScore {
@@ -63,5 +96,7 @@ export interface AgendaFormData {
   resume_kbm: string
   learning_objective_ids: string[]
   status: 'draft' | 'submitted'
-  student_scores: StudentScoreInput[]
+  // Nilai aktivitas TIDAK lagi diisi saat pengisian agenda (GK13) — dipindah ke
+  // AgendaDetailPage sebagai langkah opsional terpisah ("Isi Nilai Aktivitas").
+  student_scores?: StudentScoreInput[]
 }

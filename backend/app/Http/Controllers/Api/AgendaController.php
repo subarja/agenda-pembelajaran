@@ -37,10 +37,100 @@ class AgendaController extends Controller
             ->orderBy('rombel')
             ->get()
             ->map(fn ($c) => [
+                'id'    => $c->uuid,
                 'label' => "{$c->tingkat->value} {$c->jurusan} - {$c->rombel}",
             ]);
 
         return response()->json(['data' => $classes]);
+    }
+
+    /**
+     * GET /agendas/perlu-diisi — semua sesi terjadwal guru yang BELUM diisi, mundur
+     * sampai H- (batas_hari admin), bukan cuma hari ini. Sebelumnya dashboard & form
+     * "Isi Agenda" cuma pakai /schedules/today — jadwal yang telat diisi kemarin/H-2
+     * jadi TIDAK PERNAH muncul di mana pun walau backend (store()) sebenarnya masih
+     * mengizinkan pengisian selama dalam jendela deadline. Endpoint ini menutup celah
+     * itu: tampilkan SEMUA yang masih relevan, lengkap dengan kapan batas isinya, supaya
+     * guru sadar ada yang harus segera diisi sebelum kelewat.
+     */
+    public function perluDiisi(Request $request): JsonResponse
+    {
+        $teacher = $request->user()->teacher;
+        if (! $teacher) {
+            return response()->json(['data' => []]);
+        }
+
+        $setting = AgendaFillSetting::instance();
+        $today   = Carbon::now('Asia/Jakarta')->startOfDay();
+        // +1 hari buffer di atas batas_hari admin — supaya sesi yang BARU SAJA lewat
+        // deadline tetap kelihatan sekali (transparansi "ini yang kelewat"), bukan
+        // langsung hilang begitu deadline lewat sepersekian detik.
+        $mulai = $today->copy()->subDays($setting->batas_hari + 1);
+
+        $hariMap = [
+            'senin' => Carbon::MONDAY, 'selasa' => Carbon::TUESDAY,
+            'rabu'  => Carbon::WEDNESDAY, 'kamis' => Carbon::THURSDAY,
+            'jumat' => Carbon::FRIDAY, 'sabtu' => Carbon::SATURDAY, 'minggu' => Carbon::SUNDAY,
+        ];
+
+        $schedules = Schedule::where('teacher_id', $teacher->id)->where('aktif', true)
+            ->with(['subject', 'schoolClass'])->get();
+
+        $sesi = [];
+        foreach ($schedules as $schedule) {
+            $hariNum = $hariMap[$schedule->hari->value] ?? null;
+            if ($hariNum === null) continue;
+
+            $cursor = $mulai->copy();
+            while ($cursor->lte($today)) {
+                if ($hariNum === $cursor->dayOfWeek) {
+                    $sesi[] = ['tanggal' => $cursor->toDateString(), 'schedule' => $schedule];
+                }
+                $cursor->addDay();
+            }
+        }
+
+        if (empty($sesi)) {
+            return response()->json(['data' => []]);
+        }
+
+        $scheduleIds = collect($sesi)->pluck('schedule.id')->unique()->values();
+        $tanggalList = collect($sesi)->pluck('tanggal')->unique()->values();
+
+        $agendaExists = Agenda::whereIn('schedule_id', $scheduleIds)
+            ->whereIn('tanggal', $tanggalList)
+            ->get(['schedule_id', 'tanggal'])
+            ->map(fn ($a) => $a->schedule_id . '|' . $a->tanggal->toDateString())
+            ->flip();
+
+        $rows = collect($sesi)
+            ->filter(fn ($s) => ! $agendaExists->has($s['schedule']->id . '|' . $s['tanggal']))
+            ->map(function ($s) use ($setting) {
+                $schedule      = $s['schedule'];
+                $jadwalSelesai = Carbon::parse("{$s['tanggal']} {$schedule->jam_selesai}", 'Asia/Jakarta');
+                $deadline      = $setting->batasWaktu($jadwalSelesai);
+                $now           = Carbon::now('Asia/Jakarta');
+
+                return [
+                    'schedule_id'  => $schedule->uuid,
+                    'tanggal'      => $s['tanggal'],
+                    'hari'         => ucfirst($schedule->hari->value),
+                    'jam_mulai'    => substr($schedule->jam_mulai ?? '', 0, 5),
+                    'jam_selesai'  => substr($schedule->jam_selesai ?? '', 0, 5),
+                    'class_id'     => $schedule->schoolClass?->uuid,
+                    'kelas'        => $schedule->schoolClass
+                        ? "{$schedule->schoolClass->tingkat->value} {$schedule->schoolClass->jurusan} - {$schedule->schoolClass->rombel}"
+                        : '—',
+                    'mapel'        => $schedule->subject->nama ?? '—',
+                    'deadline'     => $deadline->format('Y-m-d H:i'),
+                    'bisa_diisi'   => $now->lte($deadline),
+                    'jam_tersisa'  => $now->lte($deadline) ? $now->diffInHours($deadline) : null,
+                ];
+            })
+            ->sortBy('deadline')
+            ->values();
+
+        return response()->json(['data' => $rows]);
     }
 
     public function index(Request $request): JsonResponse

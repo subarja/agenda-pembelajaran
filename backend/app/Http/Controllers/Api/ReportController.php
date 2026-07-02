@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Agenda;
 use App\Models\AgendaStudentScore;
 use App\Models\CharacterInput;
+use App\Models\CharacterManualNote;
 use App\Models\LearningObjective;
 use App\Models\Note;
 use App\Models\PrintSetting;
@@ -21,7 +22,6 @@ use Illuminate\Support\Str;
 use OpenSpout\Common\Entity\Cell\NumericCell;
 use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
-use OpenSpout\Writer\XLSX\Options;
 use OpenSpout\Writer\XLSX\Writer;
 
 class ReportController extends Controller
@@ -111,7 +111,7 @@ class ReportController extends Controller
         }
 
         if ($request->format === 'pdf') {
-            $printSettings = PrintSetting::instance();
+            $printSettings = PrintSetting::instance($request->user()->id);
             $pdf = Pdf::loadView('reports.kehadiran', compact('rows', 'periode', 'totalSesi', 'guruNama', 'guruNip', 'mapelGuru', 'printSettings') + ['kelas' => $kelasLabel])
                 ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
             return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
@@ -200,7 +200,7 @@ class ReportController extends Controller
             ->join(', ') : null;
 
         if ($request->format === 'pdf') {
-            $printSettings = PrintSetting::instance();
+            $printSettings = PrintSetting::instance($request->user()->id);
             $pdf = Pdf::loadView('reports.karakter', compact('rows','kategori','periode','totalInput','guruNama','guruNip','mapelGuru','printSettings') + ['kelas' => $kelasLabel])
                 ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
             return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
@@ -240,11 +240,96 @@ class ReportController extends Controller
         });
     }
 
+    // GK33: laporan "Nilai Tambah" — daftar poin manual (langsung final, tidak
+    // menunggu approval admin, lihat CharacterManualNoteController::storeNilaiTambah())
+    // untuk siswa di 1 kelas, mirror struktur karakter() di atas.
+    public function nilaiTambah(Request $request)
+    {
+        $request->validate([
+            'class_id'   => ['required', 'string'],
+            'format'     => ['required', 'in:pdf,excel'],
+            'teacher_id' => ['nullable', 'string'],
+        ]);
+
+        $teacher = $request->user()->teacher;
+        if (! $teacher && $request->filled('teacher_id')) {
+            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
+        }
+        if ($teacher && ! $teacher->relationLoaded('user')) {
+            $teacher->load('user');
+        }
+
+        $class    = SchoolClass::where('uuid', $request->class_id)->firstOrFail();
+        $students = $class->students()->with('user')->orderBy('nis')->get();
+
+        $notes = CharacterManualNote::whereIn('student_id', $students->pluck('id'))
+            ->where('sumber', 'nilai_tambah')
+            ->with(['student.user', 'teacher.user'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $rows = $notes->map(fn ($n) => [
+            'nama'    => $n->student->user->nama,
+            'nis'     => $n->student->nis,
+            'nilai'   => $n->nilai_final ?? $n->nilai,
+            'catatan' => $n->catatan ?: '—',
+            'tanggal' => $n->created_at->locale('id')->isoFormat('D MMM YYYY'),
+            'guru'    => $n->teacher?->nama_lengkap ?? '—',
+        ]);
+
+        $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
+        $filename   = "nilai_tambah_{$class->tingkat->value}_{$class->jurusan}";
+        $periode    = now('Asia/Jakarta')->format('M Y');
+
+        $guruNama = $teacher ? $teacher->nama_lengkap : null;
+        $guruNip  = $teacher ? ($teacher->nip ?? '—') : null;
+
+        if ($request->format === 'pdf') {
+            $printSettings = PrintSetting::instance($request->user()->id);
+            $pdf = Pdf::loadView('reports.nilai_tambah', [
+                'rows' => $rows, 'kelas' => $kelasLabel, 'periode' => $periode,
+                'totalInput' => $rows->count(), 'guruNama' => $guruNama, 'guruNip' => $guruNip,
+                'printSettings' => $printSettings,
+            ])->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+            return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
+        }
+
+        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kelasLabel, $periode, $guruNama, $guruNip) {
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 10, 5 => 40, 6 => 14, 7 => 22]);
+
+            $w->addRow(Row::fromValuesWithStyle(["Laporan Nilai Tambah — {$kelasLabel}"], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValues(["Periode: {$periode}"]));
+            if ($guruNama) {
+                $w->addRow(Row::fromValues(["Guru: {$guruNama}" . ($guruNip ? " | NIP: {$guruNip}" : '')]));
+            }
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValuesWithStyle(
+                ['No', 'Nama Siswa', 'NIS', 'Nilai', 'Deskripsi', 'Tanggal', 'Diberikan Oleh'],
+                $this->xlsxHeaderStyle()
+            ));
+
+            $cellCenter = $this->xlsxCellCenterStyle();
+            $cellText   = $this->xlsxCellStyle();
+            foreach ($rows->values() as $i => $r) {
+                $w->addRow(new Row([
+                    new NumericCell($i + 1, $cellCenter),
+                    new StringCell($r['nama'], $cellText),
+                    new StringCell($r['nis'], $cellCenter),
+                    new NumericCell($r['nilai'], $cellCenter),
+                    new StringCell($r['catatan'], $cellText),
+                    new StringCell($r['tanggal'], $cellCenter),
+                    new StringCell($r['guru'], $cellText),
+                ]));
+            }
+        });
+    }
+
     public function ews(Request $request)
     {
         $request->validate(['class_id'=>['required','string'],'format'=>['required','in:pdf,excel']]);
 
         $class    = SchoolClass::where('uuid', $request->class_id)->with('students.user')->firstOrFail();
+        $this->authorizeEwsExport($request->user(), $class);
         $students = $class->students()->with('user')->orderBy('nis')->get();
         $periode  = now('Asia/Jakarta')->format('M Y');
 
@@ -266,7 +351,7 @@ class ReportController extends Controller
         $filename   = "ews_{$class->tingkat->value}_{$class->jurusan}";
 
         if ($request->format === 'pdf') {
-            $printSettings = PrintSetting::instance();
+            $printSettings = PrintSetting::instance($request->user()->id);
             $pdf = Pdf::loadView('reports.ews', compact('rows','periode','printSettings') + ['kelas'=>$kelasLabel])
                 ->setPaper($printSettings->paperDimensionsPt(),'landscape');
             return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
@@ -298,6 +383,27 @@ class ReportController extends Controller
                 ]));
             }
         });
+    }
+
+    // EWS BEDA dari laporan lain — guru biasa (bukan wali kelas kelas ini/BK) TIDAK
+    // boleh export EWS sama sekali, walau laporan lain (agenda/jurnal/kehadiran/karakter)
+    // tetap terbuka untuk guru manapun. Lihat Isu GK3 & pola sama di EwsController::index().
+    private function authorizeEwsExport(\App\Models\User $user, SchoolClass $class): void
+    {
+        if (in_array($user->role->value, ['admin', 'wakasek'], true)) return;
+
+        $teacher = $user->teacher;
+        abort_if(! $teacher, 403, 'Anda tidak memiliki akses ke laporan EWS.');
+
+        if ($class->wali_kelas_id === $user->id) return;
+
+        if ($teacher->is_bk) {
+            $mengajarDiKelas = \App\Models\Schedule::where('teacher_id', $teacher->id)
+                ->where('class_id', $class->id)->where('aktif', true)->exists();
+            if ($mengajarDiKelas) return;
+        }
+
+        abort(403, 'Anda tidak memiliki akses ke laporan EWS kelas ini.');
     }
 
     public function agenda(Request $request)
@@ -368,9 +474,28 @@ class ReportController extends Controller
             ];
         });
 
+        // ── GK31: ringkasan mingguan (rata-rata pertemuan & JP terlaksana per
+        // minggu vs seharusnya) — ditaruh di kotak sebelah TTD, dulu ruang itu kosong. ──
+        $jumlahMingguPeriode  = max(1, (int) ceil($tglMulai->diffInDays($tglAkhir) / 7) + 1);
+        $pertemuanPerMinggu   = $teacherSchedules->count(); // jumlah slot jadwal aktif/minggu
+        $pertemuanSeharusnya  = $pertemuanPerMinggu * $jumlahMingguPeriode;
+        $pertemuanTerlaksana  = $rows->count();
+        $pctPertemuan         = $pertemuanSeharusnya > 0 ? round($pertemuanTerlaksana / $pertemuanSeharusnya * 100, 1) : 0;
+
+        $jpPerPertemuan = 2; // asumsi 2 JP per pertemuan (konvensi baku aplikasi ini)
+        $ringkasanMingguan = [
+            'pertemuan_per_minggu'            => round($pertemuanTerlaksana / $jumlahMingguPeriode, 1),
+            'pertemuan_seharusnya_per_minggu' => $pertemuanPerMinggu,
+            'pct_pertemuan'                   => $pctPertemuan,
+            'jp_per_minggu'                   => round(($pertemuanTerlaksana * $jpPerPertemuan) / $jumlahMingguPeriode, 1),
+            'jp_seharusnya_per_minggu'        => $pertemuanPerMinggu * $jpPerPertemuan,
+            'pct_jp'                          => $pctPertemuan, // proporsional (JP = pertemuan x konstanta)
+        ];
+
         if ($request->format === 'pdf') {
             $kopSuratPath  = 'file://' . public_path('images/kop_surat.jpg');
-            $printSettings = PrintSetting::instance();
+            $printSettings = PrintSetting::instance($request->user()->id);
+            $fotoGuruPath  = $teacher->user->foto ? \Illuminate\Support\Facades\Storage::disk('public')->path($teacher->user->foto) : public_path('images/default_avatar.jpg');
             $pdf = Pdf::loadView('reports.agenda', [
                 'rows'                => $rows,
                 'guru'                => $guru,
@@ -385,6 +510,8 @@ class ReportController extends Controller
                 'tanggal_ttd'         => $tglAkhir->isoFormat('D MMMM YYYY'),
                 'kopSuratPath'        => $kopSuratPath,
                 'printSettings'       => $printSettings,
+                'fotoGuruPath'        => $fotoGuruPath,
+                'ringkasan_mingguan'  => $ringkasanMingguan,
             ])->setPaper($printSettings->paperDimensionsPt(), 'landscape');
             return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
@@ -392,7 +519,7 @@ class ReportController extends Controller
         // ── Excel ─────────────────────────────────────────────────────────────
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use (
             $rows, $guru, $nip, $kompetensiKeahlian, $mapelSet, $kelasSet,
-            $semester, $periode, $bulan, $tahunPelajaran, $tglAkhir
+            $semester, $periode, $bulan, $tahunPelajaran, $tglAkhir, $ringkasanMingguan
         ) {
             $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 22, 3 => 14, 4 => 16, 5 => 40, 6 => 40, 7 => 20]);
             $label = $this->xlsxLabelStyle();
@@ -439,8 +566,20 @@ class ReportController extends Controller
                 ]));
             }
 
+            // GK31: kotak ringkasan mingguan di kolom A (sejajar baris TTD di kolom F,
+            // tidak tabrakan) — ruang ini dulu kosong.
+            $rm = $ringkasanMingguan;
+            $w->addRow(new Row([new StringCell('RINGKASAN MINGGUAN', $label)]));
+            $w->addRow(Row::fromValues([sprintf(
+                'Pertemuan: %s/minggu dari %s seharusnya (%s%%)',
+                $rm['pertemuan_per_minggu'], $rm['pertemuan_seharusnya_per_minggu'], $rm['pct_pertemuan']
+            )]));
+            $w->addRow(Row::fromValues([sprintf(
+                'Jam Pelajaran: %s JP/minggu dari %s JP seharusnya (%s%%)',
+                $rm['jp_per_minggu'], $rm['jp_seharusnya_per_minggu'], $rm['pct_jp']
+            )]));
+
             // TTD
-            $w->addRow(Row::fromValues(['']));
             $tanggalTtd = $tglAkhir->isoFormat('D MMMM YYYY');
             $w->addRow(Row::fromValues(['', '', '', '', '', "Cimahi, {$tanggalTtd}"]));
             $w->addRow(Row::fromValues(['', '', '', '', '', 'Guru Mata Pelajaran']));
@@ -454,192 +593,6 @@ class ReportController extends Controller
             // Waktu cetak
             $waktuCetak = now('Asia/Jakarta')->isoFormat('D MMMM YYYY, [Pkl.] HH.mm') . ' WIB';
             $w->addRow(Row::fromValues(["Waktu Cetak: {$waktuCetak}"]));
-        });
-    }
-
-    // ── Jurnal Mengajar (FR-128..131 / Bab XIII) ─────────────────────────────
-    public function jurnal(Request $request)
-    {
-        $request->validate([
-            'tanggal_mulai' => ['required', 'date'],
-            'tanggal_akhir' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
-            'format'        => ['required', 'in:pdf,excel'],
-            'class_id'      => ['nullable', 'string'],
-            'teacher_id'    => ['nullable', 'string'],
-        ]);
-
-        $teacher = $request->user()->teacher;
-        if (! $teacher && $request->filled('teacher_id')) {
-            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
-        }
-        abort_if(! $teacher, 403, 'Pilih guru terlebih dahulu atau gunakan akun guru.');
-
-        $teacher->load('user');
-        $ay = \App\Models\AcademicYear::where('aktif', true)->first();
-
-        // ── Ambil agendas ─────────────────────────────────────────────────────
-        $query = Agenda::whereHas('schedule', fn ($q) => $q->where('teacher_id', $teacher->id))
-            ->whereBetween('tanggal', [$request->tanggal_mulai, $request->tanggal_akhir])
-            ->with(['schedule.subject', 'schedule.schoolClass', 'learningObjectives'])
-            ->orderBy('tanggal');
-
-        if ($request->filled('class_id')) {
-            $query->whereHas('schedule.schoolClass', fn ($q) => $q->where('uuid', $request->class_id));
-        }
-
-        $agendas = $query->get();
-
-        // ── Baris tabel jurnal ────────────────────────────────────────────────
-        $rows = $agendas->map(function ($a) {
-            $los = $a->learningObjectives;
-            return [
-                'tanggal'  => $a->tanggal->locale('id')->isoFormat('DD/MM/YYYY'),
-                'hari'     => ucfirst($a->schedule->hari->value),
-                'kelas'    => $a->schedule->schoolClass->tingkat->value . ' ' .
-                              $a->schedule->schoolClass->jurusan . ' - ' .
-                              $a->schedule->schoolClass->rombel,
-                'tp_kode'  => $los->pluck('kode')->join(', '),
-                'tp'       => $los->pluck('deskripsi')->join(' | '),
-                'resume'   => $a->resume_kbm,
-                'status'   => $a->status->value,
-            ];
-        });
-
-        // ── Mapel & kelas label ───────────────────────────────────────────────
-        // Diambil dari SELURUH jadwal aktif guru (bukan cuma yang sudah diisi agenda pada
-        // periode ini) — supaya identitas laporan tetap lengkap walau guru belum sempat
-        // mengisi KBM di sebagian kelas/mapel yang ia ampu.
-        $teacherSchedules = \App\Models\Schedule::where('teacher_id', $teacher->id)
-            ->where('aktif', true)
-            ->with(['subject', 'schoolClass'])
-            ->get();
-        $mapelSet  = $this->formatMapelDiampu($teacherSchedules);
-        $kelasSet  = $this->formatKelasDiampu($teacherSchedules);
-
-        // ── Ringkasan ─────────────────────────────────────────────────────────
-        $totalPertemuan  = $agendas->count();
-        $tpDibahasIds    = $agendas->flatMap(fn ($a) => $a->learningObjectives->pluck('id'))->unique()->count();
-
-        // Total TP direncanakan — cari via mapel + fase yang diajarkan guru
-        $subjectIds = $teacherSchedules->pluck('subject_id')->unique();
-        $fases = $teacherSchedules
-            ->map(fn ($s) => $s->schoolClass?->tingkat->value === 'X' ? 'E' : 'F')
-            ->filter()
-            ->unique()
-            ->values();
-        $tpDirencanakan = LearningObjective::whereIn('subject_id', $subjectIds)
-            ->whereIn('fase', $fases)
-            ->where('semester', $ay?->semester->value ?? 'ganjil')
-            ->when($ay, fn ($q) => $q->where('academic_year_id', $ay->id))
-            ->count();
-
-        // Kehadiran mengajar — cek TeacherAttendance
-        $hadirCount = TeacherAttendance::whereIn(
-            'agenda_id', $agendas->pluck('id')
-        )->where('status', 'hadir')->count();
-        $pctKehadiran = $totalPertemuan > 0
-            ? round(($hadirCount / $totalPertemuan) * 100, 1)
-            : 100;
-        $tidakTerlaksana = $totalPertemuan - $hadirCount;
-
-        $ringkasan = [
-            'total_pertemuan'  => $totalPertemuan,
-            'total_jam'        => $totalPertemuan * 2, // asumsi 2 JP per pertemuan
-            'tp_direncanakan'  => $tpDirencanakan,
-            'tp_dibahas'       => $tpDibahasIds,
-            'tidak_terlaksana' => $tidakTerlaksana,
-            'pct_kehadiran'    => $pctKehadiran,
-        ];
-
-        $periode    = \Carbon\Carbon::parse($request->tanggal_mulai)->locale('id')->isoFormat('D MMMM YYYY') .
-                      ' s.d. ' .
-                      \Carbon\Carbon::parse($request->tanggal_akhir)->locale('id')->isoFormat('D MMMM YYYY');
-        $report_id  = strtoupper(Str::random(8));
-        $guruNama   = $teacher->nama_lengkap;
-        $filename   = 'Jurnal_Mengajar_' . str_replace(' ', '_', $teacher->user->nama) . '_' .
-                      str_replace('/', '-', substr($request->tanggal_mulai, 0, 7));
-
-        // ── PDF ───────────────────────────────────────────────────────────────
-        if ($request->format === 'pdf') {
-            $printSettings = PrintSetting::instance();
-            $pdf = Pdf::loadView('reports.jurnal', [
-                'rows'         => $rows,
-                'guru'         => $guruNama,
-                'nip'          => $teacher->nip ?? '—',
-                'mapel'        => $mapelSet ?: $teacher->mapel_utama,
-                'kelas_label'  => $kelasSet ?: 'Semua kelas diampu',
-                'tahun_ajaran' => $ay ? $ay->tahun . ' — Semester ' . ucfirst($ay->semester->value) : '—',
-                'periode'      => $periode,
-                'ringkasan'    => $ringkasan,
-                'report_id'    => $report_id,
-                'printSettings'=> $printSettings,
-            ])->setPaper($printSettings->paperDimensionsPt(), 'landscape');
-            return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
-        }
-
-        // ── Excel (2 sheet: Identitas+Ringkasan, Tabel Jurnal) ────────────────
-        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use (
-            $rows, $teacher, $guruNama, $mapelSet, $kelasSet, $ay, $periode, $ringkasan, $report_id
-        ) {
-            $label = $this->xlsxLabelStyle();
-
-            // Sheet 1: Header & Identitas — label mulai kolom B, ": nilai" (titik-dua +
-            // 1 spasi + isi digabung dalam SATU sel) mulai kolom C, kolom A jadi indent.
-            $w->getCurrentSheet()->setName('Identitas & Ringkasan');
-            $this->xlsxSetColumnWidths($w, [1 => 3, 2 => 24, 3 => 40]);
-            $w->addRow(Row::fromValuesWithStyle(['LAPORAN JURNAL MENGAJAR'], $this->xlsxTitleStyle()));
-            $w->addRow(Row::fromValues(['SMK NEGERI 2 CIMAHI']));
-            $w->addRow(Row::fromValues(['']));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Periode', $label), new StringCell(": {$periode}")]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Nama Guru', $label), new StringCell(": {$guruNama}")]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('NIP', $label), new StringCell(': ' . ($teacher->nip ?? '—'))]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Mata Pelajaran', $label), new StringCell(': ' . ($mapelSet ?: $teacher->mapel_utama))]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Kelas yang Diampu', $label), new StringCell(": {$kelasSet}")]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Tahun Ajaran', $label), new StringCell(': ' . ($ay ? $ay->tahun . ' — ' . ucfirst($ay->semester->value) : '—'))]));
-            $w->addRow(Row::fromValues(['']));
-
-            // Ringkasan
-            $w->addRow(Row::fromValuesWithStyle(['RINGKASAN'], $label));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Total Pertemuan', $label), new StringCell(": {$ringkasan['total_pertemuan']}")]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Total Jam Mengajar', $label), new StringCell(": {$ringkasan['total_jam']} JP")]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('TP Direncanakan', $label), new StringCell(": {$ringkasan['tp_direncanakan']}")]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('TP Sudah Dibahas', $label), new StringCell(": {$ringkasan['tp_dibahas']}")]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Tidak Terlaksana', $label), new StringCell(": {$ringkasan['tidak_terlaksana']} pertemuan")]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('% Kehadiran Mengajar', $label), new StringCell(": {$ringkasan['pct_kehadiran']}%")]));
-            $w->addRow(Row::fromValues(['']));
-
-            // Tanda tangan (teks)
-            $w->addRow(Row::fromValuesWithStyle(['', 'Dibuat oleh,', '', 'Mengetahui,', '', 'Disetujui,'], $label));
-            $w->addRow(Row::fromValues(['', 'Guru Mata Pelajaran', '', 'Wakasek Bid. Kurikulum', '', 'Kepala SMK Negeri 2 Cimahi']));
-            $w->addRow(Row::fromValues(['']));
-            $w->addRow(Row::fromValues(['']));
-            $w->addRow(Row::fromValues(['']));
-            $w->addRow(Row::fromValuesWithStyle(['', $guruNama, '', 'Kusman Subarja, S.Pd., M.T.', '', '................................'], $label));
-            $w->addRow(Row::fromValues(['', 'NIP. ' . ($teacher->nip ?? '—'), '', 'NIP. 197501012005011001', '', 'NIP. ................................']));
-            $w->addRow(Row::fromValues(['']));
-            $w->addRow(Row::fromValues(['ID Laporan: ' . $report_id]));
-
-            // Sheet 2: Tabel Jurnal
-            $w->addNewSheetAndMakeItCurrent()->setName('Tabel Jurnal');
-            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 13, 3 => 10, 4 => 16, 5 => 45, 6 => 45, 7 => 12]);
-            $w->addRow(Row::fromValuesWithStyle(
-                ['No', 'Tanggal', 'Hari', 'Kelas', 'Materi / Tujuan Pembelajaran', 'Catatan Kegiatan KBM', 'Status'],
-                $this->xlsxHeaderStyle()
-            ));
-
-            $cellCenter = $this->xlsxCellCenterStyle();
-            $cellText   = $this->xlsxCellStyle();
-            foreach ($rows->values() as $i => $r) {
-                $w->addRow(new Row([
-                    new NumericCell($i + 1, $cellCenter),
-                    new StringCell($r['tanggal'], $cellCenter),
-                    new StringCell($r['hari'], $cellCenter),
-                    new StringCell($r['kelas'], $cellCenter),
-                    new StringCell(($r['tp_kode'] ? $r['tp_kode'] . ' — ' : '') . ($r['tp'] ?: '—'), $cellText),
-                    new StringCell($r['resume'] ?: '—', $cellText),
-                    new StringCell($r['status'] === 'submitted' ? 'Selesai' : 'Draft', $cellCenter),
-                ]));
-            }
         });
     }
 
@@ -714,19 +667,6 @@ class ReportController extends Controller
         return $schedules->pluck('subject.nama')->filter()->unique()->sort()->values()->join(', ');
     }
 
-    private function streamXlsx(string $filename, callable $callback): \Symfony\Component\HttpFoundation\StreamedResponse
-    {
-        return response()->streamDownload(function () use ($callback) {
-            $tmp     = tempnam(sys_get_temp_dir(), 'xlsx_');
-            $writer  = new Writer(new Options());
-            $writer->openToFile($tmp);
-            $callback($writer);
-            $writer->close();
-            readfile($tmp);
-            unlink($tmp);
-        }, $filename, [
-            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ]);
-    }
+    // streamXlsx() dipindah ke trait BuildsXlsxReports supaya controller export Excel
+    // lain (mis. WeeklyReflectionController) bisa pakai tanpa duplikasi.
 }

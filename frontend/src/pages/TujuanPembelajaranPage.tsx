@@ -6,7 +6,9 @@ import type { LearningObjective } from '@/features/agenda/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
 
@@ -170,10 +172,17 @@ export default function TujuanPembelajaranPage() {
   })
 
   async function downloadTemplate() {
-    const res = await api.get('/learning-objectives/template', { responseType: 'blob' })
+    // GK21: identitas mapel/fase/semester disematkan backend ke nama file + baris info
+    const res = await api.get('/learning-objectives/template', {
+      responseType: 'blob',
+      params: selectedCtx ? { subject_id: selectedCtx.subject_id, fase: selectedCtx.fase, semester } : {},
+    })
+    const disposition = res.headers['content-disposition'] as string | undefined
+    const match = disposition?.match(/filename="?([^"]+)"?/)
+    const filename = match?.[1] ?? 'template_tujuan_pembelajaran.xlsx'
     const url = URL.createObjectURL(res.data as Blob)
     const a = document.createElement('a'); a.href = url
-    a.download = 'template_tujuan_pembelajaran.xlsx'; a.click()
+    a.download = filename; a.click()
     URL.revokeObjectURL(url)
   }
 
@@ -202,37 +211,36 @@ export default function TujuanPembelajaranPage() {
   const saving = storeMutation.isPending || updateMutation.isPending
 
   return (
-    <div className="max-w-lg space-y-5">
+    <div className="max-w-2xl space-y-5">
       <h1 className="text-xl font-bold">Tujuan Pembelajaran (TP)</h1>
 
-      {/* ── Pilih Mapel + Fase ──────────────────────────────────────────────── */}
-      <div className="space-y-2">
+      {/* ── Pilih Mapel + Fase (GK19: dropdown, bukan card-list) ─────────────── */}
+      <div className="space-y-1.5 max-w-md">
         <Label>Mata Pelajaran & Fase</Label>
-        {contexts.length === 0 && (
+        {contexts.length === 0 ? (
           <p className="text-sm text-muted-foreground">Belum ada jadwal mengajar terdaftar.</p>
+        ) : (
+          <select
+            value={selectedCtx ? `${selectedCtx.subject_id}-${selectedCtx.fase}` : ''}
+            onChange={(e) => {
+              const ctx = contexts.find((c) => `${c.subject_id}-${c.fase}` === e.target.value) ?? null
+              setSelectedCtx(ctx); setShowForm(false)
+              setImportResult(null); setShowLog(false)
+            }}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">— Pilih mata pelajaran & fase —</option>
+            {contexts.map((ctx) => (
+              <option key={`${ctx.subject_id}-${ctx.fase}`} value={`${ctx.subject_id}-${ctx.fase}`}>
+                {ctx.subject_nama} · {ctx.fase_label}
+              </option>
+            ))}
+          </select>
         )}
-        <div className="space-y-2">
-          {contexts.map((ctx) => {
-            const key    = `${ctx.subject_id}-${ctx.fase}`
-            const selKey = selectedCtx ? `${selectedCtx.subject_id}-${selectedCtx.fase}` : ''
-            const isSelected = key === selKey
-            return (
-              <button key={key} type="button"
-                onClick={() => {
-                  setSelectedCtx(ctx); setShowForm(false)
-                  setImportResult(null); setShowLog(false)
-                }}
-                className={cn(
-                  'w-full text-left rounded-lg border p-3 transition-colors',
-                  isSelected ? 'border-primary-600 bg-primary-50' : 'border-border hover:border-primary-200',
-                )}
-              >
-                <p className="text-sm font-medium">{ctx.subject_nama}</p>
-                <p className="text-xs text-muted-foreground">{ctx.fase_label} · {ctx.subject_kode}</p>
-              </button>
-            )
-          })}
-        </div>
+        {/* Daftar TP hanya tampil setelah mapel dipilih (GK19) */}
+        {!selectedCtx && contexts.length > 0 && (
+          <p className="text-sm text-muted-foreground py-2">Pilih mata pelajaran & fase untuk melihat daftar TP.</p>
+        )}
       </div>
 
       {selectedCtx && (
@@ -260,32 +268,30 @@ export default function TujuanPembelajaranPage() {
             <strong> {selectedCtx.fase_label}</strong>. Setiap perubahan berlaku untuk semua guru tersebut.
           </div>
 
-          {/* ── Hasil import ─────────────────────────────────────────────────── */}
-          {importResult && (
-            <div className={cn(
-              'rounded-lg border p-3 text-sm',
-              importResult.errors.length > 0 && importResult.inserted + importResult.updated === 0
-                ? 'border-red-200 bg-red-50'
-                : 'border-green-200 bg-green-50',
-            )}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2 font-medium">
-                  {importResult.inserted + importResult.updated > 0
-                    ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                    : <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />}
-                  {importResult.message}
+          {/* ── Hasil import (GK20: popup notifikasi, klik OK untuk tutup) ──────── */}
+          <Dialog open={!!importResult} onOpenChange={(open) => { if (!open) setImportResult(null) }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {importResult && (importResult.inserted + importResult.updated > 0
+                    ? <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                    : <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />)}
+                  Hasil Import TP
+                </DialogTitle>
+              </DialogHeader>
+              {importResult && (
+                <div className="space-y-3">
+                  <p className="text-sm">{importResult.message}</p>
+                  {importResult.errors.length > 0 && (
+                    <ul className="space-y-0.5 text-xs text-red-700 list-disc list-inside max-h-40 overflow-y-auto">
+                      {importResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                  )}
+                  <Button size="sm" className="w-full" onClick={() => setImportResult(null)}>OK</Button>
                 </div>
-                <button onClick={() => setImportResult(null)} className="text-muted-foreground hover:text-foreground shrink-0">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              {importResult.errors.length > 0 && (
-                <ul className="mt-2 space-y-0.5 text-xs text-red-700 list-disc list-inside">
-                  {importResult.errors.map((e, i) => <li key={i}>{e}</li>)}
-                </ul>
               )}
-            </div>
-          )}
+            </DialogContent>
+          </Dialog>
 
           {/* ── List TP ─────────────────────────────────────────────────────── */}
           <div className="space-y-2">
@@ -331,33 +337,61 @@ export default function TujuanPembelajaranPage() {
               </p>
             )}
 
-            {objectives.map((lo) => (
-              <div key={lo.id}
-                className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3"
-              >
-                <span className="text-xs font-bold text-primary-600 mt-0.5 shrink-0 w-12">{lo.kode}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm">{lo.deskripsi}</p>
-                  {lo.updated_by && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Diubah oleh {lo.updated_by} · {lo.updated_at}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <button onClick={() => openEdit(lo)} className="text-muted-foreground hover:text-primary-600 p-1">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => { if (confirm('Hapus TP ini?')) deleteMutation.mutate(lo.id) }}
-                    className="text-muted-foreground hover:text-red-600 p-1"
-                    disabled={deleteMutation.isPending}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+            {!isLoading && objectives.length > 0 && (
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      <th className="px-3 py-2 w-10">No</th>
+                      <th className="px-3 py-2 w-16">Tingkat</th>
+                      <th className="px-3 py-2 w-24">Fase</th>
+                      <th className="px-3 py-2 w-20">Semester</th>
+                      <th className="px-3 py-2">Tujuan Pembelajaran</th>
+                      <th className="px-3 py-2 w-20">Status</th>
+                      <th className="px-3 py-2 w-16 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {objectives.map((lo, i) => (
+                      <tr key={lo.id} className="border-t border-border align-top">
+                        <td className="px-3 py-2.5 text-muted-foreground">{i + 1}</td>
+                        <td className="px-3 py-2.5">{selectedCtx.fase === 'E' ? 'X' : 'XI–XII'}</td>
+                        <td className="px-3 py-2.5">{selectedCtx.fase}</td>
+                        <td className="px-3 py-2.5 capitalize">{lo.semester}</td>
+                        <td className="px-3 py-2.5">
+                          <span className="font-bold text-primary-600 mr-1.5">{lo.kode}</span>
+                          {lo.deskripsi}
+                          {lo.updated_by && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Diubah oleh {lo.updated_by} · {lo.updated_at}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Badge variant={lo.aktif === false ? 'secondary' : 'hijau'} className="text-[10px]">
+                            {lo.aktif === false ? 'Tidak Aktif' : 'Aktif'}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex gap-1 justify-end">
+                            <button onClick={() => openEdit(lo)} className="text-muted-foreground hover:text-primary-600 p-1">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => { if (confirm('Hapus TP ini?')) deleteMutation.mutate(lo.id) }}
+                              className="text-muted-foreground hover:text-red-600 p-1"
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
+            )}
           </div>
 
           {/* ── Form tambah / edit ──────────────────────────────────────────── */}

@@ -481,7 +481,7 @@ class EffectiveDayController extends Controller
             ? ($teachers->first()->user?->nama ?? $teachers->first()->nip ?? 'guru')
             : 'multi_guru';
         $filename     = 'minggu_efektif_' . str_replace(' ', '_', $namaFile) . '.pdf';
-        $printSettings = PrintSetting::instance();
+        $printSettings = PrintSetting::instance($request->user()->id);
 
         $pdf = Pdf::loadView('reports.minggu_efektif', compact(
             'sheets', 'tanggalCetak', 'ayLabel', 'printSettings'
@@ -687,7 +687,7 @@ class EffectiveDayController extends Controller
         // yang menerima "/" apa adanya di header Content-Disposition.
         $tahunSlug    = str_replace('/', '-', $ay->tahun);
         $filename     = "minggu_efektif_kelas_{$tahunSlug}_{$ay->semester->value}.pdf";
-        $printSettings = PrintSetting::instance();
+        $printSettings = PrintSetting::instance($request->user()->id);
 
         $pdf = Pdf::loadView('reports.minggu_efektif', [
             'sheets'       => $sheets,
@@ -731,7 +731,7 @@ class EffectiveDayController extends Controller
         $ayLabel = "Semester {$ay->semester->value} — TP {$ay->tahun}";
 
         if ($request->query('format') === 'pdf') {
-            $printSettings = PrintSetting::instance();
+            $printSettings = PrintSetting::instance($request->user()->id);
             $pdf = Pdf::loadView('reports.minggu_efektif_umum', [
                 'bulan'        => $data['bulan'],
                 'total'        => $data,

@@ -8,6 +8,7 @@
   $mLeft = $ps->margin_left ?? 1.5; $mRight = $ps->margin_right ?? 1.5;
   $kopWidth = $ps->kop_width_percent ?? 100;
   $kopAlign = $ps->kop_position ?? 'center';
+  $fotoPath = $teacher->user->foto ? \Illuminate\Support\Facades\Storage::disk('public')->path($teacher->user->foto) : public_path('images/default_avatar.jpg');
 @endphp
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -66,7 +67,12 @@ table.rekap tr:nth-child(even) td { background: #f8fafc; }
 </div>
 
 <table class="identitas">
-  <tr><td class="label">Nama Guru</td><td>: {{ $teacher->user->nama }}</td></tr>
+  <tr>
+    <td rowspan="3" style="width:23mm; vertical-align:top; padding-right:3mm;">
+      <img src="file://{{ $fotoPath }}" style="width:20mm; height:auto; border:1px solid #ccc;">
+    </td>
+    <td class="label">Nama Guru</td><td>: {{ $teacher->user->nama }}</td>
+  </tr>
   <tr><td class="label">NIP</td><td>: {{ $teacher->nip ?? '—' }}</td></tr>
   <tr><td class="label">Mapel Utama</td><td>: {{ $teacher->mapel_utama ?? '—' }}</td></tr>
 </table>

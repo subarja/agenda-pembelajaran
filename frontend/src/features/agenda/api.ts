@@ -1,10 +1,16 @@
 import api from '@/lib/api'
 import type { ApiResponse } from '@/types'
-import type { Agenda, AgendaFormData, LearningObjective, ScheduleToday, StudentItem } from './types'
+import type { Agenda, AgendaFormData, AgendaPerluDiisi, LearningObjective, ScheduleToday, ScheduleWeek, StudentItem } from './types'
 
 export const agendaApi = {
   getTodaySchedules: () =>
     api.get<ApiResponse<ScheduleToday[]>>('/schedules/today'),
+
+  getThisWeekSchedules: () =>
+    api.get<ApiResponse<ScheduleWeek[]>>('/schedules/this-week'),
+
+  getPerluDiisi: () =>
+    api.get<ApiResponse<AgendaPerluDiisi[]>>('/agendas/perlu-diisi'),
 
   getLearningObjectives: (scheduleId: string) =>
     api.get<ApiResponse<LearningObjective[]>>('/learning-objectives', {
@@ -17,7 +23,7 @@ export const agendaApi = {
     }),
 
   getMyClasses: () =>
-    api.get<{ data: { label: string }[] }>('/agendas/my-classes'),
+    api.get<{ data: { id: string; label: string }[] }>('/agendas/my-classes'),
 
   getAgendas: (params: { page?: number; kelas?: string; tanggal_dari?: string; tanggal_sampai?: string } = {}) =>
     api.get<{ data: Agenda[]; meta: { total: number; current_page: number; last_page: number; per_page: number } }>(

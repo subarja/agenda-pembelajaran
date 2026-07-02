@@ -20,7 +20,7 @@ interface Sesi {
 }
 
 interface DetailData {
-  teacher: { nama: string; nip: string | null; mapel_utama: string | null }
+  teacher: { nama: string; nip: string | null; mapel_utama: string | null; foto_url: string | null }
   periode: { mulai: string; akhir: string }
   summary: { total_jadwal: number; terisi: number; draft: number; kosong: number }
   sesi: Sesi[]
@@ -81,6 +81,9 @@ export default function TeacherEwsDetailPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
+        {d && (
+          <img src={d.teacher.foto_url || '/images/default-avatar.jpg'} alt={d.teacher.nama} className="w-[20mm] h-auto shrink-0 rounded border" />
+        )}
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold truncate">{d?.teacher.nama ?? 'Detail Pengisian Agenda'}</h1>
           {d && (

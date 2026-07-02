@@ -57,6 +57,13 @@ body {
 .tabel-agenda .kls  { width: 100px; }
 .tabel-agenda .ket  { width: 60px; }
 
+/* RINGKASAN MINGGUAN — GK31: ruang di sebelah kiri TTD dulu kosong, sekarang diisi
+   kotak info singkat (pertemuan & JP terlaksana/minggu vs seharusnya). Lebar dibatasi
+   supaya tidak pernah menabrak blok TTD di kanan. */
+.ringkasan-box { font-size: 9pt; color: #333; vertical-align: top; padding-right: 12px; }
+.ringkasan-box .judul { font-weight: bold; font-size: 9.5pt; margin-bottom: 3px; text-transform: uppercase; }
+.ringkasan-box .baris { margin-bottom: 2px; line-height: 1.4; }
+
 /* TTD — gunakan table agar DomPDF render benar */
 .ttd-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 10.5pt; }
 .ttd-spacer { }
@@ -95,7 +102,10 @@ body {
 <div class="identitas">
   <table>
     <tr>
-      <td>Nama Guru</td><td>:</td>
+      <td rowspan="7" style="width:23mm; vertical-align:top; padding-right:3mm;">
+        <img src="file://{{ $fotoGuruPath }}" style="width:20mm; height:auto; border:1px solid #ccc;">
+      </td>
+      <td style="width:155px">Nama Guru</td><td style="width:12px">:</td>
       <td>{{ $guru }}</td>
     </tr>
     <tr>
@@ -160,11 +170,26 @@ body {
 </table>
 
 {{-- TANDA TANGAN
-     Pola: 1 baris tabel — kolom kosong (spacer) + kolom-kolom penanda tangan berjajar.
+     Pola: 1 baris tabel — kolom kosong (spacer, sekarang berisi ringkasan mingguan
+     GK31) + kolom-kolom penanda tangan berjajar.
      Tambah <td class="ttd-cell"> baru jika ada >1 penanda tangan. --}}
 <table class="ttd-table">
   <tr>
-    <td class="ttd-spacer" style="width:55%"></td>
+    <td class="ttd-spacer ringkasan-box" style="width:55%">
+      @if(!empty($ringkasan_mingguan))
+        <div class="judul">Ringkasan Mingguan</div>
+        <div class="baris">
+          Pertemuan: {{ $ringkasan_mingguan['pertemuan_per_minggu'] }}/minggu dari
+          {{ $ringkasan_mingguan['pertemuan_seharusnya_per_minggu'] }} seharusnya
+          ({{ $ringkasan_mingguan['pct_pertemuan'] }}%)
+        </div>
+        <div class="baris">
+          Jam Pelajaran: {{ $ringkasan_mingguan['jp_per_minggu'] }} JP/minggu dari
+          {{ $ringkasan_mingguan['jp_seharusnya_per_minggu'] }} JP seharusnya
+          ({{ $ringkasan_mingguan['pct_jp'] }}%)
+        </div>
+      @endif
+    </td>
     {{-- Penanda tangan 1: Guru Mata Pelajaran --}}
     <td class="ttd-cell">
       <div>Cimahi, {{ $tanggal_ttd }}</div>

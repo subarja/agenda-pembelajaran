@@ -256,12 +256,10 @@ function MapelCard({ mapel }: { mapel: MapelRow }) {
 export default function HariEfektifPage() {
   const user    = useAuthStore(s => s.user)
   const isAdmin = user?.role === 'admin' || user?.role === 'wakasek'
-  // printSettings: true — hanya halaman ini yang PDF-nya konsumsi PrintSetting (ukuran
-  // kertas/margin/kop), jadi cuma di sini tombol gear "Pengaturan kertas & margin" muncul
-  // di modal preview. Endpoint /admin/print-settings admin-only, tombolnya juga sengaja
-  // dibatasi supaya guru (yang juga pakai preview PDF ini utk export miliknya sendiri)
-  // tidak melihat kontrol yang bakal 403 kalau dipakai.
-  const pdfPreview = usePdfPreview({ printSettings: isAdmin })
+  // GK30: pengaturan kertas sekarang per-akun (endpoint /print-settings terbuka utk
+  // semua role login, lihat PrintSetting::instance($userId)) — guru boleh atur miliknya
+  // sendiri tanpa memengaruhi user lain.
+  const pdfPreview = usePdfPreview({ printSettings: true })
 
   const [selClassId, setSelClassId] = useState('')
   const [selAyId, setSelAyId]       = useState<string>('')
@@ -314,8 +312,13 @@ export default function HariEfektifPage() {
   // "nama_lengkap") — sebelumnya interface ini salah nama field, jadi setiap tombol guru
   // di picker ini tampil kosong (key={undefined}) dan pencarian nama CRASH karena
   // t.nama_lengkap selalu undefined.
+  // Key HARUS beda dari EwsDetailPage.tsx yg juga pakai key ini tapi per_page=100 —
+  // key literal sama + parameter beda = react-query bisa pakai cache "salah" punya
+  // halaman lain (data guru kepotong 100 vs seharusnya semua), tergantung halaman
+  // mana yang duluan di-visit dalam sesi yang sama. Sama kelas bug dengan
+  // [[agenda_perlu_diisi_deadline_visibility]].
   const { data: teacherListData } = useQuery({
-    queryKey: ['admin-teachers-list'],
+    queryKey: ['admin-teachers-list-all'],
     queryFn: () => api.get('/admin/teachers?per_page=all').then(r => r.data.data as { id: string; nama: string; nip: string }[]),
     enabled: isAdmin && adminTab === 'per-guru',
     staleTime: 5 * 60 * 1000,

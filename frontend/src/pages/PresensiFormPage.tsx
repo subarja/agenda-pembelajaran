@@ -1,23 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, Users, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { presensiApi } from '@/features/presensi/api'
-import type { StatusPresensi, PresensiSubmitRecord } from '@/features/presensi/types'
+import type { PresensiSubmitRecord } from '@/features/presensi/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
-
-// Urutan cycling: hadir → alpha → sakit → izin → hadir
-// Default hadir, guru hanya tap yang tidak hadir
-const STATUS_CYCLE: StatusPresensi[] = ['hadir', 'alpha', 'sakit', 'izin']
-
-const STATUS_CONFIG: Record<StatusPresensi, { label: string; short: string; classes: string }> = {
-  hadir: { label: 'Hadir',  short: 'H', classes: 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' },
-  sakit: { label: 'Sakit',  short: 'S', classes: 'bg-blue-100  text-blue-700  border-blue-300  hover:bg-blue-200'  },
-  izin:  { label: 'Izin',   short: 'I', classes: 'bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200' },
-  alpha: { label: 'Alpha',  short: 'A', classes: 'bg-red-100   text-red-700   border-red-300   hover:bg-red-200'   },
-}
+import { PresensiToggleList, STATUS_CYCLE } from '@/components/presensi/PresensiToggleList'
 
 export default function PresensiFormPage() {
   const { agendaId } = useParams<{ agendaId: string }>()
@@ -141,58 +130,12 @@ export default function PresensiFormPage() {
         </div>
       )}
 
-      {/* Ringkasan & tombol semua hadir */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <SummaryChip label="Hadir" count={totalHadir} total={total} colorClass="text-green-700 bg-green-50" />
-          {totalAlpha > 0 && <SummaryChip label="Alpha" count={totalAlpha} total={total} colorClass="text-red-700 bg-red-50" />}
-          {totalSakit > 0 && <SummaryChip label="Sakit" count={totalSakit} total={total} colorClass="text-blue-700 bg-blue-50" />}
-          {totalIzin  > 0 && <SummaryChip label="Izin"  count={totalIzin}  total={total} colorClass="text-yellow-700 bg-yellow-50" />}
-        </div>
-        <Button variant="outline" size="sm" onClick={setAllHadir} className="shrink-0">
-          <Users className="h-3 w-3" /> Semua Hadir
-        </Button>
-      </div>
-
-      <p className="text-xs text-muted-foreground -mt-2">
-        Tap nama siswa untuk ganti status: Hadir → Alpha → Sakit → Izin → Hadir
-      </p>
-
-      {/* Daftar siswa */}
-      <div className="space-y-2">
-        {presensiData.records.map((student) => {
-          const current = records[student.student_id]?.status ?? 'hadir'
-          const cfg = STATUS_CONFIG[current]
-          return (
-            <button
-              key={student.student_id}
-              type="button"
-              onClick={() => cycleStatus(student.student_id)}
-              className={cn(
-                'w-full flex items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-colors text-left',
-                cfg.classes,
-              )}
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{student.nama}</p>
-                <p className="text-xs opacity-70">{student.nis}</p>
-              </div>
-              <span className={cn(
-                'shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold border-2',
-                current === 'hadir'
-                  ? 'border-green-500 bg-green-500 text-white'
-                  : current === 'alpha'
-                    ? 'border-red-500 bg-red-500 text-white'
-                    : current === 'sakit'
-                      ? 'border-blue-500 bg-blue-500 text-white'
-                      : 'border-yellow-500 bg-yellow-500 text-white',
-              )}>
-                {cfg.short}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      <PresensiToggleList
+        students={presensiData.records}
+        records={records}
+        onCycle={cycleStatus}
+        onSetAllHadir={setAllHadir}
+      />
 
       {/* Simpan */}
       {saved ? (
@@ -223,15 +166,5 @@ export default function PresensiFormPage() {
         </Card>
       )}
     </div>
-  )
-}
-
-function SummaryChip({
-  label, count, total, colorClass,
-}: { label: string; count: number; total: number; colorClass: string }) {
-  return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', colorClass)}>
-      {label}: {count}/{total}
-    </span>
   )
 }

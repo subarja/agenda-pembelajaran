@@ -38,4 +38,6 @@ export interface StudentSearchItem {
   nis: string
   nama: string
   kelas: string | null
+  foto_url?: string | null
+  nomor_absen?: number
 }

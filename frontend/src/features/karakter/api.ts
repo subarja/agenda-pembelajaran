@@ -28,4 +28,12 @@ export const karakterApi = {
 
   searchStudents: (q: string) =>
     api.get<ApiResponse<StudentSearchItem[]>>('/students', { params: { search: q } }),
+
+  // GK25: grid siswa per kelas (dengan foto + nomor absen), dipakai saat filter kelas aktif
+  studentsByClass: (classId: string) =>
+    api.get<ApiResponse<StudentSearchItem[]>>('/students', { params: { class_id: classId } }),
+
+  // GK32: Nilai Tambah — poin manual langsung final, tidak perlu approval admin
+  storeNilaiTambah: (payload: { student_id: string; nilai: number; catatan?: string }) =>
+    api.post<ApiResponse<{ id: string }>>('/character-manual-notes/nilai-tambah', payload),
 }

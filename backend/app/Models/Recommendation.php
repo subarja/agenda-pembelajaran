@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BkStatus;
 use App\Enums\RecommendationStatus;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Model;
@@ -14,19 +15,26 @@ class Recommendation extends Model
     use HasUuid;
 
     protected $fillable = [
-        'student_id', 'threshold_id', 'akumulasi_saat_trigger',
+        'student_id', 'threshold_id', 'alasan_manual', 'akumulasi_saat_trigger',
         'status', 'ditugaskan_ke', 'hasil_tindak_lanjut',
         'ditangani_pada', 'created_by',
         'catatan_admin', 'verified_by', 'verified_at',
+        // GK8-GK11: eskalasi ke BK
+        'bk_status', 'bk_teacher_id', 'diajukan_konseling_pada',
+        'diterima_bk_pada', 'resume_bk', 'bk_selesai_pada',
     ];
 
     protected function casts(): array
     {
         return [
-            'status'                 => RecommendationStatus::class,
-            'akumulasi_saat_trigger' => 'integer',
-            'ditangani_pada'         => 'datetime',
-            'verified_at'            => 'datetime',
+            'status'                  => RecommendationStatus::class,
+            'bk_status'               => BkStatus::class,
+            'akumulasi_saat_trigger'  => 'integer',
+            'ditangani_pada'          => 'datetime',
+            'verified_at'             => 'datetime',
+            'diajukan_konseling_pada' => 'datetime',
+            'diterima_bk_pada'        => 'datetime',
+            'bk_selesai_pada'         => 'datetime',
         ];
     }
 
@@ -53,6 +61,11 @@ class Recommendation extends Model
     public function verifiedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function bkTeacher(): BelongsTo
+    {
+        return $this->belongsTo(Teacher::class, 'bk_teacher_id');
     }
 
     public function handlingSessions(): HasMany

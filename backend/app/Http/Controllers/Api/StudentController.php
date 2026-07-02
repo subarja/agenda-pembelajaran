@@ -7,6 +7,7 @@ use App\Models\SchoolClass;
 use App\Models\Student;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class StudentController extends Controller
 {
@@ -17,18 +18,23 @@ class StudentController extends Controller
             'search'   => ['nullable', 'string', 'min:2', 'max:50'],
         ]);
 
-        // Per kelas (untuk form presensi / nilai)
+        // Per kelas (untuk form presensi / nilai / grid karakter GK25) — urut nama
+        // A-Z, nomor absen = urutan alfabetis (tidak ada kolom nomor absen tersendiri
+        // di skema, jadi index urut nama dipakai sebagai representasinya).
         if ($request->filled('class_id')) {
             $class    = SchoolClass::where('uuid', $request->class_id)->firstOrFail();
             $students = $class->students()
                 ->with('user:id,nama')
-                ->orderBy('nis')
                 ->get()
-                ->map(fn ($s) => [
-                    'id'    => $s->uuid,
-                    'nis'   => $s->nis,
-                    'nama'  => $s->user->nama,
-                    'kelas' => null,
+                ->sortBy(fn ($s) => $s->user->nama)
+                ->values()
+                ->map(fn ($s, $i) => [
+                    'id'         => $s->uuid,
+                    'nis'        => $s->nis,
+                    'nama'       => $s->user->nama,
+                    'kelas'      => null,
+                    'nomor_absen'=> $i + 1,
+                    'foto_url'   => $s->foto ? Storage::disk('public')->url($s->foto) : null,
                 ]);
 
             return response()->json(['data' => $students]);
@@ -51,6 +57,7 @@ class StudentController extends Controller
                 'kelas' => $s->schoolClass
                     ? "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}"
                     : null,
+                'foto_url' => $s->foto ? Storage::disk('public')->url($s->foto) : null,
             ]);
 
         return response()->json(['data' => $students]);

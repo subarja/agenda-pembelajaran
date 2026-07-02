@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class TeacherAdminController extends Controller
 {
@@ -150,6 +151,30 @@ class TeacherAdminController extends Controller
         return response()->json(['message' => 'Guru dinonaktifkan.']);
     }
 
+    // POST /admin/teachers/{uuid}/photo — edit foto guru individual oleh admin (di luar ini,
+    // guru sendiri juga bisa ganti foto lewat halaman Profil, keduanya nulis ke users.foto).
+    public function updatePhoto(Request $request, string $uuid): JsonResponse
+    {
+        $teacher = Teacher::where('uuid', $uuid)->with('user')->firstOrFail();
+
+        $request->validate([
+            'foto' => ['required', 'image', 'mimes:jpg,jpeg,png', 'max:50'],
+        ]);
+
+        $user = $teacher->user;
+        if ($user->foto && Storage::disk('public')->exists($user->foto)) {
+            Storage::disk('public')->delete($user->foto);
+        }
+
+        $path = $request->file('foto')->store('photos', 'public');
+        $user->update(['foto' => $path]);
+
+        return response()->json([
+            'message'  => 'Foto guru berhasil diperbarui.',
+            'foto_url' => Storage::disk('public')->url($path),
+        ]);
+    }
+
     private function format(Teacher $t): array
     {
         return [
@@ -164,6 +189,7 @@ class TeacherAdminController extends Controller
             'gelar_depan' => $t->gelar_depan,
             'gelar_belakang' => $t->gelar_belakang,
             'is_bk' => (bool) $t->is_bk,
+            'foto_url' => $t->user->foto ? Storage::disk('public')->url($t->user->foto) : null,
         ];
     }
 }

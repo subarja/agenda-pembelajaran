@@ -2,13 +2,27 @@
 
 namespace App\Http\Resources;
 
+use App\Models\AgendaFillSetting;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Carbon;
 
 class ScheduleResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $today = $this->relationLoaded('agendas') ? $this->agendas->first() : null;
+
+        // GK: dulu tidak ada info batas waktu sama sekali di sini — guru tidak tahu
+        // sampai kapan boleh isi agenda hari ini kecuali sudah lewat (baru dapat error
+        // pas submit). Tampilkan proaktif di halaman "Isi Agenda"/dashboard.
+        $deadline = null;
+        if (! $today && $this->jam_selesai) {
+            $setting       = AgendaFillSetting::instance();
+            $jadwalSelesai = Carbon::parse(now('Asia/Jakarta')->toDateString().' '.$this->jam_selesai, 'Asia/Jakarta');
+            $deadline      = $setting->batasWaktu($jadwalSelesai)->format('Y-m-d H:i');
+        }
+
         return [
             'id'         => $this->uuid,
             'hari'       => $this->hari->value,
@@ -26,13 +40,11 @@ class ScheduleResource extends JsonResource
                 'rombel'  => $this->schoolClass->rombel,
                 'label'   => "{$this->schoolClass->tingkat->value} {$this->schoolClass->jurusan} - {$this->schoolClass->rombel}",
             ],
-            'agenda_hari_ini' => $this->whenLoaded('agendas', function () {
-                $today = $this->agendas->first();
-                return $today ? [
-                    'id'     => $today->uuid,
-                    'status' => $today->status->value,
-                ] : null;
-            }),
+            'agenda_hari_ini' => $today ? [
+                'id'     => $today->uuid,
+                'status' => $today->status->value,
+            ] : null,
+            'deadline_isi_agenda' => $deadline,
         ];
     }
 }

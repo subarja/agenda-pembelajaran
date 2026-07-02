@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/LoginPage'
@@ -12,6 +13,7 @@ import PresensiFormPage from '@/pages/PresensiFormPage'
 import PresensiHarianPage from '@/pages/PresensiHarianPage'
 import AgendaDetailPage from '@/pages/AgendaDetailPage'
 import KarakterPage from '@/pages/KarakterPage'
+import NilaiTambahPage from '@/pages/NilaiTambahPage'
 import EwsPage from '@/pages/EwsPage'
 import EwsDetailPage from '@/pages/EwsDetailPage'
 import LaporanPage from '@/pages/LaporanPage'
@@ -22,20 +24,37 @@ import ForgotPasswordPage from '@/pages/ForgotPasswordPage'
 import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import TeacherEwsPage from '@/pages/TeacherEwsPage'
 import TeacherEwsDetailPage from '@/pages/TeacherEwsDetailPage'
+import StudentPhotoManagePage from '@/pages/StudentPhotoManagePage'
 import StudentCaseNotesPage from '@/pages/StudentCaseNotesPage'
 import KalenderPage from '@/pages/KalenderPage'
 import HariEfektifPage from '@/pages/HariEfektifPage'
 import PilihTahunAjaranPage from '@/pages/PilihTahunAjaranPage'
 import RekapPerkembanganPage from '@/pages/RekapPerkembanganPage'
+import JadwalSayaPage from '@/pages/JadwalSayaPage'
+import RefleksiMingguanPage from '@/pages/RefleksiMingguanPage'
+
+// Spinner penuh-layar — dipakai SELAMA `hasHydrated` masih false, supaya tidak pernah
+// ada window blank putih ataupun sempat "kelihatan" redirect ke /login yang salah
+// (isAuthenticated masih nilai awal false sebelum rehidrasi selesai baca localStorage).
+function FullScreenLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  )
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  // Cek token langsung dari localStorage sebagai fallback untuk Zustand rehydration race
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated || !!s.token)
+  const hasHydrated = useAuthStore((s) => s.hasHydrated)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  if (!hasHydrated) return <FullScreenLoader />
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
 }
 
 function GuestRoute({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated || !!s.token)
+  const hasHydrated = useAuthStore((s) => s.hasHydrated)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  if (!hasHydrated) return <FullScreenLoader />
   return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>
 }
 
@@ -72,9 +91,10 @@ export default function AppRouter() {
         <Route path="presensi-harian"           element={<PresensiHarianPage />} />
 
         <Route path="karakter"                  element={<KarakterPage />} />
+        <Route path="nilai-tambah"              element={<NilaiTambahPage />} />
 
         <Route path="catatan-bk"                element={<StudentCaseNotesPage />} />
-        <Route path="siswa"                     element={<PlaceholderPage title="Data Siswa" />} />
+        <Route path="siswa"                     element={<StudentPhotoManagePage />} />
         <Route path="siswa/:studentId/rekap"    element={<StudentRekapPage />} />
 
         <Route path="ews"                       element={<EwsPage />} />
@@ -82,6 +102,8 @@ export default function AppRouter() {
 
         <Route path="kalender"                  element={<KalenderPage />} />
         <Route path="hari-efektif"              element={<HariEfektifPage />} />
+        <Route path="jadwal-saya"               element={<JadwalSayaPage />} />
+        <Route path="refleksi-mingguan"         element={<RefleksiMingguanPage />} />
 
         <Route path="laporan"                   element={<LaporanPage />} />
         <Route path="rekap-perkembangan"        element={<RekapPerkembanganPage />} />

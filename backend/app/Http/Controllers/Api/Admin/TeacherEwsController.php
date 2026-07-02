@@ -88,6 +88,7 @@ class TeacherEwsController extends Controller
                 'nip'            => $teacher->nip,
                 'mapel_utama'    => $teacher->mapel_utama,
                 'role'           => $teacher->user->role->value,
+                'foto_url'       => $teacher->user->foto ? \Illuminate\Support\Facades\Storage::disk('public')->url($teacher->user->foto) : null,
                 'total_jadwal'   => $totalJadwal,
                 'total_diisi'    => $totalIsi,
                 'total_tersubmit'=> $terisi,
@@ -150,7 +151,7 @@ class TeacherEwsController extends Controller
         $tanggalCetak = now('Asia/Jakarta')->locale('id')->isoFormat('D MMMM YYYY');
 
         if ($request->query('format') === 'pdf') {
-            $printSettings = PrintSetting::instance();
+            $printSettings = PrintSetting::instance($request->user()->id);
             $legend = $this->ewsGuruLegend();
             $pdf = Pdf::loadView('reports.ews_guru', compact('rows', 'periodeLabel', 'printSettings', 'legend', 'signatures', 'tanggalCetak'))
                 ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
@@ -233,6 +234,7 @@ class TeacherEwsController extends Controller
                     'nama'        => $teacher->user->nama,
                     'nip'         => $teacher->nip,
                     'mapel_utama' => $teacher->mapel_utama,
+                    'foto_url'    => $teacher->user->foto ? \Illuminate\Support\Facades\Storage::disk('public')->url($teacher->user->foto) : null,
                 ],
                 'periode'  => ['mulai' => $mulai->toDateString(), 'akhir' => $akhir->toDateString()],
                 'summary'  => [
@@ -260,7 +262,7 @@ class TeacherEwsController extends Controller
         $tanggalCetak = now('Asia/Jakarta')->locale('id')->isoFormat('D MMMM YYYY');
 
         if ($request->query('format') === 'pdf') {
-            $printSettings = PrintSetting::instance();
+            $printSettings = PrintSetting::instance($request->user()->id);
             $pdf = Pdf::loadView('reports.teacher_sessions', [
                 'teacher'       => $teacher,
                 'rows'          => $rows,
