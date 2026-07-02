@@ -29,3 +29,17 @@ npm-debug.log*
 
 # Docker volumes (local)
 docker-data/
+
+# Windows download metadata (alternate data stream artifacts)
+*:Zone.Identifier
+
+# Local Claude Code settings (personal to this machine, not shared)
+.claude/
+
+# Data siswa/guru asli (PII) dan contoh jadwal ukuran besar — jangan pernah commit
+docs/Contoh jadwal guru/
+docs/contoh jadwal kelas/
+docs/Hasil Export Minggu Efektif/
+docs/daftar-guru-SMK NEGERI 2 CIMAHI-2026-06-13 17_30_06.xlsx
+docs/daftar_pd-SMK NEGERI 2 CIMAHI-2026-06-13 17_30_31.xlsx
+docs/dumy Foto.jpg
