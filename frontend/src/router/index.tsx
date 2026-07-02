@@ -21,6 +21,7 @@ import StudentRekapPage from '@/pages/StudentRekapPage'
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage'
 import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import TeacherEwsPage from '@/pages/TeacherEwsPage'
+import TeacherEwsDetailPage from '@/pages/TeacherEwsDetailPage'
 import StudentCaseNotesPage from '@/pages/StudentCaseNotesPage'
 import KalenderPage from '@/pages/KalenderPage'
 import HariEfektifPage from '@/pages/HariEfektifPage'
@@ -86,6 +87,7 @@ export default function AppRouter() {
         <Route path="rekap-perkembangan"        element={<RekapPerkembanganPage />} />
         <Route path="admin"                     element={<AdminPage />} />
         <Route path="ews-guru"                  element={<TeacherEwsPage />} />
+        <Route path="ews-guru/:teacherId"       element={<TeacherEwsDetailPage />} />
         <Route path="pengaturan"                element={<PlaceholderPage title="Pengaturan" />} />
         <Route path="profil"                    element={<ProfilePage />} />
       </Route>

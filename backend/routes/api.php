@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\AcademicYearController;
+use App\Http\Controllers\Api\Admin\AgendaFillSettingController;
 use App\Http\Controllers\Api\Admin\PrintSettingController;
 use App\Http\Controllers\Api\AcademicYearSelectionController;
 use App\Http\Controllers\Api\Admin\AscXmlImportController;
@@ -165,8 +166,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:admin,wakasek')->prefix('admin')->group(function () {
 
         // EWS Guru
-        Route::get('teacher-ews/export',          [TeacherEwsController::class, 'export']);
-        Route::get('teacher-ews',                 [TeacherEwsController::class, 'index']);
+        Route::get('teacher-ews/export',                    [TeacherEwsController::class, 'export']);
+        Route::get('teacher-ews/{teacherUuid}/sessions/export', [TeacherEwsController::class, 'sessionsExport']);
+        Route::get('teacher-ews/{teacherUuid}/sessions',    [TeacherEwsController::class, 'sessions']);
+        Route::get('teacher-ews',                           [TeacherEwsController::class, 'index']);
 
         // Catatan Manual Karakter — admin review
         Route::get('character-manual-notes',                    [CharacterManualNoteController::class, 'adminIndex']);
@@ -198,6 +201,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('print-settings',                            [PrintSettingController::class, 'show']);
         Route::put('print-settings',                            [PrintSettingController::class, 'update']);
         Route::get('print-settings/preview',                    [PrintSettingController::class, 'preview']);
+
+        // ── Pengaturan Waktu Pengisian Agenda (batas hari/jam pasca jadwal) ────────
+        Route::get('agenda-fill-settings',                      [AgendaFillSettingController::class, 'show']);
+        Route::put('agenda-fill-settings',                      [AgendaFillSettingController::class, 'update']);
 
         // Sinkronisasi rekomendasi untuk semua siswa (jalankan sekali untuk data lama)
         Route::post('sync-recommendations',        function () {

@@ -14,7 +14,7 @@ import { PasswordInput } from '@/components/ui/password-input'
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda']
 
 // ── Simple modal ──────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -1525,6 +1525,91 @@ function AmbangTab() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TAB: PENGATURAN AGENDA (batas waktu pengisian agenda pasca jadwal)
+// ─────────────────────────────────────────────────────────────────────────────
+function PengaturanAgendaTab() {
+  const qc = useQueryClient()
+  const [batasHari, setBatasHari] = useState('3')
+  const [batasJam, setBatasJam]   = useState('0')
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
+  const { data, isLoading } = useQuery<{ batas_hari: number; batas_jam: number }>({
+    queryKey: ['admin-agenda-fill-settings'],
+    queryFn: () => api.get('/admin/agenda-fill-settings').then(r => r.data.data),
+  })
+
+  useEffect(() => {
+    if (data) {
+      setBatasHari(String(data.batas_hari))
+      setBatasJam(String(data.batas_jam))
+    }
+  }, [data])
+
+  const save = useMutation({
+    mutationFn: () => api.put('/admin/agenda-fill-settings', {
+      batas_hari: Number(batasHari) || 0,
+      batas_jam: Number(batasJam) || 0,
+    }).then(r => r.data),
+    onSuccess: (d) => {
+      setMsg({ type: 'ok', text: d.message })
+      qc.invalidateQueries({ queryKey: ['admin-agenda-fill-settings'] })
+    },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal menyimpan.' }),
+  })
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <div>
+        <h3 className="font-semibold text-sm">Batas Waktu Pengisian Agenda</h3>
+        <p className="text-xs text-muted-foreground mt-1">
+          Tentukan berapa lama setelah jadwal mengajar berakhir, guru masih boleh mengisi
+          agenda untuk sesi tersebut. Setelah batas ini lewat, guru tidak bisa lagi membuat
+          agenda baru untuk sesi itu (agenda yang sudah dibuat sebelum batas tetap bisa diedit).
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="h-24 rounded-lg bg-muted animate-pulse" />
+      ) : (
+        <div className="rounded-lg border p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Batas Hari">
+              <input
+                type="number" min={0} max={365} className={inputCls}
+                value={batasHari} onChange={e => setBatasHari(e.target.value)}
+              />
+            </Field>
+            <Field label="Batas Jam (0–23)">
+              <input
+                type="number" min={0} max={23} className={inputCls}
+                value={batasJam} onChange={e => setBatasJam(e.target.value)}
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Contoh: 1 hari 0 jam berarti guru bisa mengisi agenda sampai 1×24 jam setelah
+            jadwal selesai. Isi 0 &amp; 0 kalau ingin batasnya sangat ketat (harus langsung
+            setelah jadwal selesai), atau angka besar (mis. 365 hari) untuk praktis tanpa batas.
+          </p>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => { setMsg(null); save.mutate() }} disabled={save.isPending}>
+              {save.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+              Simpan
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {msg && (
+        <div className={`rounded-md border px-3 py-2 text-sm ${msg.type === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB: PENGGUNA (Admin, BK, Orang Tua)
 // ─────────────────────────────────────────────────────────────────────────────
 function PenggunaTab() {
@@ -2359,6 +2444,7 @@ export default function AdminPage() {
         {activeTab === 10 && <CatatanManualTab />}
         {activeTab === 11 && <KalenderAdminTab />}
         {activeTab === 12 && <BackupRestoreTab />}
+        {activeTab === 13 && <PengaturanAgendaTab />}
       </div>
     </div>
   )

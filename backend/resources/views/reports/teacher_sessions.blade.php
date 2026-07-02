@@ -21,6 +21,10 @@ body { font-family: Arial, sans-serif; font-size: 9pt; color: #1a1a1a; margin: {
 .judul h2 { font-size: 12pt; font-weight: bold; text-transform: uppercase; }
 .judul .sub { font-size: 9.5pt; margin-top: 2px; }
 
+.identitas { margin-bottom: 10px; font-size: 9pt; }
+.identitas td { padding: 1px 4px; }
+.identitas td.label { font-weight: bold; width: 130px; }
+
 table.rekap { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 8px; }
 table.rekap th { background: #1f4e79; color: white; padding: 4px 6px; text-align: center;
   border: 1px solid #1f4e79; }
@@ -28,15 +32,12 @@ table.rekap td { padding: 3px 6px; border: 1px solid #d1d5db; vertical-align: mi
 table.rekap tr:nth-child(even) td { background: #f8fafc; }
 
 .badge { display: inline-block; padding: 1px 6px; border-radius: 20px; font-size: 8pt; font-weight: bold; }
-.badge-merah  { background: #fef2f2; color: #dc2626; }
-.badge-oranye { background: #fff7ed; color: #ea580c; }
-.badge-kuning { background: #fefce8; color: #ca8a04; }
-.badge-hijau  { background: #f0fdf4; color: #16a34a; }
-.badge-na     { background: #f3f4f6; color: #6b7280; }
+.badge-submitted { background: #f0fdf4; color: #16a34a; }
+.badge-draft     { background: #fefce8; color: #ca8a04; }
+.badge-kosong    { background: #fef2f2; color: #dc2626; }
 
 .text-center { text-align: center; }
-.text-red    { color: #dc2626; }
-.text-green  { color: #16a34a; }
+.log-text { font-size: 7.5pt; color: #555; }
 
 .legend { margin-top: 12px; font-size: 7.5pt; color: #555; border-top: 1px solid #e2e8f0; padding-top: 6px; }
 .legend-title { font-weight: bold; margin-bottom: 3px; color: #333; }
@@ -60,72 +61,71 @@ table.rekap tr:nth-child(even) td { background: #f8fafc; }
 </div>
 <div class="kop-garis"></div>
 <div class="judul">
-  <h2>Laporan EWS Kepatuhan Guru</h2>
+  <h2>Detail Pengisian Agenda Guru</h2>
   <div class="sub">Periode: {{ $periodeLabel }}</div>
 </div>
 
+<table class="identitas">
+  <tr><td class="label">Nama Guru</td><td>: {{ $teacher->user->nama }}</td></tr>
+  <tr><td class="label">NIP</td><td>: {{ $teacher->nip ?? '—' }}</td></tr>
+  <tr><td class="label">Mapel Utama</td><td>: {{ $teacher->mapel_utama ?? '—' }}</td></tr>
+</table>
+
 @if(count($rows) === 0)
-  <p style="text-align:center;color:#aaa;padding:30px">Tidak ada data.</p>
+  <p style="text-align:center;color:#aaa;padding:30px">Guru ini tidak memiliki jadwal aktif pada periode tersebut.</p>
 @else
 <table class="rekap">
   <thead>
     <tr>
-      <th style="width:28px">No</th>
-      <th>Nama Guru</th>
-      <th style="width:90px">NIP</th>
-      <th style="width:80px">Mapel Utama</th>
-      <th style="width:60px">Level</th>
-      <th style="width:50px">Jadwal</th>
-      <th style="width:50px">Terisi</th>
-      <th style="width:45px">Draft</th>
-      <th style="width:45px">Kosong</th>
-      <th style="width:50px">%</th>
-      <th>Terakhir Login</th>
+      <th style="width:26px">No</th>
+      <th style="width:75px">Tanggal</th>
+      <th style="width:55px">Hari</th>
+      <th style="width:70px">Jam</th>
+      <th>Kelas</th>
+      <th>Mata Pelajaran</th>
+      <th style="width:55px">Status</th>
+      <th style="width:170px">Diisi Pada</th>
     </tr>
   </thead>
   <tbody>
     @foreach($rows as $i => $r)
     <tr>
       <td class="text-center">{{ $i + 1 }}</td>
-      <td>{{ $r['nama'] }}</td>
-      <td>{{ $r['nip'] }}</td>
-      <td>{{ $r['mapel_utama'] }}</td>
+      <td class="text-center">{{ \Carbon\Carbon::parse($r['tanggal'])->locale('id')->isoFormat('DD/MM/YYYY') }}</td>
+      <td class="text-center">{{ $r['hari'] }}</td>
+      <td class="text-center">{{ $r['jam'] }}</td>
+      <td>{{ $r['kelas'] }}</td>
+      <td>{{ $r['mapel'] }}</td>
       <td class="text-center">
-        <span class="badge badge-{{ in_array($r['level'], ['merah','oranye','kuning','hijau']) ? $r['level'] : 'na' }}">
-          {{ ucfirst($r['level']) }}
+        <span class="badge badge-{{ $r['status'] }}">
+          {{ $r['status'] === 'submitted' ? 'Terisi' : ($r['status'] === 'draft' ? 'Draft' : 'Kosong') }}
         </span>
       </td>
-      <td class="text-center">{{ $r['total_jadwal'] }}</td>
-      <td class="text-center text-green">{{ $r['total_tersubmit'] }}</td>
-      <td class="text-center {{ $r['total_draft'] > 0 ? 'text-red' : '' }}">
-        {{ $r['total_draft'] > 0 ? $r['total_draft'] : '—' }}
+      <td class="log-text">
+        @if($r['status'] === 'kosong')
+          —
+        @elseif(!$r['log'])
+          Belum tercatat (sebelum fitur log aktif)
+        @else
+          {{ $r['log']['aksi'] }} {{ $r['log']['waktu'] }}<br>IP {{ $r['log']['ip'] }}
+        @endif
       </td>
-      <td class="text-center {{ $r['total_kosong'] > 0 ? 'text-red' : '' }}">
-        {{ $r['total_kosong'] > 0 ? $r['total_kosong'] : '—' }}
-      </td>
-      <td class="text-center {{ ($r['pct_terisi'] ?? 100) < 75 ? 'text-red' : 'text-green' }}">
-        {{ $r['pct_terisi'] !== null ? $r['pct_terisi'].'%' : '—' }}
-      </td>
-      <td style="font-size:8pt">{{ $r['last_login_date'] ?? 'Belum pernah' }}</td>
     </tr>
     @endforeach
   </tbody>
 </table>
 @endif
 
-@if(!empty($legend))
 <div class="legend">
   <div class="legend-title">Keterangan Kolom</div>
   <ul>
-    @foreach($legend as $line)
-      <li>{{ $line }}</li>
-    @endforeach
+    <li>Status Terisi/Draft/Kosong mengikuti status agenda yang guru simpan di halaman Agenda Pembelajaran.</li>
+    <li>Kolom "Diisi Pada" diambil dari log audit yang mencatat waktu &amp; alamat IP setiap kali agenda dibuat/diubah — hanya tersedia untuk pengisian sejak fitur ini aktif (2026-07-02). Agenda lama tetap tampil statusnya tapi log-nya "Belum tercatat".</li>
   </ul>
 </div>
-@endif
 
 {{-- Validasi: Mengetahui + Kepala Sekolah di kiri, Cimahi+tanggal + Wk. Kurikulum
-     di kanan (proporsional, beda dari pola Minggu Efektif). --}}
+     di kanan — sama seperti laporan EWS Guru (daftar). --}}
 @if(!empty($signatures))
 <table class="ttd-table">
   <tr>

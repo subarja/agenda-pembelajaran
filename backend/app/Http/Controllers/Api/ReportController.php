@@ -21,8 +21,6 @@ use Illuminate\Support\Str;
 use OpenSpout\Common\Entity\Cell\NumericCell;
 use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
-use OpenSpout\Common\Entity\Style\CellAlignment;
-use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Options;
 use OpenSpout\Writer\XLSX\Writer;
 
@@ -397,31 +395,27 @@ class ReportController extends Controller
             $semester, $periode, $bulan, $tahunPelajaran, $tglAkhir
         ) {
             $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 22, 3 => 14, 4 => 16, 5 => 40, 6 => 40, 7 => 20]);
-            $centerBold = (new Style())->withFontBold(true)->withCellAlignment(CellAlignment::CENTER);
-            $label      = $this->xlsxLabelStyle();
+            $label = $this->xlsxLabelStyle();
 
-            // Kop surat (teks)
-            $w->addRow(Row::fromValuesWithStyle(['PEMERINTAH DAERAH PROVINSI JAWA BARAT'], $centerBold));
-            $w->addRow(Row::fromValues(['DINAS PENDIDIKAN']));
-            $w->addRow(Row::fromValues(['CABANG DINAS PENDIDIKAN WILAYAH VII']));
-            $w->addRow(Row::fromValuesWithStyle(['SEKOLAH MENENGAH KEJURUAN NEGERI 2 CIMAHI'], $centerBold));
-            $w->addRow(Row::fromValues(['Jalan Kamarung No.69 RT 02/RW 05 Kel. Citeureup Kec. Cimahi Utara Kota Cimahi 40512']));
-            $w->addRow(Row::fromValues(['Telp/fax. (022) 87805857  Email: info@smkn2cmi.sch.id  Web: www.smkn2cimahi.sch.id']));
-            $w->addRow(Row::fromValues(['']));
-
-            // Judul
+            // Judul — rata kiri (default), tanpa kop teks (Excel tidak pakai kop bergambar
+            // seperti PDF, dan kop teks bikin identitas di bawahnya ikut ke-truncate karena
+            // berbagi lebar kolom dengan tabel data).
             $w->addRow(Row::fromValuesWithStyle(["KEGIATAN BELAJAR MENGAJAR BULAN " . strtoupper($bulan)], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["TAHUN PELAJARAN {$tahunPelajaran}"]));
             $w->addRow(Row::fromValues(['']));
 
-            // Identitas guru
-            $w->addRow(new Row([new StringCell('Nama Guru', $label), new StringCell(':'), new StringCell($guru)]));
-            $w->addRow(new Row([new StringCell('NIP', $label), new StringCell(':'), new StringCell($nip)]));
-            $w->addRow(new Row([new StringCell('Kompetensi Keahlian', $label), new StringCell(':'), new StringCell($kompetensiKeahlian)]));
-            $w->addRow(new Row([new StringCell('Mata Pelajaran', $label), new StringCell(':'), new StringCell($mapelSet ?: $kompetensiKeahlian)]));
-            $w->addRow(new Row([new StringCell('Kelas Diampu', $label), new StringCell(':'), new StringCell($kelasSet)]));
-            $w->addRow(new Row([new StringCell('Semester', $label), new StringCell(':'), new StringCell($semester)]));
-            $w->addRow(new Row([new StringCell('Periode Laporan', $label), new StringCell(':'), new StringCell($periode)]));
+            // Identitas guru — label mulai kolom B, ": nilai" (titik-dua + 1 spasi + isi
+            // digabung dalam SATU sel) mulai kolom C. Kolom A dikosongkan jadi indent.
+            // Nilai tetap tidak ke-truncate walau kolom C sempit (mis. Kelas Diampu bisa
+            // panjang) karena kolom D-G di baris yang sama kosong → Excel overflow visual
+            // ke kanan otomatis.
+            $w->addRow(new Row([new StringCell(''), new StringCell('Nama Guru', $label), new StringCell(": {$guru}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('NIP', $label), new StringCell(": {$nip}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Kompetensi Keahlian', $label), new StringCell(": {$kompetensiKeahlian}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Mata Pelajaran', $label), new StringCell(': ' . ($mapelSet ?: $kompetensiKeahlian))]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Kelas Diampu', $label), new StringCell(": {$kelasSet}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Semester', $label), new StringCell(": {$semester}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Periode Laporan', $label), new StringCell(": {$periode}")]));
             $w->addRow(Row::fromValues(['']));
 
             // Header tabel
@@ -449,7 +443,7 @@ class ReportController extends Controller
             $w->addRow(Row::fromValues(['']));
             $tanggalTtd = $tglAkhir->isoFormat('D MMMM YYYY');
             $w->addRow(Row::fromValues(['', '', '', '', '', "Cimahi, {$tanggalTtd}"]));
-            $w->addRow(Row::fromValues(['', '', '', '', '', "Guru Mapel " . ($mapelSet ?: $kompetensiKeahlian)]));
+            $w->addRow(Row::fromValues(['', '', '', '', '', 'Guru Mata Pelajaran']));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValues(['']));
@@ -589,29 +583,29 @@ class ReportController extends Controller
         ) {
             $label = $this->xlsxLabelStyle();
 
-            // Sheet 1: Header & Identitas
+            // Sheet 1: Header & Identitas — label mulai kolom B, ": nilai" (titik-dua +
+            // 1 spasi + isi digabung dalam SATU sel) mulai kolom C, kolom A jadi indent.
             $w->getCurrentSheet()->setName('Identitas & Ringkasan');
-            $w->getOptions()->setColumnWidth(24, 1);
-            $w->getOptions()->setColumnWidth(35, 2);
+            $this->xlsxSetColumnWidths($w, [1 => 3, 2 => 24, 3 => 40]);
             $w->addRow(Row::fromValuesWithStyle(['LAPORAN JURNAL MENGAJAR'], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(['SMK NEGERI 2 CIMAHI']));
             $w->addRow(Row::fromValues(['']));
-            $w->addRow(new Row([new StringCell('Periode', $label), new StringCell($periode)]));
-            $w->addRow(new Row([new StringCell('Nama Guru', $label), new StringCell($guruNama)]));
-            $w->addRow(new Row([new StringCell('NIP', $label), new StringCell($teacher->nip ?? '—')]));
-            $w->addRow(new Row([new StringCell('Mata Pelajaran', $label), new StringCell($mapelSet ?: $teacher->mapel_utama)]));
-            $w->addRow(new Row([new StringCell('Kelas yang Diampu', $label), new StringCell($kelasSet)]));
-            $w->addRow(new Row([new StringCell('Tahun Ajaran', $label), new StringCell($ay ? $ay->tahun . ' — ' . ucfirst($ay->semester->value) : '—')]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Periode', $label), new StringCell(": {$periode}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Nama Guru', $label), new StringCell(": {$guruNama}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('NIP', $label), new StringCell(': ' . ($teacher->nip ?? '—'))]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Mata Pelajaran', $label), new StringCell(': ' . ($mapelSet ?: $teacher->mapel_utama))]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Kelas yang Diampu', $label), new StringCell(": {$kelasSet}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Tahun Ajaran', $label), new StringCell(': ' . ($ay ? $ay->tahun . ' — ' . ucfirst($ay->semester->value) : '—'))]));
             $w->addRow(Row::fromValues(['']));
 
             // Ringkasan
             $w->addRow(Row::fromValuesWithStyle(['RINGKASAN'], $label));
-            $w->addRow(new Row([new StringCell('Total Pertemuan', $label), new NumericCell($ringkasan['total_pertemuan'])]));
-            $w->addRow(new Row([new StringCell('Total Jam Mengajar', $label), new StringCell($ringkasan['total_jam'] . ' JP')]));
-            $w->addRow(new Row([new StringCell('TP Direncanakan', $label), new NumericCell($ringkasan['tp_direncanakan'])]));
-            $w->addRow(new Row([new StringCell('TP Sudah Dibahas', $label), new NumericCell($ringkasan['tp_dibahas'])]));
-            $w->addRow(new Row([new StringCell('Tidak Terlaksana', $label), new StringCell($ringkasan['tidak_terlaksana'] . ' pertemuan')]));
-            $w->addRow(new Row([new StringCell('% Kehadiran Mengajar', $label), new StringCell($ringkasan['pct_kehadiran'] . '%')]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Total Pertemuan', $label), new StringCell(": {$ringkasan['total_pertemuan']}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Total Jam Mengajar', $label), new StringCell(": {$ringkasan['total_jam']} JP")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('TP Direncanakan', $label), new StringCell(": {$ringkasan['tp_direncanakan']}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('TP Sudah Dibahas', $label), new StringCell(": {$ringkasan['tp_dibahas']}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Tidak Terlaksana', $label), new StringCell(": {$ringkasan['tidak_terlaksana']} pertemuan")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('% Kehadiran Mengajar', $label), new StringCell(": {$ringkasan['pct_kehadiran']}%")]));
             $w->addRow(Row::fromValues(['']));
 
             // Tanda tangan (teks)

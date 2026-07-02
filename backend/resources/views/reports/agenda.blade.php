@@ -168,7 +168,7 @@ body {
     {{-- Penanda tangan 1: Guru Mata Pelajaran --}}
     <td class="ttd-cell">
       <div>Cimahi, {{ $tanggal_ttd }}</div>
-      <div>Guru Mapel {{ $mata_pelajaran }}</div>
+      <div>Guru Mata Pelajaran</div>
       <span class="ttd-nama">{{ $guru }}</span>
       <div class="ttd-nip">NIP. {{ $nip }}</div>
     </td>

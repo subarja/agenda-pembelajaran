@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AgendaResource;
 use App\Models\Agenda;
+use App\Models\AgendaFillSetting;
 use App\Models\AgendaStudentScore;
+use App\Models\AuditLog;
 use App\Models\LearningObjective;
 use App\Models\Schedule;
 use App\Models\SchoolClass;
@@ -13,6 +15,7 @@ use App\Models\Student;
 use App\Models\TeacherAttendance;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class AgendaController extends Controller
 {
@@ -101,6 +104,8 @@ class AgendaController extends Controller
         $teacher = $request->user()->teacher;
         abort_if(! $teacher || $schedule->teacher_id !== $teacher->id, 403, 'Bukan jadwal Anda.');
 
+        $this->abortIfPastFillDeadline($schedule, $data['tanggal']);
+
         abort_if(
             Agenda::where('schedule_id', $schedule->id)
                 ->whereDate('tanggal', $data['tanggal'])
@@ -130,6 +135,10 @@ class AgendaController extends Controller
             ['teacher_id' => $teacher->id, 'agenda_id' => $agenda->id],
             ['status' => 'hadir']
         );
+
+        // Jejak kapan & dari IP mana agenda ini diisi — dipakai laporan kepatuhan EWS Guru
+        // (sebelumnya tidak ada, cuma created_at/updated_by tanpa IP).
+        AuditLog::record('created', $agenda, ['status' => $agenda->status->value], $request->user()->id);
 
         $agenda->load(['schedule.subject', 'schedule.schoolClass', 'learningObjectives', 'studentScores.student.user']);
 
@@ -187,12 +196,35 @@ class AgendaController extends Controller
             }
         }
 
+        AuditLog::record('updated', $agenda, ['status' => $agenda->status->value], $request->user()->id);
+
         $agenda->load(['schedule.subject', 'schedule.schoolClass', 'learningObjectives', 'studentScores.student.user']);
 
         return response()->json([
             'message' => 'Agenda berhasil diperbarui.',
             'data'    => new AgendaResource($agenda),
         ]);
+    }
+
+    /**
+     * Tolak pembuatan agenda BARU kalau sudah lewat batas waktu yang diatur admin
+     * (Panel Admin → Pengaturan Agenda) — dihitung dari tanggal+jam SELESAI jadwal,
+     * bukan dari sekarang. Cuma berlaku utk store() (mengisi baru); update() atas
+     * agenda yang sudah ada (mis. draft yang mau disubmit) tidak dibatasi ulang,
+     * karena agenda itu sudah terbukti dibuat di dalam jendela waktu yang benar.
+     */
+    private function abortIfPastFillDeadline(Schedule $schedule, string $tanggal): void
+    {
+        $setting = AgendaFillSetting::instance();
+
+        $jadwalSelesai = Carbon::parse("{$tanggal} {$schedule->jam_selesai}");
+        $deadline      = $setting->batasWaktu($jadwalSelesai);
+
+        abort_if(
+            now()->gt($deadline),
+            422,
+            "Batas waktu pengisian agenda untuk jadwal ini sudah lewat (maksimal {$setting->batas_hari} hari {$setting->batas_jam} jam setelah jadwal selesai, batas: {$deadline->format('d/m/Y H:i')})."
+        );
     }
 
     private function syncStudentScores(Agenda $agenda, int $teacherId, array $scores): void

@@ -404,6 +404,13 @@ class EwsController extends Controller
         $payload = $indexResponse->getData(true);
         $rows    = $payload['data'] ?? [];
 
+        // Laporan (PDF/Excel) diurutkan per kelas dulu, baru level (merah→hijau di dalam
+        // kelas), baru nama abjad — beda dengan index() yang diurutkan prioritas risiko
+        // (dipakai dashboard EWS live), supaya laporan cetak enak dibaca per rombel.
+        $levelOrder = ['merah' => 0, 'oranye' => 1, 'kuning' => 2, 'hijau' => 3];
+        usort($rows, fn ($a, $b) => [$a['kelas'] ?? '', $levelOrder[$a['level']] ?? 9, mb_strtolower($a['nama'])]
+            <=> [$b['kelas'] ?? '', $levelOrder[$b['level']] ?? 9, mb_strtolower($b['nama'])]);
+
         if ($request->query('format') === 'pdf') {
             $ay = AcademicYear::where('aktif', true)->first();
             // Group by jurusan
@@ -415,7 +422,8 @@ class EwsController extends Controller
             }
             $ayLabel = $ay ? "Semester {$ay->semester->value} — TP {$ay->tahun}" : '';
             $printSettings = PrintSetting::instance();
-            $pdf = Pdf::loadView('reports.ews_siswa', compact('rows', 'byJurusan', 'ayLabel', 'printSettings'))
+            $legend = $this->ewsSiswaLegend();
+            $pdf = Pdf::loadView('reports.ews_siswa', compact('rows', 'byJurusan', 'ayLabel', 'printSettings', 'legend'))
                 ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
             return $this->pdfResponse($pdf, 'EWS_Siswa.pdf', $request);
         }
@@ -450,6 +458,14 @@ class EwsController extends Controller
             ]));
         }
 
+        // Keterangan kolom
+        $noteStyle = (new Style())->withFontItalic(true)->withFontColor('6B7280');
+        $writer->addRow(Row::fromValues(['']));
+        $writer->addRow(Row::fromValuesWithStyle(['Keterangan Kolom:'], $this->xlsxLabelStyle()));
+        foreach ($this->ewsSiswaLegend() as $line) {
+            $writer->addRow(Row::fromValuesWithStyle([$line], $noteStyle));
+        }
+
         $writer->close();
         $content = file_get_contents($tmpFile);
         @unlink($tmpFile);
@@ -458,6 +474,23 @@ class EwsController extends Controller
             'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="EWS_Siswa.xlsx"',
         ]);
+    }
+
+    /**
+     * Penjelasan arti kolom EWS Siswa, ditampilkan di bagian bawah laporan (PDF & Excel)
+     * supaya pembaca (wali kelas/BK/wakasek) paham ambang batas yang dipakai sistem —
+     * sinkron dengan threshold di determineLevel()/calc*() di atas.
+     *
+     * @return array<int,string>
+     */
+    private function ewsSiswaLegend(): array
+    {
+        return [
+            'Level EWS: tingkat kewaspadaan siswa dari jumlah indikator bermasalah (Kehadiran < 80%, Karakter < 0 poin, Catatan ≥ 3x, Nilai rata-rata < 70). Hijau = 0 indikator, Kuning = 1, Oranye = 2, Merah = ≥ 3 (perlu tindak lanjut segera).',
+            'Kehadiran (%): persentase kehadiran "Hadir" dari seluruh sesi tercatat. Dianggap bermasalah jika di bawah 80%.',
+            'Karakter (Poin): akumulasi poin karakter (apresiasi positif dikurangi pelanggaran negatif) dari seluruh guru. Dianggap bermasalah jika bernilai negatif (di bawah 0).',
+            'Catatan (x): jumlah catatan pelanggaran/perhatian yang tercatat dari guru/BK. Dianggap bermasalah jika 3 kali atau lebih.',
+        ];
     }
 
     // ── Batch loaders (untuk index) ───────────────────────────────────────────

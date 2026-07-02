@@ -40,6 +40,11 @@ table.rekap tr:nth-child(even) td { background: #f8fafc; }
 .text-red   { color: #dc2626; }
 .text-green { color: #16a34a; }
 
+.legend { margin-top: 12px; font-size: 7.5pt; color: #555; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+.legend-title { font-weight: bold; margin-bottom: 3px; color: #333; }
+.legend ul { list-style: none; }
+.legend li { margin-bottom: 2px; }
+
 .footer { margin-top: 10px; font-size: 7.5pt; color: #aaa;
   border-top: 1px solid #e2e8f0; padding-top: 4px; text-align: right; }
 .page-break { page-break-before: always; }
@@ -109,6 +114,17 @@ table.rekap tr:nth-child(even) td { background: #f8fafc; }
   </table>
 @endforeach
 
+@endif
+
+@if(!empty($legend))
+<div class="legend">
+  <div class="legend-title">Keterangan Kolom</div>
+  <ul>
+    @foreach($legend as $line)
+      <li>{{ $line }}</li>
+    @endforeach
+  </ul>
+</div>
 @endif
 
 <div class="footer">Dicetak: {{ now('Asia/Jakarta')->format('d M Y H:i') }} WIB · Aplikasi Agenda Pembelajaran SMKN 2 Cimahi</div>

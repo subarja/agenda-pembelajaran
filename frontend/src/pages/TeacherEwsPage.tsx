@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileSpreadsheet, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
 import api from '@/lib/api'
@@ -27,6 +28,7 @@ const PER_PAGE_OPTIONS = [25, 50, 100, 'semua'] as const
 type PerPage = 25 | 50 | 100 | 'semua'
 
 export default function TeacherEwsPage() {
+  const navigate  = useNavigate()
   const today     = toLocalDateStr(new Date())
   const thirtyAgo = toLocalDateStr(new Date(Date.now() - 30 * 86400000))
 
@@ -230,7 +232,11 @@ export default function TeacherEwsPage() {
             const nomor    = perPage === 'semua' ? idx + 1 : (page - 1) * (perPage as number) + idx + 1
 
             return (
-              <Card key={t.teacher_id} className={cn('border', cfg.border)}>
+              <Card
+                key={t.teacher_id}
+                className={cn('border cursor-pointer hover:border-primary/40 hover:shadow-sm transition-shadow', cfg.border)}
+                onClick={() => navigate(`/ews-guru/${t.teacher_id}?mulai=${mulai}&akhir=${akhir}`)}
+              >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <span className="text-xs text-muted-foreground w-5 text-right shrink-0 mt-1">{nomor}</span>
@@ -242,6 +248,7 @@ export default function TeacherEwsPage() {
                         <span className="text-xs text-muted-foreground capitalize">
                           {t.role.replace(/_/g, ' ')}
                         </span>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-auto shrink-0" />
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{t.mapel_utama} · NIP: {t.nip}</p>
 
