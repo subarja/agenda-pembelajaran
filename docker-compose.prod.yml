@@ -1,0 +1,39 @@
+# Override produksi — dipakai BERSAMA docker-compose.yml, bukan sebagai pengganti:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Perbedaan dari mode dev:
+# - backend & frontend pakai stage `production` (bukan `development`)
+# - kode tidak di-bind-mount dari host — image jadi immutable, build sekali "jadi"
+# - db & redis tidak expose port ke luar host (hanya bisa diakses antar container)
+# - frontend production menyajikan build statis + nginx di port 80, bukan Vite dev server
+
+services:
+  backend:
+    build:
+      target: production
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      SANCTUM_STATEFUL_DOMAINS: ${APP_DOMAIN:?set APP_DOMAIN di .env, contoh: agenda.sekolah.sch.id}
+    volumes: []
+
+  worker:
+    build:
+      target: production
+    environment:
+      APP_ENV: production
+    volumes: []
+
+  frontend:
+    build:
+      target: production
+    ports:
+      - "80:80"
+    volumes: []
+
+  db:
+    ports: []
+
+  redis:
+    ports: []

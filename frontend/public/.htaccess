@@ -1,0 +1,28 @@
+# Dipakai saat frontend di-build statis (npm run build) dan di-hosting di
+# Apache — termasuk cPanel/shared hosting. Vite otomatis menyalin isi folder
+# public/ ini ke dist/ saat build, jadi file ini akan ikut terupload.
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Jangan sentuh request ke /api (diteruskan ke backend Laravel bila satu domain)
+    RewriteCond %{REQUEST_URI} ^/api [NC]
+    RewriteRule ^ - [L]
+
+    # File/folder yang benar-benar ada (asset JS/CSS/gambar) dilayani apa adanya
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Sisanya diarahkan ke index.html agar React Router yang menangani routing
+    RewriteRule ^ index.html [L]
+</IfModule>
+
+# Cache asset statis (hash di nama file dari Vite membuat ini aman)
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+</IfModule>

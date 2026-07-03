@@ -70,28 +70,30 @@ make setup
 
 ### Akun Demo (semua password: `password`)
 
+> Akun demo memakai data uji generik — bukan nama guru/siswa asli sekolah.
+
 | Peran | Email | Keterangan |
 |---|---|---|
 | Admin | admin@smkn2cimahi.sch.id | Kelola semua data |
 | Wakasek Kurikulum | kusman@smkn2cimahi.sch.id | Dashboard EWS & laporan |
-| Guru (murni) | guru@smkn2cimahi.sch.id | Budi Santoso — Pemrograman Web |
-| Guru Wali Kelas | walikelas@smkn2cimahi.sch.id | Siti Rahayu — Wali XI RPL A |
-| Guru BK | bk@smkn2cimahi.sch.id | Dewi Rahayu — Bimbingan Konseling |
-| Orang Tua | orangtua@smkn2cimahi.sch.id | Terhubung ke Ahmad Fauzi |
-| Siswa | siswa@smkn2cimahi.sch.id | Ahmad Fauzi — XI RPL A |
+| Guru (murni) | guru@smkn2cimahi.sch.id | Pemrograman Web |
+| Guru Wali Kelas | walikelas@smkn2cimahi.sch.id | Wali kelas XI RPL A |
+| Guru BK | bk@smkn2cimahi.sch.id | Bimbingan Konseling |
+| Orang Tua | orangtua@smkn2cimahi.sch.id | Terhubung ke akun siswa demo |
+| Siswa | siswa@smkn2cimahi.sch.id | Kelas XI RPL A |
 
 **Akun demo guru tambahan** (password: `password`):
 
-| Email | Nama | Mapel | Kelas |
-|---|---|---|---|
-| `wulan@smkn2cimahi.sch.id` | Wulan Indah Pratiwi, M.Pd | Matematika | X DKV A, X/XI Pemesinan, XI Animasi B, XI RPL B |
-| `edy@smkn2cimahi.sch.id` | Edy Santoso, ST., M.Pd. | KK Mekatronika-11 | XI Mekatronika A–D |
+| Email | Mapel | Kelas |
+|---|---|---|
+| `wulan@smkn2cimahi.sch.id` | Matematika | X DKV A, X/XI Pemesinan, XI Animasi B, XI RPL B |
+| `edy@smkn2cimahi.sch.id` | KK Mekatronika-11 | XI Mekatronika A–D |
 
-> Kedua akun di atas menggunakan jadwal asli hasil import ASc XML dengan data siswa nyata. Sudah dilengkapi agenda KBM, presensi, TP, dan penilaian karakter sebagai data uji.
+> Kedua akun di atas menggunakan jadwal asli hasil import ASc XML dengan data siswa uji. Sudah dilengkapi agenda KBM, presensi, TP, dan penilaian karakter sebagai data uji.
 
 **Guru seeder demo** (password: `password`, domain: `@smkn2cimahi.sch.id`):
 
-| Key | Email | Mapel |
+| Jurusan | Email | Mapel |
 |---|---|---|
 | RPL | `deni@` · `rina@` · `hendra@` · `yuni@` | Basis Data · PBO · Matematika · Bahasa Indonesia |
 | TKJ | `ahmad.yanuar@` · `wahyu@` · `eko@` | Jaringan Komputer · ASJ · TLJ |
@@ -208,6 +210,178 @@ docker compose down -v
 
 # Restart satu service
 docker compose restart backend
+```
+
+---
+
+## Deploy ke Server Produksi
+
+Ada dua jalur deploy yang didukung: **Docker di VPS/server** (direkomendasikan, lihat `CLAUDE.md`) atau **cPanel** (shared hosting, tanpa Docker). Pilih salah satu sesuai hosting yang tersedia.
+
+### A. Menarik Kode dari GitHub
+
+Kedua jalur di bawah dimulai dengan menarik kode dari repo GitHub ke server. Repo saat ini: `git@github.com:subarja/agenda-pembelajaran.git`.
+
+**Lewat SSH (VPS / server dengan akses terminal):**
+```bash
+git clone git@github.com:subarja/agenda-pembelajaran.git
+cd agenda-pembelajaran
+```
+Kalau server belum punya SSH key yang terdaftar di GitHub, pakai URL HTTPS + [Personal Access Token](https://github.com/settings/tokens) sebagai gantinya:
+```bash
+git clone https://<username>:<personal-access-token>@github.com/subarja/agenda-pembelajaran.git
+```
+
+**Update kode setelah ada perubahan baru** (dijalankan lagi tiap kali mau deploy versi terbaru):
+```bash
+cd agenda-pembelajaran
+git pull origin main
+```
+
+**Lewat fitur Git™ Version Control di cPanel** (tanpa terminal):
+1. Login cPanel → menu **Git™ Version Control** → **Create**.
+2. **Clone a Repository**, isi *Repository URL* dengan URL HTTPS di atas (gunakan token kalau repo private).
+3. *Repository Path* — arahkan ke folder di luar `public_html`, misalnya `/home/<user>/repositories/agenda-pembelajaran` (jangan langsung di document root; frontend & backend akan disalin/dibuild terpisah ke document root masing-masing).
+4. Klik **Create**. Untuk menarik update berikutnya, buka repo yang sama → tab **Pull or Deploy** → **Update from Remote**.
+
+---
+
+### B. Deploy dengan Docker (VPS / Server Sendiri)
+
+Cocok untuk VPS (Biznet Gio, IDCloudHost, DigitalOcean, dll) yang memberi akses root/SSH penuh.
+
+**Prasyarat di server:**
+- Docker Engine + Docker Compose plugin ([panduan instal](https://docs.docker.com/engine/install/)) — Ubuntu: `curl -fsSL https://get.docker.com | sh`
+- Domain sudah diarahkan (DNS A record) ke IP server
+- Port 80/443 terbuka di firewall
+
+**Langkah-langkah:**
+
+1. **Tarik kode** (lihat bagian A di atas), lalu masuk ke folder proyek.
+
+2. **Salin & isi `.env` produksi**
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env`, minimal isi:
+   ```bash
+   APP_ENV=production
+   APP_DOMAIN=agenda.namasekolah.sch.id   # domain asli tanpa https://
+   DB_PASSWORD=<password-kuat-acak>       # WAJIB diganti dari default "secret"
+   VITE_API_URL=                          # kosongkan — frontend prod otomatis pakai /api relatif ke domain sendiri
+   ```
+
+3. **Build & jalankan pakai override produksi** — `docker-compose.prod.yml` sudah disiapkan di repo untuk mengganti target image ke `production`, menutup port database/redis dari luar, dan menjalankan frontend sebagai build statis + nginx di port 80 (bukan Vite dev server):
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+   ```
+
+4. **Generate `APP_KEY`, migrasi, dan seed data awal** (sekali saja):
+   ```bash
+   KEY=$(docker compose exec -T backend php artisan key:generate --show --no-ansi | tr -d '\r\n') \
+     && sed -i "s|^APP_KEY=.*|APP_KEY=$KEY|" .env \
+     && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend worker
+   docker compose exec backend php artisan migrate --force
+   ```
+   > Jangan pakai `migrate --seed` di server produksi asli — seeder berisi akun & data **demo**, bukan data sekolah sesungguhnya. Buat akun admin pertama secara manual, misalnya lewat `php artisan tinker` atau seeder khusus (`AdminOnlySeeder`) kalau memang hanya butuh satu akun admin awal:
+   > ```bash
+   > docker compose exec backend php artisan db:seed --class=AdminOnlySeeder --force
+   > ```
+
+5. **Pasang HTTPS.** Setup di atas menjalankan nginx polos di port 80 tanpa TLS. Cara termudah: taruh [Caddy](https://caddyserver.com/) atau [Nginx Proxy Manager](https://nginxproxymanager.com/) di depan sebagai reverse proxy + Let's Encrypt otomatis, arahkan ke `frontend:80` dan biarkan container `frontend` tidak lagi publish ke `80:80` langsung ke internet. Alternatif paling sederhana: instal Certbot di host dan taruh nginx host-level di depan container.
+
+6. **Update ke versi baru di kemudian hari:**
+   ```bash
+   git pull origin main
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+   docker compose exec backend php artisan migrate --force
+   ```
+
+**Perintah cek/monitor:**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend
+```
+
+---
+
+### C. Deploy di cPanel (Shared Hosting, Tanpa Docker)
+
+Cocok kalau sekolah/vendor hanya punya akses cPanel biasa (tanpa root/Docker). Backend (Laravel) dan frontend (React statis) dideploy terpisah.
+
+**Prasyarat di cPanel:**
+- PHP **8.2 atau lebih baru** aktif untuk domain/subdomain backend (cPanel → **MultiPHP Manager**)
+- Ekstensi PHP aktif: `pdo`, `mbstring`, `xml`, `bcmath`, `zip`, `gd`, `intl` — dan `pdo_pgsql`/`pgsql` **kalau** hosting mendukung PostgreSQL. Kebanyakan cPanel shared hosting **hanya menyediakan MySQL/MariaDB** — kalau begitu, set `DB_CONNECTION=mysql` di `.env` backend (Laravel/Eloquent tetap jalan normal di MySQL, cukup pastikan database dibuat lewat **MySQL® Databases** di cPanel).
+- Akses **Terminal** (SSH) di cPanel untuk menjalankan Composer & `artisan` — kalau tidak tersedia, minta provider hosting mengaktifkannya atau jalankan langkah Composer/`artisan` dari komputer lokal lalu upload folder `vendor/` via File Manager/FTP (lebih lambat, tapi bisa).
+- Composer tersedia di Terminal cPanel (`composer -V`), atau instal manual sesuai panduan provider.
+
+**1. Tarik kode** — pakai fitur **Git™ Version Control** (lihat bagian A) atau `git clone` dari Terminal cPanel ke folder di luar `public_html`, misal `/home/<user>/repositories/agenda-pembelajaran`.
+
+**2. Setup Backend (Laravel) sebagai subdomain, misal `api.agenda.namasekolah.sch.id`:**
+
+1. cPanel → **Subdomains** → buat subdomain, arahkan *Document Root* ke `repositories/agenda-pembelajaran/backend/public` (folder `public`, bukan folder `backend`).
+2. cPanel → **MultiPHP Manager** → pilih PHP 8.2+ untuk subdomain ini.
+3. cPanel → **MySQL® Databases** → buat database + user, catat nama db/user/password.
+4. Buka **Terminal**, masuk ke folder backend:
+   ```bash
+   cd ~/repositories/agenda-pembelajaran/backend
+   composer install --no-dev --optimize-autoloader
+   cp .env.example .env
+   ```
+5. Edit `backend/.env` (lewat File Manager atau `nano`), isi minimal:
+   ```bash
+   APP_ENV=production
+   APP_DEBUG=false
+   APP_URL=https://api.agenda.namasekolah.sch.id
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_DATABASE=<nama_db_dari_cpanel>
+   DB_USERNAME=<user_db_dari_cpanel>
+   DB_PASSWORD=<password_db>
+   SESSION_DRIVER=file
+   QUEUE_CONNECTION=sync
+   CACHE_STORE=file
+   SANCTUM_STATEFUL_DOMAINS=agenda.namasekolah.sch.id
+   ```
+   > `QUEUE_CONNECTION=sync` dan `SESSION_DRIVER=file`/`CACHE_STORE=file` dipakai karena shared hosting cPanel umumnya **tidak mengizinkan proses background** (`queue:work` atau Redis) berjalan terus-menerus. Job (Character Aggregation Engine, EWS) akan dieksekusi langsung saat request alih-alih di background — cukup untuk skala sekolah, tapi request jadi sedikit lebih lambat saat proses berat berjalan.
+6. Generate key & migrasi:
+   ```bash
+   php artisan key:generate
+   php artisan migrate --force
+   php artisan db:seed --class=AdminOnlySeeder --force   # hanya buat akun admin awal, bukan data demo
+   php artisan storage:link
+   ```
+7. Pastikan permission folder bisa ditulis web server:
+   ```bash
+   chmod -R 775 storage bootstrap/cache
+   ```
+8. **Cron job pengganti scheduler** (kalau ada fitur terjadwal seperti pengecekan EWS harian) — cPanel → **Cron Jobs**, tambahkan tiap menit:
+   ```bash
+   * * * * * php /home/<user>/repositories/agenda-pembelajaran/backend/artisan schedule:run >> /dev/null 2>&1
+   ```
+
+**3. Setup Frontend (React statis), misal di domain utama `agenda.namasekolah.sch.id`:**
+
+Berbeda dari backend, frontend perlu **di-build** (`npm run build`) sebelum diupload — kebanyakan shared hosting cPanel tidak menyediakan Node.js untuk proses build interaktif. Build di komputer lokal atau lewat CI, baru upload hasilnya.
+
+1. Di komputer lokal, set `VITE_API_URL` ke domain backend **sebelum build** (berbeda dari mode Docker — di cPanel frontend & backend biasanya beda subdomain, jadi harus eksplisit, tidak boleh dikosongkan):
+   ```bash
+   cd frontend
+   echo "VITE_API_URL=https://api.agenda.namasekolah.sch.id" > .env.production.local
+   npm install
+   npm run build
+   ```
+2. Upload seluruh isi folder `frontend/dist/` (bukan folder `dist` itu sendiri, isinya saja) ke *Document Root* domain utama, biasanya `public_html/` (atau `public_html/agenda/` kalau di subfolder) — lewat **File Manager** (kompres jadi `.zip` dulu lalu extract di server) atau FTP/SFTP.
+3. File `.htaccess` untuk SPA fallback React Router **sudah otomatis ikut ter-build** ke dalam `dist/` (sumbernya di `frontend/public/.htaccess`) — tidak perlu dibuat manual, tinggal pastikan ter-upload juga (file berawalan titik kadang disembunyikan FTP client, aktifkan "show hidden files").
+4. Aktifkan **SSL** gratis lewat cPanel → **SSL/TLS Status** → **AutoSSL**, untuk domain utama maupun subdomain backend.
+
+**4. Update ke versi baru di kemudian hari:**
+```bash
+# Backend
+cd ~/repositories/agenda-pembelajaran && git pull origin main
+cd backend && composer install --no-dev --optimize-autoloader && php artisan migrate --force
+
+# Frontend — build ulang di lokal, upload ulang isi dist/ menimpa yang lama
 ```
 
 ---
