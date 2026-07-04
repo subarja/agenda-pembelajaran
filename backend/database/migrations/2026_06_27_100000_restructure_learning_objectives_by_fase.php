@@ -97,16 +97,19 @@ return new class extends Migration
                 ->update(['deleted_at' => now()]);
         }
 
-        // ── Step 5: Drop unique index lama (sebelum drop kolom yang dirujuknya) ─
-        Schema::table('learning_objectives', function (Blueprint $table) {
-            $table->dropIndex(['teacher_id', 'subject_id']); // index sekunder
-            $table->dropUnique('lo_class_subject_kode_unique');
-        });
-
-        // ── Step 6: Drop foreign key + kolom lama ────────────────────────────
+        // ── Step 5: Drop foreign key dulu ────────────────────────────────────
+        // (di MySQL, index composite di bawah ini dipakai sebagai index pendukung
+        // FK teacher_id/class_id — FK wajib dilepas duluan sebelum index-nya bisa
+        // di-drop, beda dari Postgres yang tidak mewajibkan urutan ini)
         Schema::table('learning_objectives', function (Blueprint $table) {
             $table->dropForeign(['teacher_id']);
             $table->dropForeign(['class_id']);
+        });
+
+        // ── Step 6: Drop unique index lama + kolom lama ──────────────────────
+        Schema::table('learning_objectives', function (Blueprint $table) {
+            $table->dropIndex(['teacher_id', 'subject_id']); // index sekunder
+            $table->dropUnique('lo_class_subject_kode_unique');
             $table->dropColumn(['teacher_id', 'class_id']);
         });
 
