@@ -15,10 +15,14 @@ return new class extends Migration
             $table->timestamp('verified_at')->nullable()->after('verified_by');
         });
 
-        // Tambah value baru ke enum status (PostgreSQL)
-        DB::statement("ALTER TABLE recommendations DROP CONSTRAINT IF EXISTS recommendations_status_check");
-        DB::statement("ALTER TABLE recommendations ALTER COLUMN status TYPE varchar(30)");
-        DB::statement("ALTER TABLE recommendations ADD CONSTRAINT recommendations_status_check CHECK (status IN ('pending','proses','menunggu_verifikasi','selesai','diabaikan'))");
+        // Tambah value baru ke enum status
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("ALTER TABLE recommendations DROP CONSTRAINT IF EXISTS recommendations_status_check");
+            DB::statement("ALTER TABLE recommendations ALTER COLUMN status TYPE varchar(30)");
+            DB::statement("ALTER TABLE recommendations ADD CONSTRAINT recommendations_status_check CHECK (status IN ('pending','proses','menunggu_verifikasi','selesai','diabaikan'))");
+        } else {
+            DB::statement("ALTER TABLE recommendations MODIFY COLUMN status ENUM('pending','proses','menunggu_verifikasi','selesai','diabaikan') NOT NULL DEFAULT 'pending'");
+        }
     }
 
     public function down(): void

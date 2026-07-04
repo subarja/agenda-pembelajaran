@@ -16,8 +16,13 @@ return new class extends Migration
         // kapan pun (bukan cuma otomatis saat ambang tercapai) — threshold_id & akumulasi
         // jadi opsional untuk kasus manual. Pakai DB::statement (bukan Blueprint::change())
         // supaya tidak butuh doctrine/dbal yang tidak terinstal di proyek ini.
-        DB::statement('ALTER TABLE recommendations ALTER COLUMN threshold_id DROP NOT NULL');
-        DB::statement('ALTER TABLE recommendations ALTER COLUMN akumulasi_saat_trigger DROP NOT NULL');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE recommendations ALTER COLUMN threshold_id DROP NOT NULL');
+            DB::statement('ALTER TABLE recommendations ALTER COLUMN akumulasi_saat_trigger DROP NOT NULL');
+        } else {
+            DB::statement('ALTER TABLE recommendations MODIFY COLUMN threshold_id BIGINT UNSIGNED NULL');
+            DB::statement('ALTER TABLE recommendations MODIFY COLUMN akumulasi_saat_trigger INT NULL');
+        }
 
         // GK8-GK11: alur eskalasi ke BK — status BK terpisah dari status wali-kelas
         // (recommendations.status) supaya dua "state machine" (wali kelas vs BK) tidak
@@ -56,7 +61,12 @@ return new class extends Migration
             $table->dropColumn(['bk_status', 'diajukan_konseling_pada', 'diterima_bk_pada', 'resume_bk', 'bk_selesai_pada']);
         });
 
-        DB::statement('ALTER TABLE recommendations ALTER COLUMN threshold_id SET NOT NULL');
-        DB::statement('ALTER TABLE recommendations ALTER COLUMN akumulasi_saat_trigger SET NOT NULL');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE recommendations ALTER COLUMN threshold_id SET NOT NULL');
+            DB::statement('ALTER TABLE recommendations ALTER COLUMN akumulasi_saat_trigger SET NOT NULL');
+        } else {
+            DB::statement('ALTER TABLE recommendations MODIFY COLUMN threshold_id BIGINT UNSIGNED NOT NULL');
+            DB::statement('ALTER TABLE recommendations MODIFY COLUMN akumulasi_saat_trigger INT NOT NULL');
+        }
     }
 };

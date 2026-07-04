@@ -40,7 +40,10 @@ return [
 
         'public' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
+            // Langsung ke public/storage (bukan storage/app/public + symlink) supaya
+            // tidak butuh `storage:link` — banyak shared hosting (cPanel) menonaktifkan
+            // symlink() dan exec() sekaligus, jadi symlink tidak bisa dibuat sama sekali.
+            'root' => public_path('storage'),
             'url' => env('APP_URL').'/storage',
             'visibility' => 'public',
             'throw' => false,
@@ -71,10 +74,12 @@ return [
     | `storage:link` Artisan command is executed. The array keys should be
     | the locations of the links and the values should be their targets.
     |
+    | Dikosongkan karena disk 'public' di atas sudah langsung menunjuk ke
+    | public/storage (bukan storage/app/public), jadi tidak ada symlink yang
+    | perlu dibuat — `storage:link` aman dijalankan tapi jadi no-op.
+    |
     */
 
-    'links' => [
-        public_path('storage') => storage_path('app/public'),
-    ],
+    'links' => [],
 
 ];
