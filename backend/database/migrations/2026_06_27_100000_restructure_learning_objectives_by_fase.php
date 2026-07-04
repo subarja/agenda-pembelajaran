@@ -129,17 +129,19 @@ return new class extends Migration
             ');
         } else {
             // MySQL/MariaDB tidak punya partial/filtered unique index seperti Postgres.
-            // Emulasi: kolom generated yang bernilai 0 utk semua baris aktif (jadi ikut
-            // diperiksa unique bareng), tapi unik per baris (pakai id sendiri) utk baris
-            // yang sudah soft-deleted (supaya tidak ikut kena constraint).
+            // Emulasi pakai sifat unique index MySQL: NULL boleh berulang (tidak dicek
+            // unique), sedangkan value non-NULL tetap dicek. Jadi flag ini SATU nilai
+            // tetap (1) utk baris aktif (dijamin unik bareng kolom lain), dan NULL utk
+            // baris soft-deleted (bebas duplikat, tidak ikut kena constraint). Generated
+            // column tidak boleh merujuk kolom AUTO_INCREMENT (id), makanya bukan itu.
             DB::statement('
                 ALTER TABLE learning_objectives
-                ADD COLUMN deleted_at_marker BIGINT UNSIGNED
-                    GENERATED ALWAYS AS (IF(deleted_at IS NULL, 0, id)) STORED
+                ADD COLUMN active_unique_flag TINYINT UNSIGNED
+                    GENERATED ALWAYS AS (IF(deleted_at IS NULL, 1, NULL)) STORED
             ');
             DB::statement('
                 CREATE UNIQUE INDEX lo_subject_fase_kode_unique
-                ON learning_objectives (subject_id, fase, semester, academic_year_id, kode, deleted_at_marker)
+                ON learning_objectives (subject_id, fase, semester, academic_year_id, kode, active_unique_flag)
             ');
         }
     }
