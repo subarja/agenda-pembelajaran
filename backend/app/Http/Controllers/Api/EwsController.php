@@ -564,7 +564,7 @@ class EwsController extends Controller
     {
         return DB::table('student_attendances')
             ->whereIn('student_id', $ids->toArray())
-            ->selectRaw("student_id, status::text as status, count(*)::int as cnt")
+            ->selectRaw("student_id, status, count(*) as cnt")
             ->groupBy('student_id', 'status')
             ->get()
             ->groupBy('student_id');
@@ -576,10 +576,10 @@ class EwsController extends Controller
             ->join('character_subitems', 'character_subitems.id', '=', 'character_inputs.subitem_id')
             ->whereIn('character_inputs.student_id', $ids->toArray())
             ->selectRaw("character_inputs.student_id,
-                coalesce(sum(CASE WHEN character_inputs.sign::text = 'positif'
+                coalesce(sum(CASE WHEN character_inputs.sign = 'positif'
                     THEN character_subitems.bobot
-                    ELSE -character_subitems.bobot END), 0)::float AS total_score,
-                count(*)::int AS cnt")
+                    ELSE -character_subitems.bobot END), 0) AS total_score,
+                count(*) AS cnt")
             ->groupBy('character_inputs.student_id')
             ->get()
             ->keyBy('student_id');
@@ -590,7 +590,7 @@ class EwsController extends Controller
         return DB::table('notes')
             ->where('target_type', Student::class)
             ->whereIn('target_id', $ids->toArray())
-            ->selectRaw('target_id, count(*)::int as cnt')
+            ->selectRaw('target_id, count(*) as cnt')
             ->groupBy('target_id')
             ->pluck('cnt', 'target_id');
     }
@@ -599,7 +599,7 @@ class EwsController extends Controller
     {
         return DB::table('agenda_student_scores')
             ->whereIn('student_id', $ids->toArray())
-            ->selectRaw('student_id, avg(nilai)::float as avg_nilai, count(*)::int as cnt')
+            ->selectRaw('student_id, avg(nilai) as avg_nilai, count(*) as cnt')
             ->groupBy('student_id')
             ->get()
             ->keyBy('student_id');

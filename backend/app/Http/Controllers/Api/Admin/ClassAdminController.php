@@ -18,7 +18,7 @@ class ClassAdminController extends Controller
 
         $classes = SchoolClass::with(['waliKelas', 'academicYear'])
             ->when($ay, fn ($q) => $q->where('academic_year_id', $ay->id))
-            ->orderByRaw("tingkat::text, jurusan, rombel")
+            ->orderBy('tingkat')->orderBy('jurusan')->orderBy('rombel')
             ->get()
             ->map(fn ($c) => $this->format($c));
 

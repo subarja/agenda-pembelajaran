@@ -25,9 +25,9 @@ class ScheduleAdminController extends Controller
             ->when($request->hari, fn ($q, $h) => $q->where('hari', $h))
             ->when($request->search, fn ($q, $s) =>
                 $q->where(fn ($inner) =>
-                    $inner->whereHas('subject', fn ($m) => $m->where('nama', 'ilike', "%$s%"))
-                          ->orWhereHas('teacher.user', fn ($u) => $u->where('nama', 'ilike', "%$s%"))
-                          ->orWhereHas('schoolClass', fn ($sc) => $sc->where('jurusan', 'ilike', "%$s%"))
+                    $inner->whereHas('subject', fn ($m) => $m->whereLike('nama', $s))
+                          ->orWhereHas('teacher.user', fn ($u) => $u->whereLike('nama', $s))
+                          ->orWhereHas('schoolClass', fn ($sc) => $sc->whereLike('jurusan', $s))
                 )
             )
             ->orderByRaw("CASE hari WHEN 'senin' THEN 1 WHEN 'selasa' THEN 2 WHEN 'rabu' THEN 3 WHEN 'kamis' THEN 4 WHEN 'jumat' THEN 5 WHEN 'sabtu' THEN 6 END")

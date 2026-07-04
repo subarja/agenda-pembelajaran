@@ -43,10 +43,10 @@ class StudentController extends Controller
         // Pencarian global (untuk input karakter)
         abort_if(! $request->filled('search'), 422, 'Parameter class_id atau search wajib diisi.');
 
-        $keyword = '%' . $request->search . '%';
+        $keyword = $request->search;
 
-        $students = Student::whereHas('user', fn ($q) => $q->where('nama', 'ilike', $keyword))
-            ->orWhere('nis', 'ilike', $keyword)
+        $students = Student::whereHas('user', fn ($q) => $q->whereLike('nama', $keyword))
+            ->orWhereLike('nis', $keyword)
             ->with(['user:id,nama', 'schoolClass'])
             ->limit(15)
             ->get()

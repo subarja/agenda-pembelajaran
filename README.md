@@ -312,8 +312,22 @@ Cocok kalau sekolah/vendor hanya punya akses cPanel biasa (tanpa root/Docker). B
 **Prasyarat di cPanel:**
 - PHP **8.2 atau lebih baru** aktif untuk domain/subdomain backend (cPanel → **MultiPHP Manager**)
 - Ekstensi PHP aktif: `pdo`, `mbstring`, `xml`, `bcmath`, `zip`, `gd`, `intl` — dan `pdo_pgsql`/`pgsql` **kalau** hosting mendukung PostgreSQL. Kebanyakan cPanel shared hosting **hanya menyediakan MySQL/MariaDB** — kalau begitu, set `DB_CONNECTION=mysql` di `.env` backend (Laravel/Eloquent tetap jalan normal di MySQL, cukup pastikan database dibuat lewat **MySQL® Databases** di cPanel).
-- Akses **Terminal** (SSH) di cPanel untuk menjalankan Composer & `artisan` — kalau tidak tersedia, minta provider hosting mengaktifkannya atau jalankan langkah Composer/`artisan` dari komputer lokal lalu upload folder `vendor/` via File Manager/FTP (lebih lambat, tapi bisa).
+- Akses **Terminal** (SSH) di cPanel untuk menjalankan Composer & `artisan` — **kalau tidak tersedia** (banyak paket shared hosting tidak menyediakan Terminal), lihat kotak **"Tanpa Terminal"** di bawah untuk cara alternatif lewat File Manager + `cpanel-deploy.php`.
 - Composer tersedia di Terminal cPanel (`composer -V`), atau instal manual sesuai panduan provider.
+
+> **Tanpa Terminal di cPanel, kode ditarik lewat Git:** Kode aplikasi ditarik otomatis lewat **Git™ Version Control** (bagian A) — tidak perlu diupload manual. Tapi ada beberapa file yang sengaja **di-`.gitignore`** (tidak ikut ter-*pull* oleh Git) karena sifatnya spesifik per-server atau berisi rahasia, jadi ini saja yang perlu diupload manual lewat File Manager:
+> 1. **`backend/vendor/`** — hasil `composer install`, di-`.gitignore` karena isinya dependency pihak ketiga, bukan kode aplikasi. Sudah di-generate dan dibungkus bareng `cpanel-deploy.php` di `cpanel-manual-upload.zip`.
+> 2. **`backend/public/cpanel-deploy.php`** — sengaja di-`.gitignore` juga (lihat `backend/.gitignore` baris `/public/cpanel-deploy.php`) karena filenya menyimpan token rahasia; kalau ikut ter-commit ke Git, token itu akan tersimpan permanen di riwayat repo.
+> 3. **`.env`** — juga di-`.gitignore` (berisi password DB dll). Dibuat lewat File Manager: cari `backend/.env.example` (file ini ikut ter-*pull* Git), klik kanan → **Copy**, ganti nama salinannya jadi `.env`, lalu **Edit** untuk mengisi nilainya (isian sama seperti langkah 5 di bawah).
+>
+> **Alurnya:**
+> - Tarik kode lewat Git™ Version Control (bagian A) ke `repositories/agenda-pembelajaran`.
+> - Upload `cpanel-manual-upload.zip` lewat File Manager ke folder yang sama (`repositories/agenda-pembelajaran`), lalu **Extract** — ini otomatis menaruh isinya ke `backend/vendor/` dan `backend/public/cpanel-deploy.php` tanpa menimpa kode yang sudah ditarik Git.
+> - Buat `.env` seperti langkah 3 di atas.
+> - Jalankan **`key:generate`, `migrate`, `db:seed`, `storage:link`** sekaligus lewat URL (bukan Terminal), pakai token acak bawaan di file:
+>   `https://api.agenda.namasekolah.sch.id/cpanel-deploy.php?token=0e58dfc76a7cb02e1ab18e8c25fab8d37c76c942730624ce&action=all`
+> - **Setelah berhasil, HAPUS `cpanel-deploy.php` dari server lewat File Manager** — file ini bisa menjalankan migrasi/seed lewat URL, jangan dibiarkan menempel permanen di produksi.
+> - **Update kode berikutnya:** cukup **Pull or Deploy** lagi lewat Git™ Version Control seperti biasa. `vendor/` tidak perlu diupload ulang kecuali `composer.json`/`composer.lock` berubah. Kalau ada migration baru, upload lagi `cpanel-deploy.php` sementara, jalankan `?action=migrate`, lalu hapus lagi.
 
 **1. Tarik kode** — pakai fitur **Git™ Version Control** (lihat bagian A) atau `git clone` dari Terminal cPanel ke folder di luar `public_html`, misal `/home/<user>/repositories/agenda-pembelajaran`.
 
@@ -328,6 +342,7 @@ Cocok kalau sekolah/vendor hanya punya akses cPanel biasa (tanpa root/Docker). B
    composer install --no-dev --optimize-autoloader
    cp .env.example .env
    ```
+   *(Tidak ada Terminal? Lihat kotak "Tanpa Terminal?" di atas.)*
 5. Edit `backend/.env` (lewat File Manager atau `nano`), isi minimal:
    ```bash
    APP_ENV=production
@@ -351,10 +366,12 @@ Cocok kalau sekolah/vendor hanya punya akses cPanel biasa (tanpa root/Docker). B
    php artisan db:seed --class=AdminOnlySeeder --force   # hanya buat akun admin awal, bukan data demo
    php artisan storage:link
    ```
+   *(Tidak ada Terminal? Jalankan `cpanel-deploy.php?token=...&action=all` seperti dijelaskan di kotak "Tanpa Terminal?" di atas — hasilnya sama.)*
 7. Pastikan permission folder bisa ditulis web server:
    ```bash
    chmod -R 775 storage bootstrap/cache
    ```
+   *(Tidak ada Terminal? Lewat File Manager: klik kanan folder `storage` dan `bootstrap/cache` → **Change Permissions** → centang read/write/execute untuk owner & group → `775`.)*
 8. **Cron job pengganti scheduler** (kalau ada fitur terjadwal seperti pengecekan EWS harian) — cPanel → **Cron Jobs**, tambahkan tiap menit:
    ```bash
    * * * * * php /home/<user>/repositories/agenda-pembelajaran/backend/artisan schedule:run >> /dev/null 2>&1

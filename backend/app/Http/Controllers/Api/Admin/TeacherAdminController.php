@@ -20,8 +20,8 @@ class TeacherAdminController extends Controller
             ->join('users', 'users.id', '=', 'teachers.user_id')
             ->select('teachers.*')
             ->with('user')
-            ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->where('users.nama', 'ilike', "%$s%")
-                ->orWhere('teachers.nip', 'ilike', "%$s%")
+            ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->whereLike('users.nama', $s)
+                ->orWhereLike('teachers.nip', $s)
             )
             )
             ->orderBy('users.nama');

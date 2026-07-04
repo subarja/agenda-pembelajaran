@@ -23,7 +23,7 @@ class UserAdminController extends Controller
     {
         $users = User::whereIn('role', self::MANAGED_ROLES)
             ->with(['linkedStudent.user:id,nama', 'linkedStudent.schoolClass'])
-            ->when($request->search, fn ($q, $s) => $q->where('nama', 'ilike', "%$s%")->orWhere('email', 'ilike', "%$s%")
+            ->when($request->search, fn ($q, $s) => $q->whereLike('nama', $s)->orWhereLike('email', $s)
             )
             ->orderBy('nama')
             ->paginate(20);
@@ -152,20 +152,20 @@ class UserAdminController extends Controller
         if ($role === 'guru') {
             $users = User::whereIn('role', [UserRole::Guru, UserRole::WaliKelas, UserRole::BK, UserRole::Wakasek])
                 ->with('teacher')
-                ->when($request->search, fn ($q, $s) => $q->where('nama', 'ilike', "%$s%")->orWhere('email', 'ilike', "%$s%")
+                ->when($request->search, fn ($q, $s) => $q->whereLike('nama', $s)->orWhereLike('email', $s)
                 )
                 ->orderBy('nama')
                 ->paginate(50);
         } elseif ($role === 'siswa') {
             $users = User::where('role', UserRole::Siswa)
                 ->with(['student.schoolClass'])
-                ->when($request->search, fn ($q, $s) => $q->where('nama', 'ilike', "%$s%")
+                ->when($request->search, fn ($q, $s) => $q->whereLike('nama', $s)
                 )
                 ->orderBy('nama')
                 ->paginate(100);
         } else {
             $users = User::whereIn('role', [UserRole::Admin, UserRole::OrangTua])
-                ->when($request->search, fn ($q, $s) => $q->where('nama', 'ilike', "%$s%")->orWhere('email', 'ilike', "%$s%")
+                ->when($request->search, fn ($q, $s) => $q->whereLike('nama', $s)->orWhereLike('email', $s)
                 )
                 ->orderBy('nama')
                 ->paginate(50);

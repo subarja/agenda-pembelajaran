@@ -74,10 +74,13 @@ class PhotoBulkUploadController extends Controller
             }
 
             // Cocokkan NIP dulu, baru email (penuh), baru bagian sebelum "@" (jaga-jaga
-            // admin cuma pakai nama lokal email sebagai nama file, tanpa domain).
+            // admin cuma pakai nama lokal email sebagai nama file, tanpa domain). Dicocokkan
+            // pakai LIKE "key@%" (bukan SPLIT_PART/SUBSTRING_INDEX) supaya portable di
+            // MySQL maupun PostgreSQL, dengan wildcard LIKE di $key di-escape.
+            $likeLocalPart = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $key) . '@%';
             $teacher = Teacher::whereRaw('LOWER(nip) = ?', [$key])->with('user')->first()
                 ?? Teacher::whereHas('user', fn ($q) => $q->whereRaw('LOWER(email) = ?', [$key]))->with('user')->first()
-                ?? Teacher::whereHas('user', fn ($q) => $q->whereRaw("LOWER(SPLIT_PART(email, '@', 1)) = ?", [$key]))->with('user')->first();
+                ?? Teacher::whereHas('user', fn ($q) => $q->whereRaw('LOWER(email) LIKE ?', [$likeLocalPart]))->with('user')->first();
 
             if (! $teacher) {
                 $gagal[] = ['file' => $filename, 'alasan' => "Tidak ada guru dengan NIP/email \"{$key}\"."];

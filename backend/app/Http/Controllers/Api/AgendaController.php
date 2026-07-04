@@ -149,7 +149,7 @@ class AgendaController extends Controller
         if ($request->filled('kelas')) {
             $kelas = $request->kelas;
             $query->whereHas('schedule.schoolClass', function ($q) use ($kelas) {
-                $q->whereRaw("CONCAT(tingkat, ' ', jurusan, ' - ', rombel) ILIKE ?", ["%{$kelas}%"]);
+                $q->whereLike("CONCAT(tingkat, ' ', jurusan, ' - ', rombel)", $kelas);
             });
         }
 

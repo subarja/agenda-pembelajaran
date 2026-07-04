@@ -17,8 +17,8 @@ return new class extends Migration
             ->join('subjects', 'subjects.id', '=', 'schedules.subject_id')
             ->join('teachers', 'teachers.id', '=', 'schedules.teacher_id')
             ->where(function ($q) {
-                $q->where('subjects.nama', 'ilike', '%bk%')
-                  ->orWhere('subjects.nama', 'ilike', '%bimbingan%');
+                $q->whereLike('subjects.nama', 'bk')
+                  ->orWhereLike('subjects.nama', 'bimbingan');
             })
             ->pluck('teachers.id')
             ->unique();
