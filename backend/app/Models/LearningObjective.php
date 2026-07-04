@@ -21,6 +21,10 @@ class LearningObjective extends Model
         'created_by', 'updated_by',
     ];
 
+    // Kolom generated MySQL-only (lihat migrasi restructure_learning_objectives_by_fase)
+    // untuk emulasi partial unique index — murni teknis, tidak relevan untuk konsumen API.
+    protected $hidden = ['deleted_at_marker'];
+
     protected function casts(): array
     {
         return [

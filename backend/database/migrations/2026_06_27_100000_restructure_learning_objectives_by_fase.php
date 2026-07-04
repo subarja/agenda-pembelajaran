@@ -17,12 +17,20 @@ return new class extends Migration
         });
 
         // ── Step 2: Isi fase dari tingkat kelas ──────────────────────────────
-        DB::statement("
-            UPDATE learning_objectives
-            SET fase = CASE WHEN c.tingkat = 'X' THEN 'E' ELSE 'F' END
-            FROM classes c
-            WHERE c.id = learning_objectives.class_id
-        ");
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("
+                UPDATE learning_objectives
+                SET fase = CASE WHEN c.tingkat = 'X' THEN 'E' ELSE 'F' END
+                FROM classes c
+                WHERE c.id = learning_objectives.class_id
+            ");
+        } else {
+            DB::statement("
+                UPDATE learning_objectives
+                JOIN classes c ON c.id = learning_objectives.class_id
+                SET learning_objectives.fase = CASE WHEN c.tingkat = 'X' THEN 'E' ELSE 'F' END
+            ");
+        }
 
         // ── Step 3: Isi academic_year_id dari tahun ajaran aktif ─────────────
         $activeYear = DB::table('academic_years')->where('aktif', true)->first();
@@ -110,11 +118,27 @@ return new class extends Migration
         });
 
         // Partial unique index — hanya baris aktif (non-soft-deleted) yang dijamin unik
-        DB::statement('
-            CREATE UNIQUE INDEX lo_subject_fase_kode_unique
-            ON learning_objectives (subject_id, fase, semester, academic_year_id, kode)
-            WHERE deleted_at IS NULL
-        ');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('
+                CREATE UNIQUE INDEX lo_subject_fase_kode_unique
+                ON learning_objectives (subject_id, fase, semester, academic_year_id, kode)
+                WHERE deleted_at IS NULL
+            ');
+        } else {
+            // MySQL/MariaDB tidak punya partial/filtered unique index seperti Postgres.
+            // Emulasi: kolom generated yang bernilai 0 utk semua baris aktif (jadi ikut
+            // diperiksa unique bareng), tapi unik per baris (pakai id sendiri) utk baris
+            // yang sudah soft-deleted (supaya tidak ikut kena constraint).
+            DB::statement('
+                ALTER TABLE learning_objectives
+                ADD COLUMN deleted_at_marker BIGINT UNSIGNED
+                    GENERATED ALWAYS AS (IF(deleted_at IS NULL, 0, id)) STORED
+            ');
+            DB::statement('
+                CREATE UNIQUE INDEX lo_subject_fase_kode_unique
+                ON learning_objectives (subject_id, fase, semester, academic_year_id, kode, deleted_at_marker)
+            ');
+        }
     }
 
     public function down(): void
