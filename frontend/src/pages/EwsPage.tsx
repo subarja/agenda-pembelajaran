@@ -22,7 +22,7 @@ const LEVELS: EwsLevel[] = ['merah', 'oranye', 'kuning', 'hijau']
 const PER_PAGE_OPTIONS = [25, 50, 100, 'semua'] as const
 type PerPage = 25 | 50 | 100 | 'semua'
 
-export default function EwsPage() {
+export default function EwsPage({ scope = 'wali' }: { scope?: 'wali' | 'bk' }) {
   const navigate = useNavigate()
   const user     = useAuthStore(s => s.user)
   const isAdmin  = user?.role === 'admin' || user?.role === 'wakasek'
@@ -30,8 +30,10 @@ export default function EwsPage() {
   // tapi tampilan "Tidak ada data EWS" membingungkan — tegaskan di frontend bahwa ini
   // soal AKSES, bukan data yang memang kosong, kalau ada yang nyasar buka /ews langsung.
   const kap = user?.kapabilitas
-  const punyaAkses = isAdmin || kap?.is_wali_kelas || kap?.is_bk
+  const isBkView   = scope === 'bk'
+  const punyaAkses = isAdmin || (isBkView ? kap?.is_bk : kap?.is_wali_kelas)
   const [filterLevel, setFilterLevel] = useState<EwsLevel | null>(null)
+  const [filterKelas, setFilterKelas] = useState('')
   const [searchQ, setSearchQ]         = useState('')
   const [perPage, setPerPage]         = useState<PerPage>(25)
   const [page, setPage]               = useState(1)
@@ -40,23 +42,25 @@ export default function EwsPage() {
   const pdfPreview = usePdfPreview({ printSettings: true })
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['ews', filterLevel],
-    queryFn: () => ewsApi.getEws(filterLevel ? { level: filterLevel } : {}),
+    queryKey: ['ews', scope, filterLevel],
+    queryFn: () => ewsApi.getEws({ scope, ...(filterLevel ? { level: filterLevel } : {}) }),
   })
 
   const rawStudents = data?.data.data ?? []
   const summary     = data?.data.meta.summary
+  // Daftar kelas unik utk filter (khusus tampilan BK yang mengampu banyak kelas).
+  const kelasList = Array.from(new Set(rawStudents.map((s) => s.kelas).filter(Boolean))).sort() as string[]
   // GK27: pencarian nama/NIS — filter client-side karena data sudah di-fetch penuh
   // (paginasi di halaman ini pun murni potongan array di client, bukan dari server).
   const q = searchQ.trim().toLowerCase()
-  const allStudents = q
-    ? rawStudents.filter((s) => s.nama.toLowerCase().includes(q) || s.nis.toLowerCase().includes(q))
-    : rawStudents
+  const allStudents = rawStudents
+    .filter((s) => !filterKelas || s.kelas === filterKelas)
+    .filter((s) => !q || s.nama.toLowerCase().includes(q) || s.nis.toLowerCase().includes(q))
 
-  useEffect(() => { setPage(1) }, [filterLevel, searchQ, perPage])
+  useEffect(() => { setPage(1) }, [filterLevel, filterKelas, searchQ, perPage])
 
   const handleExport = async (format: 'excel' | 'pdf') => {
-    const params = new URLSearchParams({ format })
+    const params = new URLSearchParams({ format, scope })
     if (filterLevel) params.set('level', filterLevel)
 
     if (format === 'pdf') {
@@ -99,7 +103,10 @@ export default function EwsPage() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h1 className="text-xl font-bold">Early Warning System</h1>
+        <div>
+          <h1 className="text-xl font-bold">Early Warning System</h1>
+          <p className="text-xs text-muted-foreground">{isBkView ? 'Siswa di kelas yang Anda ampu sebagai Guru BK' : 'Siswa kelas yang Anda walikan'}</p>
+        </div>
         <div className="flex items-center gap-2">
           {totalItems > 0 && (
             <>
@@ -152,12 +159,21 @@ export default function EwsPage() {
         </div>
       )}
 
-      {/* ── Pencarian ────────────────────────────────────────────────────── */}
-      <input
-        type="text" value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
-        placeholder="Cari nama atau NIS siswa..."
-        className="h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-      />
+      {/* ── Pencarian + filter kelas ─────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text" value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
+          placeholder="Cari nama atau NIS siswa..."
+          className="h-9 flex-1 min-w-[180px] max-w-sm rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+        {(isBkView || kelasList.length > 1) && (
+          <select value={filterKelas} onChange={(e) => setFilterKelas(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            <option value="">Semua Kelas</option>
+            {kelasList.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+        )}
+      </div>
 
       {/* ── Filter + per-page bar ───────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">

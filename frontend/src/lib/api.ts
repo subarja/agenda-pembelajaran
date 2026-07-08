@@ -24,7 +24,17 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    // `POST /auth/login` sendiri membalas 401 utk "identifier/password salah" —
+    // itu error normal yang harus ditangani inline oleh LoginPage (setError), BUKAN
+    // tanda sesi kedaluwarsa. Sebelumnya interceptor ini menganggap SEMUA 401
+    // (termasuk dari percobaan login gagal) sebagai sesi habis, lalu paksa
+    // `window.location.replace('/login')` di tengah proses login — reload penuh ini
+    // memutus fetch `academic-years/pilihan` yang sedang berjalan, jadi dropdown
+    // "Semester" nyangkut di state tidak konsisten sampai user refresh manual
+    // beberapa kali. Redirect paksa hanya relevan utk request YANG SUDAH LOGIN
+    // (token basi/dicabut), jadi kecualikan endpoint login dari perilaku ini.
+    const isLoginRequest = err.config?.url?.includes('/auth/login')
+    if (err.response?.status === 401 && !isLoginRequest) {
       // clearAuth() bersihkan token + auth-storage (Zustand persist) sekaligus
       // agar tidak terjadi loop: interceptor hapus 'token' tapi 'auth-storage'
       // masih berisi isAuthenticated:true sehingga GuestRoute redirect ke '/'

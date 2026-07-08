@@ -296,7 +296,7 @@ export default function LaporanPage() {
               <div className="space-y-1.5">
                 <Label htmlFor="mulai">Dari Tanggal</Label>
                 <input
-                  id="mulai" type="date" value={mulai}
+                  id="mulai" type="date" value={mulai} max={toLocalDateStr(new Date())}
                   onChange={(e) => setMulai(e.target.value)}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
@@ -304,7 +304,7 @@ export default function LaporanPage() {
               <div className="space-y-1.5">
                 <Label htmlFor="akhir">Sampai Tanggal</Label>
                 <input
-                  id="akhir" type="date" value={akhir}
+                  id="akhir" type="date" value={akhir} max={toLocalDateStr(new Date())}
                   onChange={(e) => setAkhir(e.target.value)}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />

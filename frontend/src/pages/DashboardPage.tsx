@@ -77,9 +77,15 @@ function AdminDashboard() {
 
   const { data: teachers }  = useQuery({ queryKey: ['admin-teachers-count'], queryFn: () => api.get('/admin/teachers').then(r => r.data) })
   const { data: students }  = useQuery({ queryKey: ['admin-students-count'], queryFn: () => api.get('/admin/students').then(r => r.data) })
-  const { data: classes }   = useQuery({ queryKey: ['admin-classes'],        queryFn: () => api.get('/admin/classes').then(r => r.data) })
+  // Key SENGAJA 'admin-classes-count' (bukan 'admin-classes') + bentuk objek {data:[…]}:
+  // key 'admin-classes' dipakai di AdminPage/Sidebar sbagai ARRAY (adminApi.getClasses).
+  // Berbagi key dgn bentuk berbeda bikin cache bentrok → `classes.map is not a function`
+  // di tab Siswa/Kelas/Jadwal saat dashboard (halaman awal) menyemai cache duluan.
+  const { data: classes }   = useQuery({ queryKey: ['admin-classes-count'],   queryFn: () => api.get('/admin/classes').then(r => r.data) })
   const { data: ewsData }   = useQuery({ queryKey: ['ews-summary'],          queryFn: () => api.get('/ews').then(r => r.data) })
-  const { data: notifData } = useQuery({ queryKey: ['notifications'],        queryFn: () => api.get('/notifications?unread=1').then(r => r.data) })
+  // queryFn samakan persis dgn NotificationBell (key 'notifications') supaya berbagi cache
+  // konsisten — jangan pakai '?unread=1' di sini (beda isi utk key yang sama).
+  const { data: notifData } = useQuery({ queryKey: ['notifications'],        queryFn: () => api.get('/notifications').then(r => r.data) })
 
   const totalGuru    = teachers?.meta?.total ?? '—'
   const totalSiswa   = students?.meta?.total ?? '—'
@@ -259,6 +265,12 @@ function WaliKelasDashboard() {
     queryKey: ['agendas-perlu-diisi'],
     queryFn: () => agendaApi.getPerluDiisi(),
   })
+  // Siswa yang kasusnya BELUM selesai (penanganan wali kelas / eskalasi BK) + umur kasus.
+  const { data: penangananData } = useQuery({
+    queryKey: ['wali-penanganan-aktif'],
+    queryFn: () => api.get('/recommendations/wali-aktif').then(r => r.data),
+  })
+  const penanganan: any[] = penangananData?.data ?? []
 
   const ewsSummary  = ewsData?.meta?.summary ?? {}
   const ewsKritis   = (ewsSummary.merah ?? 0) + (ewsSummary.oranye ?? 0)
@@ -346,6 +358,57 @@ function WaliKelasDashboard() {
               </div>
             )
           }
+        </CardContent>
+      </Card>
+
+      {/* Siswa sedang ditangani — status wali/BK + berapa lama belum selesai (aging) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-orange-100">
+              <ClipboardCheck className="h-3.5 w-3.5 text-orange-600" />
+            </span>
+            Siswa Sedang Ditangani
+            {penanganan.length > 0 && <Badge className="bg-orange-100 text-orange-700">{penanganan.length}</Badge>}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {penanganan.length === 0 ? (
+            <div className="flex flex-col items-center py-6 gap-2 text-center">
+              <CheckCircle2 className="h-8 w-8 text-green-500" />
+              <p className="text-sm text-muted-foreground">Tidak ada siswa yang sedang dalam penanganan.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border -mx-1">
+              {penanganan.map((p: any) => {
+                const statusCls = p.status === 'diterima' ? 'bg-indigo-100 text-indigo-700'
+                  : p.status === 'diajukan' ? 'bg-purple-100 text-purple-700'
+                  : 'bg-orange-100 text-orange-700'
+                const ageCls = p.umur_hari >= 14 ? 'text-red-600' : p.umur_hari >= 7 ? 'text-amber-600' : 'text-muted-foreground'
+                const initials = (p.nama ?? '?').trim().split(/\s+/).slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
+                return (
+                  <div key={p.id} onClick={() => navigate(`/ews/${p.student_id}`)}
+                    className="flex items-center justify-between gap-2 px-1 py-2.5 hover:bg-muted/40 cursor-pointer rounded-md transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {p.foto_url
+                        ? <img src={p.foto_url} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
+                        : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">{initials}</span>}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-tight truncate">{p.nama}</p>
+                        <p className="text-xs text-muted-foreground">{p.kelas} · {p.jumlah_sesi} catatan</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <Badge className={cn('text-[10px]', statusCls)}>{p.status_label}</Badge>
+                      <span className={cn('text-[10px] flex items-center gap-0.5 font-medium', ageCls)}>
+                        <Clock className="h-3 w-3" />sudah {p.umur_hari} hari
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -678,7 +741,7 @@ function WakasekDashboard() {
   const user = useAuthStore((s) => s.user)
 
   const { data: ewsData }  = useQuery({ queryKey: ['ews-summary'], queryFn: () => api.get('/ews').then(r => r.data) })
-  const { data: classData} = useQuery({ queryKey: ['admin-classes'], queryFn: () => api.get('/admin/classes').then(r => r.data) })
+  const { data: classData} = useQuery({ queryKey: ['admin-classes-count'], queryFn: () => api.get('/admin/classes').then(r => r.data) })
 
   const ewsSummary  = ewsData?.meta?.summary ?? {}
   const ewsKritis   = (ewsSummary.merah ?? 0) + (ewsSummary.oranye ?? 0)

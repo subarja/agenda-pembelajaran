@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AgendaResource;
+use App\Traits\RejectsFutureDate;
 use App\Models\Agenda;
 use App\Models\AgendaFillSetting;
 use App\Models\AgendaStudentScore;
@@ -19,6 +20,8 @@ use Illuminate\Support\Carbon;
 
 class AgendaController extends Controller
 {
+    use RejectsFutureDate;
+
     public function myClasses(Request $request): JsonResponse
     {
         $teacher = $request->user()->teacher;
@@ -149,7 +152,7 @@ class AgendaController extends Controller
         if ($request->filled('kelas')) {
             $kelas = $request->kelas;
             $query->whereHas('schedule.schoolClass', function ($q) use ($kelas) {
-                $q->whereLike("CONCAT(tingkat, ' ', jurusan, ' - ', rombel)", $kelas);
+                $q->whereLikeCi("CONCAT(tingkat, ' ', jurusan, ' - ', rombel)", $kelas);
             });
         }
 
@@ -178,7 +181,7 @@ class AgendaController extends Controller
     {
         $data = $request->validate([
             'schedule_id'               => ['required', 'string'],
-            'tanggal'                   => ['required', 'date'],
+            'tanggal'                   => ['required', 'date', $this->notFutureDateRule()],
             'resume_kbm'               => ['nullable', 'string', 'max:2000'],
             'learning_objective_ids'   => ['nullable', 'array'],
             'learning_objective_ids.*' => ['string'],
@@ -187,7 +190,7 @@ class AgendaController extends Controller
             'student_scores.*.student_id' => ['required', 'string'],
             'student_scores.*.nilai'      => ['required', 'integer'],
             'student_scores.*.catatan'    => ['nullable', 'string', 'max:500'],
-        ]);
+        ], $this->notFutureDateMessages());
 
         $schedule = Schedule::where('uuid', $data['schedule_id'])->firstOrFail();
 

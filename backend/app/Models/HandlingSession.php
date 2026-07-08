@@ -14,17 +14,18 @@ class HandlingSession extends Model
     protected $table = 'handling_sessions';
 
     protected $fillable = [
-        'recommendation_id', 'handled_by', 'jenis', 'is_resume',
-        'tanggal', 'catatan', 'link_dokumen', 'link_foto', 'links',
+        'recommendation_id', 'handled_by', 'jenis', 'judul', 'is_resume',
+        'shared_with_wali_kelas', 'tanggal', 'catatan', 'link_dokumen', 'link_foto', 'links',
     ];
 
     protected function casts(): array
     {
         return [
-            'tanggal'   => 'date',
-            'links'     => 'array',
-            'is_resume' => 'boolean',
-            'jenis'     => HandlingSessionJenis::class,
+            'tanggal'                => 'date',
+            'links'                  => 'array',
+            'is_resume'              => 'boolean',
+            'shared_with_wali_kelas' => 'boolean',
+            'jenis'                  => HandlingSessionJenis::class,
         ];
     }
 

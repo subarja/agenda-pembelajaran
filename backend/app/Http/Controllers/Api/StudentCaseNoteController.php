@@ -7,11 +7,14 @@ use App\Http\Controllers\Controller;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentCaseNote;
+use App\Traits\RejectsFutureDate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StudentCaseNoteController extends Controller
 {
+    use RejectsFutureDate;
+
     // GET /student-case-notes?student_id=xxx
     public function index(Request $request): JsonResponse
     {
@@ -62,9 +65,9 @@ class StudentCaseNoteController extends Controller
             'jenis'         => ['required', 'in:bk,wali_kelas'],
             'catatan'       => ['required', 'string', 'max:2000'],
             'tindak_lanjut' => ['nullable', 'string', 'max:255'],
-            'tanggal'       => ['required', 'date'],
+            'tanggal'       => ['required', 'date', $this->notFutureDateRule()],
             'konfidensial'  => ['boolean'],
-        ]);
+        ], $this->notFutureDateMessages());
 
         // Validasi kapabilitas berdasarkan jenis
         if ($data['jenis'] === 'bk') {
@@ -101,9 +104,9 @@ class StudentCaseNoteController extends Controller
         $data = $request->validate([
             'catatan'       => ['sometimes', 'string', 'max:2000'],
             'tindak_lanjut' => ['nullable', 'string', 'max:255'],
-            'tanggal'       => ['sometimes', 'date'],
+            'tanggal'       => ['sometimes', 'date', $this->notFutureDateRule()],
             'konfidensial'  => ['boolean'],
-        ]);
+        ], $this->notFutureDateMessages());
 
         $note->update($data);
 

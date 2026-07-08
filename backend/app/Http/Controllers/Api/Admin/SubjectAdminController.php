@@ -13,7 +13,7 @@ class SubjectAdminController extends Controller
     public function index(Request $request): JsonResponse
     {
         $subjects = Subject::when($request->search, fn ($q, $s) =>
-                $q->whereLike('nama', $s)->orWhereLike('kode', $s)
+                $q->where(fn ($inner) => $inner->whereLikeCi('nama', $s)->orWhereLikeCi('kode', $s)->orWhereLikeCi('kelompok', $s))
             )
             ->orderBy('kelompok')->orderBy('nama')
             ->get()

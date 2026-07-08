@@ -98,7 +98,8 @@ export default function AppRouter() {
         <Route path="siswa"                     element={<StudentPhotoManagePage />} />
         <Route path="siswa/:studentId/rekap"    element={<StudentRekapPage />} />
 
-        <Route path="ews"                       element={<EwsPage />} />
+        <Route path="ews"                       element={<EwsPage scope="wali" />} />
+        <Route path="ews-bk"                    element={<EwsPage scope="bk" />} />
         <Route path="ews/:studentId"            element={<EwsDetailPage />} />
 
         <Route path="kalender"                  element={<KalenderPage />} />

@@ -5,14 +5,14 @@ import {
   ArrowLeft, AlertTriangle, CheckCircle2, ClipboardList,
   Plus, Pencil, Trash2, Link, FileDown, UserPlus, MessageSquare,
   ShieldCheck, Clock, ChevronDown, ChevronUp, X, Upload, Loader2,
-  Calendar, Star, BookOpen, TrendingUp,
+  Calendar, Star, BookOpen, TrendingUp, Share2, EyeOff, User, Send,
 } from 'lucide-react'
 import { ewsApi } from '@/features/ews/api'
 import type { EwsLevel } from '@/features/ews/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { cn, toLocalDateStr } from '@/lib/utils'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { usePdfPreview } from '@/hooks/usePdfPreview'
@@ -224,6 +224,7 @@ export default function EwsDetailPage() {
               <RecommendationBlock
                 key={r.id}
                 rec={r}
+                student={d.student}
                 studentId={studentId!}
                 isAdmin={isAdmin}
                 isWaliKelasCap={isWaliKelasCap}
@@ -521,6 +522,25 @@ function NilaiDetail({ data }: { data: any }) {
   )
 }
 
+// Hitung kata (pisah whitespace) — dipakai indikator batas 200 kata catatan wali kelas.
+function countWords(s: string): number {
+  const t = s.trim()
+  return t ? t.split(/\s+/).length : 0
+}
+
+const WALI_MAX_WORDS = 200
+
+// Avatar foto bulat dgn fallback "dummy" inisial bila foto belum ada — dipakai di modal
+// konfirmasi Ajukan Konseling (foto siswa + foto guru BK), proporsional desktop & mobile.
+function PersonAvatar({ src, nama, size = 72 }: { src?: string | null; nama?: string | null; size?: number }) {
+  const initials = (nama ?? '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'
+  return src
+    ? <img src={src} alt={nama ?? ''} style={{ width: size, height: size }} className="rounded-full object-cover border-2 border-white shadow-md shrink-0" />
+    : <div style={{ width: size, height: size }} className="rounded-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center border-2 border-white shadow-md shrink-0 font-bold text-slate-600">
+        {initials !== '?' ? initials : <User className="h-1/2 w-1/2" />}
+      </div>
+}
+
 // ── NewCaseForm — GK6: wali kelas buka kasus penanganan manual kapan pun ───────
 function NewCaseForm({ studentId, onCreated }: { studentId: string; onCreated: () => void }) {
   const [open, setOpen] = useState(false)
@@ -534,21 +554,21 @@ function NewCaseForm({ studentId, onCreated }: { studentId: string; onCreated: (
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 rounded-md border border-primary bg-primary/5 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/10 w-full justify-center">
-        <Plus className="h-3.5 w-3.5" /> Buat Kasus Penanganan Baru
+        <Plus className="h-3.5 w-3.5" /> Tambah Penanganan Wali Kelas
       </button>
     )
   }
 
   return (
     <div className="rounded-md border p-3 bg-muted/30">
-      <p className="text-xs font-semibold mb-2">Kasus Penanganan Baru</p>
+      <p className="text-xs font-semibold mb-2">Tambah Penanganan Wali Kelas</p>
       <Field label="Alasan / Deskripsi Kasus *">
         <textarea className={inputCls} rows={3} value={alasan} onChange={e => setAlasan(e.target.value)}
           placeholder="Mis. sering terlambat, kurang aktif di kelas, dsb. Tidak harus menunggu status EWS memburuk." />
       </Field>
       <div className="flex gap-2">
         <button onClick={() => create.mutate()} disabled={!alasan.trim() || create.isPending} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50">
-          Buat Kasus
+          Simpan Penanganan
         </button>
         <button onClick={() => setOpen(false)} className="rounded-md border px-3 py-1.5 text-xs">Batal</button>
       </div>
@@ -557,8 +577,8 @@ function NewCaseForm({ studentId, onCreated }: { studentId: string; onCreated: (
 }
 
 // ── RecommendationBlock ────────────────────────────────────────────────────────
-function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh }: {
-  rec: any; studentId?: string; isAdmin: boolean
+function RecommendationBlock({ rec, student, isAdmin, isWaliKelasCap, isBkCap, onRefresh }: {
+  rec: any; student?: any; studentId?: string; isAdmin: boolean
   isWaliKelasCap: boolean; isBkCap: boolean; onRefresh: () => void
 }) {
   const [expanded, setExpanded]           = useState(true)
@@ -569,8 +589,15 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
   const [adminNote, setAdminNote]         = useState(rec.catatan_admin ?? '')
   const [handlerSearch, setHandlerSearch] = useState('')
   const [selectedHandlers, setSelectedHandlers] = useState<string[]>(rec.suggested_handlers?.map((h: any) => h.id) ?? [])
-  const [sessionForm, setSessionFormData] = useState({ tanggal: '', catatan: '', links: [] as { url: string; keterangan: string; uploaded?: boolean; path?: string; size?: number }[] })
+  const [sessionForm, setSessionFormData] = useState({ judul: '', tanggal: '', catatan: '', links: [] as { url: string; keterangan: string; uploaded?: boolean; path?: string; size?: number }[] })
+  // Kartu sesi default TERTUTUP (hanya judul + tanggal); klik untuk buka penuh.
+  const [openSessions, setOpenSessions]   = useState<Record<string, boolean>>({})
+  const [showKonselingModal, setShowKonselingModal] = useState(false)
   const statusCfg = STATUS_CONFIG[rec.status] ?? STATUS_CONFIG.pending
+
+  // Catatan yang ditulis viewer sekarang = BK bila ia BK penangani kasus (bk_status
+  // diterima); selain itu = wali kelas (kena batas 200 kata).
+  const writingAsBk = isBkCap && rec.is_my_bk_case && rec.bk_status === 'diterima'
 
   // Key HARUS beda dari HariEfektifPage.tsx yg juga pakai 'admin-teachers-list' tapi
   // per_page=all — key literal sama + parameter beda = react-query bisa pakai cache
@@ -589,9 +616,11 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
   const saveNote     = useMutation({ mutationFn: () => api.put(`/recommendations/${rec.id}/admin-note`, { catatan_admin: adminNote }), onSuccess: () => { setAdminForm(false); onRefresh() } })
   const saveHandlers = useMutation({ mutationFn: () => api.put(`/recommendations/${rec.id}/handlers`, { handler_ids: selectedHandlers }), onSuccess: () => { setHandlerForm(false); onRefresh() } })
   const verify       = useMutation({ mutationFn: () => api.put(`/recommendations/${rec.id}/verify`, {}), onSuccess: () => onRefresh() })
-  const addSession   = useMutation({ mutationFn: (d: object) => api.post(`/recommendations/${rec.id}/sessions`, d), onSuccess: () => { setSessionForm(false); setSessionFormData({ tanggal: '', catatan: '', links: [] }); onRefresh() } })
+  const addSession   = useMutation({ mutationFn: (d: object) => api.post(`/recommendations/${rec.id}/sessions`, d), onSuccess: () => { setSessionForm(false); setSessionFormData({ judul: '', tanggal: '', catatan: '', links: [] }); onRefresh() } })
   const updateSession = useMutation({ mutationFn: ({ id, d }: { id: string; d: object }) => api.put(`/recommendations/${rec.id}/sessions/${id}`, d), onSuccess: () => { setEditSession(null); onRefresh() } })
   const deleteSession = useMutation({ mutationFn: (id: string) => api.delete(`/recommendations/${rec.id}/sessions/${id}`), onSuccess: () => onRefresh() })
+  // BK buka/tutup berbagi catatan ke wali kelas (reversible kapan saja).
+  const toggleShare  = useMutation({ mutationFn: ({ id, shared }: { id: string; shared: boolean }) => api.put(`/recommendations/${rec.id}/sessions/${id}/share`, { shared }), onSuccess: () => onRefresh() })
   const updateStatus  = useMutation({ mutationFn: (status: string) => api.put(`/recommendations/${rec.id}/status`, { status }), onSuccess: () => onRefresh() })
 
   // Upload foto/PDF dokumentasi — hasilnya berupa URL yang langsung ditambahkan ke
@@ -722,12 +751,28 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
                 <Clock className="h-3.5 w-3.5" /> Riwayat Penanganan ({rec.handling_sessions.length} sesi)
               </p>
               <div className="space-y-2">
-                {rec.handling_sessions.map((s: any) => (
+                {rec.handling_sessions.map((s: any) => {
+                  const isEditing = editSession?.id === s.id
+                  const isOpen    = openSessions[s.id] ?? false
+                  const jenisWali = s.jenis === 'wali_kelas'
+                  const canEdit   = !s.is_resume && !isDone && ((jenisWali && isWaliKelasCap && !isBkLocked) || (s.jenis === 'bk' && rec.is_my_bk_case) || isAdmin)
+                  const editWords = countWords(editSession?.catatan ?? '')
+                  const editOver  = jenisWali && editWords > WALI_MAX_WORDS
+                  const judulLabel = s.judul || (s.catatan ? s.catatan.slice(0, 48) + (s.catatan.length > 48 ? '…' : '') : 'Catatan Penanganan')
+                  return (
                   <div key={s.id}>
-                    {editSession?.id === s.id ? (
+                    {isEditing ? (
                       <div className="rounded-md border p-3 bg-muted/30">
-                        <Field label="Tanggal"><input className={inputCls} type="date" value={editSession.tanggal} onChange={e => setEditSession((p: any) => ({ ...p, tanggal: e.target.value }))} /></Field>
-                        <Field label="Catatan Penanganan"><textarea className={inputCls} rows={3} value={editSession.catatan} onChange={e => setEditSession((p: any) => ({ ...p, catatan: e.target.value }))} /></Field>
+                        <Field label="Judul Penanganan *"><input className={inputCls} maxLength={120} value={editSession.judul ?? ''} onChange={e => setEditSession((p: any) => ({ ...p, judul: e.target.value }))} placeholder="Judul singkat, mis. Panggilan orang tua" /></Field>
+                        <Field label="Tanggal"><input className={inputCls} type="date" max={toLocalDateStr(new Date())} value={editSession.tanggal} onChange={e => setEditSession((p: any) => ({ ...p, tanggal: e.target.value }))} /></Field>
+                        <Field label="Deskripsi Penanganan *">
+                          <textarea className={inputCls} rows={4} value={editSession.catatan} onChange={e => setEditSession((p: any) => ({ ...p, catatan: e.target.value }))} />
+                          {jenisWali && (
+                            <p className={cn('text-[11px] mt-1 text-right', editOver ? 'text-red-600 font-semibold' : 'text-muted-foreground')}>
+                              {editOver ? `Melebihi ${editWords - WALI_MAX_WORDS} kata` : `${WALI_MAX_WORDS - editWords} kata tersisa`} · {editWords}/{WALI_MAX_WORDS}
+                            </p>
+                          )}
+                        </Field>
                         {/* Multi-link edit */}
                         <div className="mb-3">
                           <div className="flex items-center justify-between mb-1">
@@ -759,24 +804,40 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
                           {!(editSession.links ?? []).length && <p className="text-xs text-muted-foreground">Belum ada lampiran.</p>}
                         </div>
                         <div className="flex gap-2 mt-1">
-                          <button onClick={() => updateSession.mutate({ id: s.id, d: editSession })} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white" disabled={updateSession.isPending}>Simpan</button>
+                          <button onClick={() => updateSession.mutate({ id: s.id, d: editSession })} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50" disabled={updateSession.isPending || !editSession.judul?.trim() || !editSession.catatan?.trim() || editOver}>Simpan</button>
                           <button onClick={() => setEditSession(null)} className="rounded-md border px-3 py-1.5 text-xs">Batal</button>
                         </div>
                       </div>
                     ) : (
-                      <div className={cn('rounded-md border-l-2 pl-3 py-2', s.is_resume ? 'border-teal-500 bg-teal-50' : s.jenis === 'bk' ? 'border-indigo-400 bg-indigo-50/50' : 'border-primary bg-muted/20')}>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <p className="text-xs text-muted-foreground mb-1">
+                      <div className={cn('rounded-md border overflow-hidden', s.is_resume ? 'border-teal-300' : s.jenis === 'bk' ? 'border-indigo-200' : 'border-border')}>
+                        {/* Header collapse: judul + tanggal (klik buka/tutup) */}
+                        <button type="button" onClick={() => setOpenSessions(o => ({ ...o, [s.id]: !isOpen }))}
+                          className={cn('w-full flex items-center gap-2 px-3 py-2 text-left', s.is_resume ? 'bg-teal-50' : s.jenis === 'bk' ? 'bg-indigo-50/40' : 'bg-muted/20')}>
+                          {isOpen ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {s.is_resume
-                                ? <span className="font-semibold text-teal-700">Resume BK</span>
-                                : s.jenis === 'bk' ? <span className="font-semibold text-indigo-700">[BK]</span> : null}
-                              {' '}<strong>{s.tanggal}</strong> · {s.handled_by}
-                            </p>
+                                ? <Badge className="text-[10px] bg-teal-100 text-teal-700">Ringkasan Penutup</Badge>
+                                : s.jenis === 'bk'
+                                  ? <Badge className="text-[10px] bg-indigo-100 text-indigo-700">BK</Badge>
+                                  : <Badge className="text-[10px] bg-primary/10 text-primary">Wali Kelas</Badge>}
+                              <span className="font-semibold text-sm truncate">{judulLabel}</span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">{s.tanggal} · {s.handled_by}</p>
+                          </div>
+                          {/* Indikator berbagi utk catatan BK (bukan resume) */}
+                          {s.jenis === 'bk' && !s.is_resume && (
+                            s.shared_with_wali_kelas
+                              ? <span className="shrink-0 flex items-center gap-1 text-[10px] font-medium text-green-700"><Share2 className="h-3 w-3" />Dibagikan</span>
+                              : <span className="shrink-0 flex items-center gap-1 text-[10px] font-medium text-muted-foreground"><EyeOff className="h-3 w-3" />Privat</span>
+                          )}
+                        </button>
+                        {/* Body: hanya saat dibuka */}
+                        {isOpen && (
+                          <div className="px-3 py-2.5 border-t bg-card">
                             <p className="text-sm leading-relaxed whitespace-pre-line">{s.catatan}</p>
-                            {/* Links */}
                             {(s.links ?? []).length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-1.5">
+                              <div className="flex flex-wrap gap-2 mt-2">
                                 {(s.links ?? []).map((l: any, li: number) => (
                                   <a key={li} href={l.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
                                     <Link className="h-3 w-3" />{l.keterangan}
@@ -784,42 +845,63 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
                                 ))}
                               </div>
                             )}
-                            {/* Legacy links */}
                             {(s.link_foto || s.link_dokumen) && !(s.links ?? []).length && (
-                              <div className="flex flex-wrap gap-2 mt-1.5">
+                              <div className="flex flex-wrap gap-2 mt-2">
                                 {s.link_foto    && <a href={s.link_foto}    target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline"><Link className="h-3 w-3" />Foto</a>}
                                 {s.link_dokumen && <a href={s.link_dokumen} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline"><Link className="h-3 w-3" />Dokumen</a>}
                               </div>
                             )}
+                            {/* Aksi: BK toggle berbagi + edit/hapus */}
+                            {(s.can_toggle_share || canEdit) && (
+                              <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2 border-t">
+                                {s.can_toggle_share && (
+                                  <button onClick={() => toggleShare.mutate({ id: s.id, shared: !s.shared_with_wali_kelas })} disabled={toggleShare.isPending}
+                                    className={cn('flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium border', s.shared_with_wali_kelas ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100' : 'border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100')}>
+                                    {s.shared_with_wali_kelas ? <><EyeOff className="h-3 w-3" />Berhenti Bagikan</> : <><Share2 className="h-3 w-3" />Bagikan ke Wali Kelas</>}
+                                  </button>
+                                )}
+                                {canEdit && (
+                                  <div className="flex gap-1 ml-auto">
+                                    <button onClick={() => setEditSession({ ...s, links: s.links ?? [] })} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></button>
+                                    <button onClick={() => window.confirm('Hapus catatan ini?') && deleteSession.mutate(s.id)} className="rounded p-1 hover:bg-red-100"><Trash2 className="h-3.5 w-3.5 text-red-500" /></button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          {!s.is_resume && !isDone && ((s.jenis === 'wali_kelas' && isWaliKelasCap && !isBkLocked) || (s.jenis === 'bk' && rec.is_my_bk_case) || isAdmin) && (
-                            <div className="flex gap-1 shrink-0">
-                              <button onClick={() => setEditSession({ ...s, links: s.links ?? [] })} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></button>
-                              <button onClick={() => window.confirm('Hapus sesi ini?') && deleteSession.mutate(s.id)} className="rounded p-1 hover:bg-red-100"><Trash2 className="h-3.5 w-3.5 text-red-500" /></button>
-                            </div>
-                          )}
-                        </div>
+                        )}
                       </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
 
           {/* GK9: input wali kelas dikunci begitu BK menerima kasus */}
           {isBkLocked && isWaliKelasCap && !rec.is_my_bk_case && (
-            <div className="rounded-md border border-dashed border-indigo-300 bg-indigo-50/50 px-3 py-3 text-center">
-              <p className="text-xs text-indigo-700">Proses penanganan bersama BK....</p>
+            <div className="rounded-md border border-dashed border-indigo-300 bg-indigo-50/50 px-3 py-3 flex items-start gap-2">
+              <ShieldCheck className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-indigo-700 leading-relaxed">Kasus ini sedang ditangani Guru BK. Anda tidak menambah catatan baru, namun dapat melihat catatan penanganan BK yang <strong>dibagikan</strong> ke wali kelas.</p>
             </div>
           )}
 
           {/* Form tambah sesi — wali kelas (belum dikunci) ATAU BK yang sedang menangani */}
           {((isWaliKelasCap && !isBkLocked) || (isBkCap && rec.is_my_bk_case && rec.bk_status === 'diterima')) && !isDone && showSessionForm && (
             <div className="rounded-md border p-3 bg-muted/30">
-              <p className="text-xs font-semibold mb-2">Tambah Catatan Penanganan</p>
-              <Field label="Tanggal Penanganan"><input className={inputCls} type="date" value={sessionForm.tanggal} onChange={e => setSessionFormData(f => ({ ...f, tanggal: e.target.value }))} /></Field>
-              <Field label="Catatan Penanganan *"><textarea className={inputCls} rows={4} value={sessionForm.catatan} onChange={e => setSessionFormData(f => ({ ...f, catatan: e.target.value }))} placeholder="Deskripsikan penanganan yang dilakukan..." /></Field>
+              <p className="text-xs font-semibold mb-2">{writingAsBk ? 'Tambah Catatan Penanganan BK' : 'Tambah Catatan Penanganan Wali Kelas'}</p>
+              <Field label="Judul Penanganan *"><input className={inputCls} maxLength={120} value={sessionForm.judul} onChange={e => setSessionFormData(f => ({ ...f, judul: e.target.value }))} placeholder="Judul singkat, mis. Panggilan orang tua" /></Field>
+              <Field label="Tanggal Penanganan"><input className={inputCls} type="date" max={toLocalDateStr(new Date())} value={sessionForm.tanggal} onChange={e => setSessionFormData(f => ({ ...f, tanggal: e.target.value }))} /></Field>
+              <Field label="Deskripsi Penanganan *">
+                <textarea className={inputCls} rows={4} value={sessionForm.catatan} onChange={e => setSessionFormData(f => ({ ...f, catatan: e.target.value }))} placeholder="Deskripsikan penanganan yang dilakukan..." />
+                {!writingAsBk && (() => {
+                  const w = countWords(sessionForm.catatan); const over = w > WALI_MAX_WORDS
+                  return <p className={cn('text-[11px] mt-1 text-right', over ? 'text-red-600 font-semibold' : 'text-muted-foreground')}>
+                    {over ? `Melebihi ${w - WALI_MAX_WORDS} kata` : `${WALI_MAX_WORDS - w} kata tersisa`} · {w}/{WALI_MAX_WORDS}
+                  </p>
+                })()}
+              </Field>
               {/* Multi-link */}
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
@@ -851,7 +933,7 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
                 {sessionForm.links.length === 0 && <p className="text-xs text-muted-foreground">Belum ada lampiran.</p>}
               </div>
               <div className="flex gap-2 mt-1">
-                <button onClick={() => addSession.mutate(sessionForm)} disabled={!sessionForm.tanggal || !sessionForm.catatan || addSession.isPending} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50">Simpan Catatan</button>
+                <button onClick={() => addSession.mutate(sessionForm)} disabled={!sessionForm.judul.trim() || !sessionForm.tanggal || !sessionForm.catatan.trim() || (!writingAsBk && countWords(sessionForm.catatan) > WALI_MAX_WORDS) || addSession.isPending} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50">Simpan Catatan</button>
                 <button onClick={() => setSessionForm(false)} className="rounded-md border px-3 py-1.5 text-xs">Batal</button>
               </div>
             </div>
@@ -871,7 +953,7 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
             )}
             {((isWaliKelasCap && !isBkLocked) || (isBkCap && rec.is_my_bk_case && rec.bk_status === 'diterima')) && !isDone && (
               <button onClick={() => setSessionForm(v => !v)} className="flex items-center gap-1 rounded-md border border-primary bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10">
-                <Plus className="h-3.5 w-3.5" />Tambah Catatan Penanganan
+                <Plus className="h-3.5 w-3.5" />{writingAsBk ? 'Tambah Catatan Penanganan BK' : 'Tambah Catatan Penanganan Wali Kelas'}
               </button>
             )}
             {isWaliKelasCap && (isProses || isPending) && rec.handling_sessions?.length > 0 && (
@@ -894,10 +976,9 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
             )}
             {/* GK8: ajukan konseling ke BK setelah minimal 3 catatan wali kelas */}
             {isWaliKelasCap && rec.bisa_ajukan_konseling && (
-              <button onClick={() => window.confirm('Ajukan konseling ke Guru BK untuk kasus ini?') && ajukanKonseling.mutate()} disabled={ajukanKonseling.isPending}
+              <button onClick={() => setShowKonselingModal(true)} disabled={ajukanKonseling.isPending}
                 className="flex items-center gap-1 rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100">
-                <UserPlus className="h-3.5 w-3.5" />Ajukan Konseling
-              </button>
+                <UserPlus className="h-3.5 w-3.5" />Ajukan Konseling</button>
             )}
             {isWaliKelasCap && rec.bk_status === 'diajukan' && (
               <span className="text-xs text-muted-foreground italic self-center">Menunggu Guru BK menerima pengajuan konseling ({rec.diajukan_konseling_pada})...</span>
@@ -917,22 +998,69 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
             )}
           </div>
 
-          {/* Form resume BK (GK11) */}
+          {/* Form ringkasan penutup BK (GK11) — wajib, otomatis dibagikan ke wali kelas */}
           {rec.is_my_bk_case && rec.bk_status === 'diterima' && showBkSelesaiForm && (
             <div className="rounded-md border border-teal-300 bg-teal-50/50 p-3">
-              <p className="text-xs font-semibold mb-2 text-teal-800">Resume Penanganan BK (wajib diisi sebelum menandai selesai)</p>
-              <Field label="Resume *">
+              <p className="text-xs font-semibold mb-2 text-teal-800">Ringkasan Penutup Konseling (wajib sebelum menandai selesai)</p>
+              <Field label="Ringkasan Penutup *">
                 <textarea className={inputCls} rows={4} value={resumeText} onChange={e => setResumeText(e.target.value)}
-                  placeholder="Ringkasan hasil penanganan — akan muncul di riwayat wali kelas sebagai 'Resume BK'." />
+                  placeholder="Ringkasan hasil konseling — otomatis dibagikan ke wali kelas sebagai penutup kasus." />
               </Field>
               <div className="flex gap-2">
                 <button onClick={() => bkSelesai.mutate()} disabled={!resumeText.trim() || bkSelesai.isPending} className="rounded-md bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50">
-                  Kirim Resume &amp; Tandai Selesai
+                  Kirim Ringkasan &amp; Tandai Selesai
                 </button>
                 <button onClick={() => setShowBkSelesaiForm(false)} className="rounded-md border px-3 py-1.5 text-xs">Batal</button>
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Modal konfirmasi Ajukan Konseling (foto siswa + guru BK) ── */}
+      {showKonselingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => e.target === e.currentTarget && setShowKonselingModal(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-5 py-3 flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-white" />
+              <h3 className="font-bold text-white">Ajukan Konseling ke Guru BK</h3>
+            </div>
+            <div className="p-5">
+              {/* Foto siswa → BK, proporsional & responsif */}
+              <div className="flex items-center justify-center gap-3 sm:gap-5 mb-4">
+                <div className="flex flex-col items-center gap-1.5 text-center min-w-0">
+                  <PersonAvatar src={student?.foto_url} nama={student?.nama} size={76} />
+                  <p className="text-xs font-semibold leading-tight max-w-[110px] truncate">{student?.nama}</p>
+                  <p className="text-[10px] text-muted-foreground">{student?.kelas}</p>
+                </div>
+                <Send className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div className="flex flex-col items-center gap-1.5 text-center min-w-0">
+                  <PersonAvatar src={student?.bk_pengampu?.[0]?.foto_url} nama={student?.bk_pengampu?.[0]?.nama} size={76} />
+                  <p className="text-xs font-semibold leading-tight max-w-[130px] truncate">
+                    {student?.bk_pengampu?.length ? `Guru ${student.bk_pengampu[0].nama}` : 'Guru BK'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Guru BK Pengampu</p>
+                </div>
+              </div>
+              <p className="text-sm text-center text-muted-foreground leading-relaxed">
+                Ajukan <span className="font-semibold text-foreground">Ananda {student?.nama}</span>
+                {student?.kelas ? <> · <span className="font-medium">{student.kelas}</span></> : null} untuk konseling ke{' '}
+                <span className="font-semibold text-foreground">
+                  {student?.bk_pengampu?.length ? `Guru ${student.bk_pengampu.map((b: any) => b.nama).join(', ')}` : 'Guru BK pengampu kelas'}
+                </span>?
+              </p>
+              {!student?.bk_pengampu?.length && (
+                <p className="mt-2 text-[11px] text-center text-amber-600">Catatan: belum ada Guru BK yang mengampu kelas ini di jadwal. Pengajuan tetap terkirim bila BK ditambahkan kemudian.</p>
+              )}
+              <div className="flex gap-2 mt-5">
+                <button onClick={() => setShowKonselingModal(false)} className="flex-1 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted">Batal</button>
+                <button onClick={() => ajukanKonseling.mutate(undefined, { onSuccess: () => setShowKonselingModal(false) })} disabled={ajukanKonseling.isPending}
+                  className="flex-1 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
+                  {ajukanKonseling.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Ajukan Konseling
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

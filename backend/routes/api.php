@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\LearningObjectiveController;
 use App\Http\Controllers\Api\PresensiController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\RekapPerkembanganController;
 use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentPhotoController;
@@ -167,6 +168,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('reports/ews',               [ReportController::class, 'ews']);
     Route::get('reports/agenda',            [ReportController::class, 'agenda']);
 
+    // ── Rekap Perkembangan Siswa Lintas Semester (admin/wakasek) ─────────────
+    Route::get('rekap-perkembangan',        [RekapPerkembanganController::class, 'index']);
+    Route::get('rekap-perkembangan/chart',  [RekapPerkembanganController::class, 'chart']);
+    Route::get('rekap-perkembangan/export', [RekapPerkembanganController::class, 'export']);
+
     // ── Rekomendasi & Penanganan ──────────────────────────────────────────────
     Route::post('students/{uuid}/case',                   [RecommendationController::class, 'storeManual']);
     Route::put('recommendations/{uuid}/admin-note',       [RecommendationController::class, 'updateAdminNote']);
@@ -176,7 +182,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('recommendations/{uuid}/sessions',        [RecommendationController::class, 'storeSession']);
     Route::post('recommendations/{uuid}/sessions/upload', [RecommendationController::class, 'uploadDocumentation']);
     Route::put('recommendations/{uuid}/sessions/{sid}',   [RecommendationController::class, 'updateSession']);
+    Route::put('recommendations/{uuid}/sessions/{sid}/share', [RecommendationController::class, 'toggleSessionShare']);
     Route::delete('recommendations/{uuid}/sessions/{sid}',[RecommendationController::class, 'deleteSession']);
+    Route::get('recommendations/wali-aktif',              [RecommendationController::class, 'waliActiveCases']);
     Route::get('students/{uuid}/handling-report',         [RecommendationController::class, 'handlingReport']);
 
     // ── Riwayat Dokumen Penanganan (admin/wakasek=semua, wali kelas=kelasnya, guru lain=miliknya) ──

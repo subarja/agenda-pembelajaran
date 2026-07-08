@@ -16,7 +16,9 @@ function usePrefetchNav() {
   const qc = useQueryClient()
   return (path: string) => {
     if (path === '/ews') {
-      qc.prefetchQuery({ queryKey: ['ews', null], queryFn: () => ewsApi.getEws({}) })
+      qc.prefetchQuery({ queryKey: ['ews', 'wali', null], queryFn: () => ewsApi.getEws({ scope: 'wali' }) })
+    } else if (path === '/ews-bk') {
+      qc.prefetchQuery({ queryKey: ['ews', 'bk', null], queryFn: () => ewsApi.getEws({ scope: 'bk' }) })
     } else if (path === '/ews-guru') {
       const today = new Date()
       const mulai = new Date(today); mulai.setDate(today.getDate() - 6)

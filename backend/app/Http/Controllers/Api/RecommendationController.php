@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Notifications\KonselingDiajukanNotification;
 use App\Support\FileCompressor;
 use App\Traits\HandlesPdfPreview;
+use App\Traits\RejectsFutureDate;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ use Illuminate\Support\Facades\Storage;
 class RecommendationController extends Controller
 {
     use HandlesPdfPreview;
+    use RejectsFutureDate;
 
     // ── Admin: tambah catatan + sarankan penangan ─────────────────────────────
 
@@ -139,9 +141,17 @@ class RecommendationController extends Controller
 
         [$jenis] = $this->authorizeSessionWrite($request, $rec);
 
+        // Catatan wali kelas dibatasi 200 kata (indikator sisa kata ditampilkan FE);
+        // catatan BK bebas panjang (sering perlu detail klinis).
+        $catatanRules = ['required', 'string', 'max:3000'];
+        if ($jenis === HandlingSessionJenis::WaliKelas->value) {
+            $catatanRules[] = $this->maxWordsRule(200);
+        }
+
         $data = $request->validate([
-            'tanggal'              => ['required', 'date'],
-            'catatan'              => ['required', 'string', 'max:3000'],
+            'judul'                => ['required', 'string', 'max:120'],
+            'tanggal'              => ['required', 'date', $this->notFutureDateRule()],
+            'catatan'              => $catatanRules,
             'link_dokumen'         => ['nullable', 'url', 'max:500'],
             'link_foto'            => ['nullable', 'url', 'max:500'],
             'links'                => ['nullable', 'array', 'max:5'],
@@ -153,13 +163,17 @@ class RecommendationController extends Controller
             'links.*.uploaded'     => ['sometimes', 'boolean'],
             'links.*.path'         => ['sometimes', 'nullable', 'string', 'max:500'],
             'links.*.size'         => ['sometimes', 'nullable', 'integer'],
-        ]);
+        ], $this->notFutureDateMessages());
 
         $session = HandlingSession::create([
             'recommendation_id' => $rec->id,
             'handled_by'        => $user->id,
             'jenis'             => $jenis,
+            'judul'             => $data['judul'],
             'is_resume'         => false,
+            // Catatan BK baru default PRIVAT (opt-in) — wali kelas hanya lihat bila BK
+            // klik "Bagikan ke Wali Kelas". Catatan wali_kelas selalu terlihat wali kelas.
+            'shared_with_wali_kelas' => false,
             'tanggal'           => $data['tanggal'],
             'catatan'           => $data['catatan'],
             'link_dokumen'      => $data['link_dokumen'] ?? null,
@@ -175,7 +189,7 @@ class RecommendationController extends Controller
 
         return response()->json([
             'message' => 'Catatan penanganan disimpan.',
-            'data'    => $this->formatSession($session->load('handler')),
+            'data'    => $this->formatSession($session->load('handler'), $jenis === HandlingSessionJenis::Bk->value),
         ], 201);
     }
 
@@ -223,9 +237,15 @@ class RecommendationController extends Controller
         abort_if($session->handled_by !== $request->user()->id, 403, 'Anda hanya bisa mengubah catatan sendiri.');
         abort_if($session->is_resume, 422, 'Catatan resume BK tidak bisa diubah setelah kasus ditandai selesai.');
 
+        $catatanRules = ['sometimes', 'string', 'max:3000'];
+        if ($session->jenis === HandlingSessionJenis::WaliKelas) {
+            $catatanRules[] = $this->maxWordsRule(200);
+        }
+
         $data = $request->validate([
-            'tanggal'            => ['sometimes', 'date'],
-            'catatan'            => ['sometimes', 'string', 'max:3000'],
+            'judul'              => ['sometimes', 'required', 'string', 'max:120'],
+            'tanggal'            => ['sometimes', 'date', $this->notFutureDateRule()],
+            'catatan'            => $catatanRules,
             'link_dokumen'       => ['nullable', 'url', 'max:500'],
             'link_foto'          => ['nullable', 'url', 'max:500'],
             'links'              => ['nullable', 'array', 'max:5'],
@@ -234,11 +254,13 @@ class RecommendationController extends Controller
             'links.*.uploaded'   => ['sometimes', 'boolean'],
             'links.*.path'       => ['sometimes', 'nullable', 'string', 'max:500'],
             'links.*.size'       => ['sometimes', 'nullable', 'integer'],
-        ]);
+        ], $this->notFutureDateMessages());
 
         $session->update($data);
 
-        return response()->json(['message' => 'Catatan diperbarui.', 'data' => $this->formatSession($session->fresh('handler'))]);
+        $canToggle = $session->jenis === HandlingSessionJenis::Bk && ! $session->is_resume;
+
+        return response()->json(['message' => 'Catatan diperbarui.', 'data' => $this->formatSession($session->fresh('handler'), $canToggle)]);
     }
 
     // DELETE /recommendations/{uuid}/sessions/{sessionId}
@@ -255,6 +277,74 @@ class RecommendationController extends Controller
         $session->delete();
 
         return response()->json(['message' => 'Catatan dihapus.']);
+    }
+
+    // PUT /recommendations/{uuid}/sessions/{sessionId}/share — BG buka/tutup berbagi
+    // catatan BK ke wali kelas. Reversible kapan saja. Catatan wali_kelas tidak relevan
+    // (selalu terlihat wali kelas); resume penutup selalu dibagikan (tidak bisa ditutup).
+    public function toggleSessionShare(Request $request, string $uuid, string $sessionId): JsonResponse
+    {
+        $rec     = Recommendation::where('uuid', $uuid)->firstOrFail();
+        $session = HandlingSession::where('uuid', $sessionId)
+            ->where('recommendation_id', $rec->id)
+            ->firstOrFail();
+
+        $teacher = $request->user()->teacher;
+        abort_if(! $teacher || $rec->bk_teacher_id !== $teacher->id, 403, 'Hanya Guru BK yang menangani kasus ini yang dapat mengatur berbagi.');
+        abort_if($session->jenis !== HandlingSessionJenis::Bk, 422, 'Hanya catatan BK yang bisa diatur berbaginya.');
+        abort_if($session->is_resume, 422, 'Ringkasan penutup selalu dibagikan ke wali kelas.');
+
+        $data = $request->validate(['shared' => ['required', 'boolean']]);
+        $session->update(['shared_with_wali_kelas' => $data['shared']]);
+
+        return response()->json([
+            'message' => $data['shared'] ? 'Catatan dibagikan ke wali kelas.' : 'Catatan disembunyikan dari wali kelas.',
+            'data'    => $this->formatSession($session->fresh('handler'), true),
+        ]);
+    }
+
+    // GET /recommendations/wali-aktif — daftar siswa di kelas perwalian yang kasusnya
+    // BELUM selesai (utk widget dashboard wali kelas: siapa ditangani, status, umur).
+    public function waliActiveCases(Request $request): JsonResponse
+    {
+        $user     = $request->user();
+        $classIds = SchoolClass::where('wali_kelas_id', $user->id)->pluck('id');
+
+        if ($classIds->isEmpty()) {
+            return response()->json(['data' => [], 'meta' => ['total' => 0]]);
+        }
+
+        $rows = Recommendation::whereHas('student', fn ($q) => $q->whereIn('class_id', $classIds))
+            ->whereNotIn('status', [RecommendationStatus::Selesai->value, RecommendationStatus::Diabaikan->value])
+            ->where('bk_status', '!=', BkStatus::Selesai->value)
+            ->with(['student.user', 'student.schoolClass'])
+            ->withCount('handlingSessions')
+            ->orderBy('created_at') // tertua dulu (paling lama belum selesai di atas)
+            ->get()
+            ->map(function ($r) {
+                $statusLabel = match ($r->bk_status) {
+                    BkStatus::Diterima => 'Ditangani BK',
+                    BkStatus::Diajukan => 'Menunggu Guru BK',
+                    default            => 'Penanganan Wali Kelas',
+                };
+
+                return [
+                    'id'            => $r->uuid,
+                    'student_id'    => $r->student->uuid,
+                    'nama'          => $r->student->user->nama,
+                    'kelas'         => $r->student->schoolClass
+                        ? "{$r->student->schoolClass->tingkat->value} {$r->student->schoolClass->jurusan} - {$r->student->schoolClass->rombel}"
+                        : null,
+                    'foto_url'      => $r->student->foto ? Storage::disk('public')->url($r->student->foto) : null,
+                    'status'        => $r->bk_status->value === 'none' ? 'wali_kelas' : $r->bk_status->value,
+                    'status_label'  => $statusLabel,
+                    'umur_hari'     => (int) $r->created_at->startOfDay()->diffInDays(now()->startOfDay()),
+                    'jumlah_sesi'   => $r->handling_sessions_count,
+                    'dibuat_pada'   => $r->created_at->format('Y-m-d'),
+                ];
+            });
+
+        return response()->json(['data' => $rows, 'meta' => ['total' => $rows->count()]]);
     }
 
     // PUT /recommendations/{uuid}/status — wali kelas tandai proses/menunggu-verifikasi/selesai/diabaikan
@@ -355,16 +445,19 @@ class RecommendationController extends Controller
             'bk_selesai_pada' => now(),
         ]);
 
-        // GK11: resume BK ikut muncul di riwayat penanganan (dilihat wali kelas) dengan
-        // judul "Resume BK" — direalisasikan sebagai HandlingSession ber-flag is_resume,
-        // supaya tampil di timeline riwayat yang sudah ada tanpa UI terpisah.
+        // GK11: resume BK ikut muncul di riwayat penanganan (dilihat wali kelas) sebagai
+        // HandlingSession ber-flag is_resume. Ini "ringkasan penutup" wajib → OTOMATIS
+        // dibagikan ke wali kelas (shared_with_wali_kelas=true), tak peduli catatan BK
+        // lain dibagikan atau tidak. Judul tetap supaya rapi di daftar collapse.
         HandlingSession::create([
-            'recommendation_id' => $rec->id,
-            'handled_by'        => $user->id,
-            'jenis'             => HandlingSessionJenis::Bk->value,
-            'is_resume'         => true,
-            'tanggal'           => now()->toDateString(),
-            'catatan'           => $data['resume'],
+            'recommendation_id'      => $rec->id,
+            'handled_by'             => $user->id,
+            'jenis'                  => HandlingSessionJenis::Bk->value,
+            'judul'                  => 'Ringkasan Penutup Konseling',
+            'is_resume'              => true,
+            'shared_with_wali_kelas' => true,
+            'tanggal'                => now()->toDateString(),
+            'catatan'                => $data['resume'],
         ]);
 
         return response()->json(['message' => 'Penanganan BK ditandai selesai. Resume dikirim ke riwayat wali kelas.']);
@@ -480,20 +573,37 @@ class RecommendationController extends Controller
 
     // ── Helper: format sesi ───────────────────────────────────────────────────
 
-    private function formatSession(HandlingSession $s): array
+    private function formatSession(HandlingSession $s, bool $canToggleShare = false): array
     {
         return [
-            'id'           => $s->uuid,
-            'jenis'        => $s->jenis->value,
-            'is_resume'    => $s->is_resume,
-            'tanggal'      => $s->tanggal->format('Y-m-d'),
-            'catatan'      => $s->catatan,
-            'link_dokumen' => $s->link_dokumen,
-            'link_foto'    => $s->link_foto,
-            'links'        => $s->links ?? [],
-            'handled_by'   => $s->handler->nama,
-            'created_at'   => $s->created_at->format('Y-m-d H:i'),
+            'id'                     => $s->uuid,
+            'jenis'                  => $s->jenis->value,
+            'judul'                  => $s->judul,
+            'is_resume'              => $s->is_resume,
+            'shared_with_wali_kelas' => $s->shared_with_wali_kelas,
+            'can_toggle_share'       => $canToggleShare,
+            'tanggal'                => $s->tanggal->format('Y-m-d'),
+            'catatan'                => $s->catatan,
+            'link_dokumen'           => $s->link_dokumen,
+            'link_foto'              => $s->link_foto,
+            'links'                  => $s->links ?? [],
+            'handled_by'             => $s->handler->nama,
+            'created_at'             => $s->created_at->format('Y-m-d H:i'),
         ];
+    }
+
+    /**
+     * Rule closure: `catatan` maksimal $max kata (dipakai utk catatan wali kelas; BK bebas).
+     * Hitung kata dgn pisah spasi/whitespace, abaikan token kosong.
+     */
+    private function maxWordsRule(int $max): \Closure
+    {
+        return function (string $attribute, $value, \Closure $fail) use ($max) {
+            $words = array_filter(preg_split('/\s+/', trim((string) $value)) ?: [], fn ($w) => $w !== '');
+            if (count($words) > $max) {
+                $fail("Deskripsi penanganan wali kelas maksimal {$max} kata (saat ini ".count($words)." kata).");
+            }
+        };
     }
 
     // ── Riwayat Dokumen Penanganan ────────────────────────────────────────────
@@ -525,40 +635,63 @@ class RecommendationController extends Controller
         return Storage::disk('public')->download($doc['path'], $this->safeFilename($doc).'.'.$ext);
     }
 
-    // GET /handling-documents/download-all — ZIP semua dokumen dalam scope user ini.
+    // GET /handling-documents/download-all — ZIP dokumen dalam scope user ini, DISUSUN
+    // PER KELAS (tiap kelas = folder di dalam ZIP). Bila query `kelas` diisi (dari dropdown
+    // filter kelas di FE), hanya kelas itu yang di-ZIP.
     public function downloadAllDocuments(Request $request)
     {
         $docs = $this->scopedDocuments($request);
+
+        if ($request->filled('kelas')) {
+            $docs = array_values(array_filter($docs, fn ($d) => $d['kelas'] === $request->kelas));
+        }
+
         abort_if(empty($docs), 404, 'Tidak ada dokumen untuk diunduh.');
 
         $zipPath = tempnam(sys_get_temp_dir(), 'riwayat_dok_').'.zip';
         $zip = new \ZipArchive;
         $zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
 
-        $usedNames = [];
+        $usedNames = []; // simpan path lengkap (folder/nama) agar unik per folder kelas
         foreach ($docs as $doc) {
             if (! Storage::disk('public')->exists($doc['path'])) {
                 continue;
             }
-            $ext = pathinfo($doc['path'], PATHINFO_EXTENSION);
-            $name = $this->safeFilename($doc).'.'.$ext;
+            $ext    = pathinfo($doc['path'], PATHINFO_EXTENSION);
+            $folder = $this->safeKelasFolder($doc['kelas']);
+            $base   = $this->safeFilename($doc, includeKelas: false);
+            $name   = "{$base}.{$ext}";
             $i = 1;
-            while (in_array($name, $usedNames, true)) {
-                $name = $this->safeFilename($doc)."_{$i}.{$ext}";
+            while (in_array("{$folder}/{$name}", $usedNames, true)) {
+                $name = "{$base}_{$i}.{$ext}";
                 $i++;
             }
-            $usedNames[] = $name;
-            $zip->addFromString($name, Storage::disk('public')->get($doc['path']));
+            $usedNames[] = "{$folder}/{$name}";
+            $zip->addFromString("{$folder}/{$name}", Storage::disk('public')->get($doc['path']));
         }
         $zip->close();
 
-        return response()->download($zipPath, 'riwayat_dokumen_penanganan_'.now()->format('Y-m-d').'.zip')
-            ->deleteFileAfterSend(true);
+        $zipName = $request->filled('kelas')
+            ? 'riwayat_dokumen_'.$this->safeKelasFolder($request->kelas).'.zip'
+            : 'riwayat_dokumen_penanganan_'.now()->format('Y-m-d').'.zip';
+
+        return response()->download($zipPath, $zipName)->deleteFileAfterSend(true);
     }
 
-    private function safeFilename(array $doc): string
+    // Nama folder kelas yang aman utk entri ZIP (mis. "XI Teknik Kimia Industri - A").
+    private function safeKelasFolder(?string $kelas): string
     {
-        $raw = pathinfo("{$doc['kelas']}_{$doc['nama_siswa']}_{$doc['tanggal']}_{$doc['nama_file']}", PATHINFO_FILENAME);
+        $clean = preg_replace('/[^A-Za-z0-9 _-]/', '', str_replace('/', '-', (string) $kelas));
+
+        return trim(preg_replace('/\s+/', '_', $clean), '_') ?: 'Tanpa_Kelas';
+    }
+
+    // $includeKelas=false dipakai saat file sudah masuk folder kelas di ZIP (agar nama
+    // tidak mengulang kelas); =true (default) utk download satuan yang tanpa folder.
+    private function safeFilename(array $doc, bool $includeKelas = true): string
+    {
+        $prefix = $includeKelas ? "{$doc['kelas']}_" : '';
+        $raw = pathinfo("{$prefix}{$doc['nama_siswa']}_{$doc['tanggal']}_{$doc['nama_file']}", PATHINFO_FILENAME);
         $clean = preg_replace('/[^A-Za-z0-9 _-]/', '', str_replace('/', '-', $raw));
 
         return trim(preg_replace('/\s+/', '_', $clean), '_') ?: 'dokumen';
@@ -571,12 +704,14 @@ class RecommendationController extends Controller
         $query = HandlingSession::with(['recommendation.student.user', 'recommendation.student.schoolClass', 'handler']);
 
         if (! in_array($user->role->value, ['admin', 'wakasek'], true)) {
-            $kelasWali = SchoolClass::where('wali_kelas_id', $user->id)
+            // Wali kelas boleh mengampu >1 kelas → scope ke SEMUA kelas perwaliannya
+            // (bukan cuma satu via ->first()), supaya filter kelas di FE bermakna.
+            $kelasWaliIds = SchoolClass::where('wali_kelas_id', $user->id)
                 ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
-                ->first();
+                ->pluck('id');
 
-            if ($kelasWali) {
-                $query->whereHas('recommendation.student', fn ($q) => $q->where('class_id', $kelasWali->id));
+            if ($kelasWaliIds->isNotEmpty()) {
+                $query->whereHas('recommendation.student', fn ($q) => $q->whereIn('class_id', $kelasWaliIds));
             } else {
                 $query->where('handled_by', $user->id);
             }

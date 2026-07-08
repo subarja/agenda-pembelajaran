@@ -122,12 +122,12 @@ export default function TeacherEwsDetailPage() {
       <div className="flex flex-wrap gap-3 items-end">
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Dari</label>
-          <input type="date" value={mulai} onChange={e => setMulai(e.target.value)}
+          <input type="date" value={mulai} max={toLocalDateStr(new Date())} onChange={e => setMulai(e.target.value)}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Sampai</label>
-          <input type="date" value={akhir} onChange={e => setAkhir(e.target.value)}
+          <input type="date" value={akhir} max={toLocalDateStr(new Date())} onChange={e => setAkhir(e.target.value)}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
         </div>
       </div>

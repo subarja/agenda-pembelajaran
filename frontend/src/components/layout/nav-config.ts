@@ -23,11 +23,12 @@ const allNav: Record<string, NavItem> = {
   nilaiTambah:   { label: 'Nilai Tambah',    path: '/nilai-tambah',    icon: PlusCircle },
   siswa:         { label: 'Siswa',           path: '/siswa',           icon: Users },
   ews:           { label: 'EWS Siswa',       path: '/ews',             icon: AlertTriangle },
+  ewsBk:         { label: 'EWS Murid BK',    path: '/ews-bk',          icon: AlertTriangle },
   ewsGuru:       { label: 'EWS Guru',        path: '/ews-guru',        icon: UserCog },
   laporan:       { label: 'Laporan',         path: '/laporan',         icon: FileBarChart },
   rekapPerkembangan: { label: 'Rekap Perkembangan', path: '/rekap-perkembangan', icon: TrendingUp },
   admin:         { label: 'Panel Admin',     path: '/admin',           icon: ShieldCheck },
-  catatanBK:     { label: 'Catatan BK',      path: '/catatan-bk',      icon: MessageSquare },
+  catatanBK:     { label: 'Konseling',       path: '/catatan-bk',      icon: MessageSquare },
   kalender:      { label: 'Kalender',        path: '/kalender',        icon: Calendar },
   hariEfektif:   { label: 'Minggu Efektif', path: '/hari-efektif',    icon: BarChart3 },
   pengaturan:    { label: 'Pengaturan',      path: '/pengaturan',      icon: Settings },
@@ -48,30 +49,33 @@ export function getNavForUser(user: UserType): NavItem[] {
   const items: NavItem[] = [allNav.dashboard]
 
   if (role === 'guru') {
-    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya, allNav.riwayatDokumen)
+    // Riwayat Dokumen Penanganan SENGAJA tidak di sini — hanya untuk guru yang
+    // wali kelas dan/atau BK (lihat cabang kapabilitas). Guru biasa tidak dapat.
+    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya)
 
     if (kap?.is_wali_kelas && kap?.is_bk) {
-      // keduanya
+      // Keduanya → DUA EWS terpisah: "EWS Siswa" (kelas perwalian) di Menu Wali Kelas,
+      // dan "EWS Murid BK" (kelas yang diampu BK) di Menu BK.
       items.push(
         withSection(allNav.presensiHarian, 'Menu Wali Kelas'),
         allNav.ews, allNav.siswa, allNav.refleksi,
-        withSection(allNav.catatanBK, 'Menu BK'),
+        withSection(allNav.ewsBk, 'Menu BK'),
+        allNav.catatanBK, allNav.riwayatDokumen,
       )
     } else if (kap?.is_wali_kelas) {
       items.push(
         withSection(allNav.presensiHarian, 'Menu Wali Kelas'),
-        allNav.ews, allNav.siswa, allNav.refleksi,
+        allNav.ews, allNav.siswa, allNav.refleksi, allNav.riwayatDokumen,
       )
     } else if (kap?.is_bk) {
       // BK (bukan wali kelas) TIDAK dapat allNav.siswa — halaman itu
       // (StudentPhotoManagePage, kelola foto+profil siswa) khusus wali kelas,
       // backend-nya (myClassStudents()) menolak non-wali-kelas dgn pesan "Anda bukan
       // wali kelas aktif". Dulu BK tetap dapat link ini di sidebar padahal selalu
-      // berujung ditolak — BK sudah cukup lewat "EWS Siswa" (lihat kondisi siswa) dan
-      // "Catatan BK" (kelola catatan + Murid Konseling, lihat Isu GK8).
+      // berujung ditolak. EWS BK khusus kelas yang ia ampu (scope=bk).
       items.push(
-        withSection(allNav.ews, 'Menu BK'),
-        allNav.catatanBK,
+        withSection(allNav.ewsBk, 'Menu BK'),
+        allNav.catatanBK, allNav.riwayatDokumen,
       )
     }
   } else if (role === 'wali_kelas') {
@@ -85,7 +89,7 @@ export function getNavForUser(user: UserType): NavItem[] {
     // Legacy role — backward compat (sama alasan seperti di atas, BK tidak dapat siswa)
     items.push(allNav.laporan)
     items.push(
-      withSection(allNav.ews, 'Menu BK'),
+      withSection(allNav.ewsBk, 'Menu BK'),
       allNav.catatanBK, allNav.riwayatDokumen,
     )
   } else if (role === 'admin' || role === 'wakasek') {

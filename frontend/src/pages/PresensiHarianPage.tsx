@@ -183,6 +183,7 @@ export default function PresensiHarianPage() {
               <input
                 type="date"
                 value={tanggal}
+                max={toDateStr(new Date())}
                 onChange={(e) => { setTanggal(e.target.value); setSaved(false) }}
                 className="text-sm font-medium text-center bg-transparent border-none outline-none cursor-pointer"
               />

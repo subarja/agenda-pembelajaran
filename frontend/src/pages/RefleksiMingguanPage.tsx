@@ -140,11 +140,11 @@ export default function RefleksiMingguanPage() {
         <div className="flex flex-wrap items-end gap-2">
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Dari</label>
-            <input type="date" className="rounded-md border border-input px-2 py-1.5 text-sm" value={tglMulai} onChange={e => setTglMulai(e.target.value)} />
+            <input type="date" className="rounded-md border border-input px-2 py-1.5 text-sm" value={tglMulai} max={toLocalDateStr(new Date())} onChange={e => setTglMulai(e.target.value)} />
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Sampai</label>
-            <input type="date" className="rounded-md border border-input px-2 py-1.5 text-sm" value={tglAkhir} onChange={e => setTglAkhir(e.target.value)} />
+            <input type="date" className="rounded-md border border-input px-2 py-1.5 text-sm" value={tglAkhir} max={toLocalDateStr(new Date())} onChange={e => setTglAkhir(e.target.value)} />
           </div>
           <Button variant="outline" size="sm" onClick={downloadReport} disabled={pdfPreview.loading}>
             {pdfPreview.loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
@@ -189,7 +189,8 @@ export default function RefleksiMingguanPage() {
             {!editing && (
               <div>
                 <label className="text-xs font-medium block mb-1">Minggu Mulai (Senin)</label>
-                <input type="date" className="w-full rounded-md border border-input px-3 py-2 text-sm" value={formMinggu} onChange={e => setFormMinggu(e.target.value)} />
+                {/* max=hari ini: tidak bisa menulis refleksi untuk minggu yang belum terjadi. */}
+                <input type="date" className="w-full rounded-md border border-input px-3 py-2 text-sm" value={formMinggu} max={toLocalDateStr(new Date())} onChange={e => setFormMinggu(e.target.value)} />
               </div>
             )}
 

@@ -384,7 +384,7 @@ function GuruTab() {
                   <td className="px-3 py-2 font-medium">{t.nama}</td>
                   <td className="px-3 py-2 text-muted-foreground">{t.nip}</td>
                   <td className="px-3 py-2">{t.mapel_utama}</td>
-                  <td className="px-3 py-2"><Badge variant="outline" className="capitalize">{t.role.replace(/_/g, ' ')}</Badge></td>
+                  <td className="px-3 py-2"><Badge variant="outline" className="capitalize">{t.role?.replace(/_/g, ' ') ?? '-'}</Badge></td>
                   <td className="px-3 py-2">
                     <Badge className={t.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{t.status}</Badge>
                   </td>
@@ -1012,7 +1012,7 @@ function MapelTab() {
                   <td className="w-10 px-3 py-2 text-center text-muted-foreground">{perPage === 'semua' ? i + 1 : (page - 1) * mpp + i + 1}</td>
                   <td className="px-3 py-2 font-mono text-xs">{s.kode}</td>
                   <td className="px-3 py-2 font-medium">{s.nama}</td>
-                  <td className="px-3 py-2"><Badge className={kelompokColor[s.kelompok] || ''}>{s.kelompok.replace(/_/g, ' ')}</Badge></td>
+                  <td className="px-3 py-2"><Badge className={kelompokColor[s.kelompok] || ''}>{s.kelompok?.replace(/_/g, ' ') ?? '-'}</Badge></td>
                   <td className="px-3 py-2"><Badge className={s.aktif ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{s.aktif ? 'aktif' : 'nonaktif'}</Badge></td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">

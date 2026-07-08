@@ -23,15 +23,23 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Pencarian case-insensitive yang portable di MySQL maupun PostgreSQL
-        // (ILIKE hanya ada di Postgres, kolasi MySQL tidak selalu case-insensitive).
-        QueryBuilder::macro('whereLike', function (string $column, ?string $value, string $boolean = 'and') {
+        // (ILIKE hanya ada di Postgres, kolasi MySQL tidak selalu case-insensitive) DAN
+        // otomatis membungkus wildcard `%...%` (pencarian substring).
+        //
+        // PENTING: dinamai `whereLikeCi` (BUKAN `whereLike`) dengan sengaja. Laravel 11
+        // menambahkan `whereLike` NATIVE pada Query Builder, dan method native SELALU
+        // menang atas macro (macro cuma dipakai utk method yang belum ada). Jadi bila
+        // macro ini dinamai `whereLike`, ia tak pernah terpakai dan yang jalan adalah
+        // native `whereLike` — yang TIDAK menambah `%` maupun LOWER() → pencarian jadi
+        // cocok-persis dan "ketik apa pun tidak muncul apa-apa". Nama unik mencegah itu.
+        QueryBuilder::macro('whereLikeCi', function (string $column, ?string $value, string $boolean = 'and') {
             /** @var QueryBuilder $this */
             return $this->whereRaw('LOWER('.$column.') LIKE ?', ['%'.mb_strtolower(trim((string) $value)).'%'], $boolean);
         });
 
-        QueryBuilder::macro('orWhereLike', function (string $column, ?string $value) {
+        QueryBuilder::macro('orWhereLikeCi', function (string $column, ?string $value) {
             /** @var QueryBuilder $this */
-            return $this->whereLike($column, $value, 'or');
+            return $this->whereLikeCi($column, $value, 'or');
         });
 
         $this->configurePublicDiskFromR2Setting();

@@ -25,9 +25,11 @@ class ScheduleAdminController extends Controller
             ->when($request->hari, fn ($q, $h) => $q->where('hari', $h))
             ->when($request->search, fn ($q, $s) =>
                 $q->where(fn ($inner) =>
-                    $inner->whereHas('subject', fn ($m) => $m->whereLike('nama', $s))
-                          ->orWhereHas('teacher.user', fn ($u) => $u->whereLike('nama', $s))
-                          ->orWhereHas('schoolClass', fn ($sc) => $sc->whereLike('jurusan', $s))
+                    $inner->whereLikeCi('hari', $s)
+                          ->orWhereHas('subject', fn ($m) => $m->whereLikeCi('nama', $s)->orWhereLikeCi('kode', $s))
+                          ->orWhereHas('teacher.user', fn ($u) => $u->whereLikeCi('nama', $s))
+                          ->orWhereHas('teacher', fn ($t) => $t->whereLikeCi('nip', $s))
+                          ->orWhereHas('schoolClass', fn ($sc) => $sc->whereLikeCi("CONCAT(tingkat, ' ', jurusan, ' - ', rombel)", $s))
                 )
             )
             ->orderByRaw("CASE hari WHEN 'senin' THEN 1 WHEN 'selasa' THEN 2 WHEN 'rabu' THEN 3 WHEN 'kamis' THEN 4 WHEN 'jumat' THEN 5 WHEN 'sabtu' THEN 6 END")
@@ -123,15 +125,28 @@ class ScheduleAdminController extends Controller
 
     private function format(Schedule $s): array
     {
+        // Relasi di-guard null: data hasil import bisa punya relasi yatim (kelas/mapel/
+        // guru terhapus), dan tanpa guard `$s->schoolClass->tingkat->value` melempar
+        // "Attempt to read property on null" → 500 yang bikin tabel jadwal gagal dimuat.
+        $class   = $s->schoolClass;
+        $subject = $s->subject;
+        $teacher = $s->teacher;
+
         return [
             'id'         => $s->uuid,
             'hari'       => $s->hari->value,
             'jam_mulai'  => substr($s->jam_mulai, 0, 5),
             'jam_selesai'=> substr($s->jam_selesai, 0, 5),
             'aktif'      => $s->aktif,
-            'kelas'      => ['id' => $s->schoolClass->uuid, 'label' => $s->schoolClass->tingkat->value . ' ' . $s->schoolClass->jurusan . ' - ' . $s->schoolClass->rombel],
-            'mapel'      => ['id' => $s->subject->uuid, 'nama' => $s->subject->nama],
-            'guru'       => ['id' => $s->teacher->uuid, 'nama' => $s->teacher->user->nama],
+            'kelas'      => $class
+                ? ['id' => $class->uuid, 'label' => $class->tingkat->value . ' ' . $class->jurusan . ' - ' . $class->rombel]
+                : ['id' => '', 'label' => '— (kelas terhapus)'],
+            'mapel'      => $subject
+                ? ['id' => $subject->uuid, 'nama' => $subject->nama]
+                : ['id' => '', 'nama' => '— (mapel terhapus)'],
+            'guru'       => $teacher
+                ? ['id' => $teacher->uuid, 'nama' => $teacher->user?->nama ?? '— (akun guru terhapus)']
+                : ['id' => '', 'nama' => '— (guru terhapus)'],
         ];
     }
 }

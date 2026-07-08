@@ -249,7 +249,8 @@ export default function AgendaFormPage() {
 
           <div className="space-y-1.5">
             <Label htmlFor="tanggal">Tanggal</Label>
-            <Input id="tanggal" type="date" value={form.tanggal}
+            {/* max=hari ini: agenda tidak boleh diisi untuk tanggal yang belum terjadi. */}
+            <Input id="tanggal" type="date" value={form.tanggal} max={toLocalDateStr(new Date())}
               onChange={(e) => setForm((f) => ({ ...f, tanggal: e.target.value }))}
             />
           </div>

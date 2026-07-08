@@ -53,39 +53,29 @@ class EwsController extends Controller
         $query = Student::with(['user:id,nama', 'schoolClass'])
             ->whereHas('schoolClass', fn ($q) => $q->where('academic_year_id', $ay->id));
 
+        // Scoping EWS berbasis KAPABILITAS (bukan role literal). Wali kelas & BK di app
+        // ini adalah akun role=guru — kapabilitas dari SchoolClass.wali_kelas_id / Teacher.is_bk.
+        // Enum masih punya role literal `wali_kelas`/`bk` (akun lama belum termigrasi); dulu
+        // `UserRole::BK` TIDAK ada di match ini sehingga jatuh ke `default => null` dan guru BK
+        // MELIHAT SELURUH SISWA (bocor). Sekarang: hanya admin & wakasek yang lihat semua;
+        // selain siswa/orang tua, semua staf dibatasi allowedClassIdsForUser().
         match ($user->role) {
-            UserRole::WaliKelas => $query->whereHas('schoolClass', fn ($q) => $q->where('wali_kelas_id', $user->id)),
-            // EWS HANYA untuk wali kelas (kelas yang diwalikelasinya) dan guru BK (kelas
-            // tempat dia mengajar BK, dari Schedule — sama seperti pola routing BK di
-            // GK8) — guru biasa (bukan keduanya) TIDAK dapat akses EWS sama sekali, walau
-            // sebelumnya bisa lihat EWS semua kelas yang dia ajar (bug, lihat Isu GK3).
-            UserRole::Guru      => (function () use ($query, $user) {
-                $teacher = Teacher::where('user_id', $user->id)->first();
-                if (! $teacher) {
-                    $query->whereRaw('1=0');
-                    return;
-                }
-
-                $kelasWaliIds = \App\Models\SchoolClass::where('wali_kelas_id', $user->id)->pluck('id');
-
-                if ($teacher->is_bk) {
-                    $classIds = Schedule::where('teacher_id', $teacher->id)->where('aktif', true)->pluck('class_id')->unique()->values();
-                    $query->where(fn ($q) => $q->whereIn('class_id', $kelasWaliIds)->orWhereIn('class_id', $classIds));
-                    return;
-                }
-
-                if ($kelasWaliIds->isNotEmpty()) {
-                    $query->whereIn('class_id', $kelasWaliIds);
-                    return;
-                }
-
-                $query->whereRaw('1=0');
-            })(),
             UserRole::Siswa     => $query->whereHas('user', fn ($q) => $q->where('id', $user->id)),
             UserRole::OrangTua  => $user->linked_student_id
                 ? $query->where('id', $user->linked_student_id)
                 : $query->whereRaw('1=0'),
-            default             => null,
+            default             => (function () use ($query, $user, $request) {
+                // DAFTAR EWS pakai ewsListClassIdsForUser dgn `scope`:
+                //  - scope=wali → HANYA kelas perwaliannya (menu Wali Kelas)
+                //  - scope=bk   → HANYA kelas yang ia ampu sbg BK (menu Guru BK)
+                //  - tanpa scope → wali dulu lalu BK (kompat dashboard/prefetch)
+                // Beda dari allowedClassIdsForUser (union) yg dipakai otorisasi buka detail.
+                $allowed = $this->ewsListClassIdsForUser($user, $request->query('scope'));
+                if ($allowed === null) return;                 // admin/wakasek: semua siswa
+                $allowed->isEmpty()
+                    ? $query->whereRaw('1=0')                   // guru biasa (bukan wali/BK): tak ada
+                    : $query->whereIn('class_id', $allowed->all());
+            })(),
         };
 
         if ($request->filled('class_id')) {
@@ -293,8 +283,12 @@ class EwsController extends Controller
                 $visibleSessions = $r->handlingSessions->filter(function ($s) use ($viewerIsAdmin, $viewerTeacher, $r) {
                     if ($viewerIsAdmin) return true;
                     if ($s->jenis === \App\Enums\HandlingSessionJenis::WaliKelas) return true;
-                    if ($s->is_resume) return true;
-                    return $viewerTeacher && $r->bk_teacher_id === $viewerTeacher->id;
+                    // Sesi BK: penangani (bk_teacher) selalu lihat catatannya sendiri;
+                    // pihak lain (wali kelas) HANYA bila dibagikan eksplisit (opt-in) atau
+                    // ringkasan penutup (is_resume, selalu dibagikan).
+                    $isBkHandler = $viewerTeacher && $r->bk_teacher_id === $viewerTeacher->id;
+                    if ($isBkHandler) return true;
+                    return $s->is_resume || $s->shared_with_wali_kelas;
                 })->values();
 
                 return [
@@ -326,19 +320,37 @@ class EwsController extends Controller
                         'role' => $u->role->value,
                     ]),
                     'handling_sessions'        => $visibleSessions->map(fn ($s) => [
-                        'id'           => $s->uuid,
-                        'jenis'        => $s->jenis->value,
-                        'is_resume'    => $s->is_resume,
-                        'tanggal'      => $s->tanggal->format('Y-m-d'),
-                        'catatan'      => $s->catatan,
-                        'link_dokumen' => $s->link_dokumen,
-                        'link_foto'    => $s->link_foto,
-                        'links'        => $s->links ?? [],
-                        'handled_by'   => $s->handler->nama,
-                        'created_at'   => $s->created_at->format('Y-m-d H:i'),
+                        'id'                     => $s->uuid,
+                        'jenis'                  => $s->jenis->value,
+                        'judul'                  => $s->judul,
+                        'is_resume'              => $s->is_resume,
+                        'shared_with_wali_kelas' => $s->shared_with_wali_kelas,
+                        // Toggle berbagi hanya utk BK penangani, sesi BK, bukan resume.
+                        'can_toggle_share'       => $viewerTeacher && $r->bk_teacher_id === $viewerTeacher->id
+                                                    && $s->jenis === \App\Enums\HandlingSessionJenis::Bk && ! $s->is_resume,
+                        'tanggal'                => $s->tanggal->format('Y-m-d'),
+                        'catatan'                => $s->catatan,
+                        'link_dokumen'           => $s->link_dokumen,
+                        'link_foto'              => $s->link_foto,
+                        'links'                  => $s->links ?? [],
+                        'handled_by'             => $s->handler->nama,
+                        'created_at'             => $s->created_at->format('Y-m-d H:i'),
                     ])->values(),
                 ];
             });
+
+        // Guru BK pengampu kelas siswa — dipakai FE utk modal konfirmasi "Ajukan Konseling"
+        // (tampilkan nama + foto BK tujuan). Bisa >1 bila kelas diampu beberapa guru BK.
+        $bkPengampu = collect();
+        if ($student->schoolClass) {
+            $bkTeacherIds = Schedule::where('class_id', $student->schoolClass->id)
+                ->where('aktif', true)->pluck('teacher_id')->unique();
+            $bkPengampu = Teacher::whereIn('id', $bkTeacherIds)->where('is_bk', true)->with('user')->get()
+                ->map(fn ($t) => [
+                    'nama'     => $t->user?->nama,
+                    'foto_url' => $t->user?->foto ? \Illuminate\Support\Facades\Storage::disk('public')->url($t->user->foto) : null,
+                ])->values();
+        }
 
         return response()->json([
             'data' => [
@@ -350,6 +362,7 @@ class EwsController extends Controller
                         ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
                         : null,
                     'foto_url' => $student->foto ? \Illuminate\Support\Facades\Storage::disk('public')->url($student->foto) : null,
+                    'bk_pengampu' => $bkPengampu,
                 ],
                 'level'            => $level,
                 'dimensions'       => [
@@ -698,6 +711,62 @@ class EwsController extends Controller
     }
 
     /**
+     * Kelas mana yang boleh dilihat seorang staf di EWS — sumber kebenaran tunggal untuk
+     * scoping index() maupun otorisasi per-siswa (show/dimensionPdf), berbasis KAPABILITAS
+     * bukan role literal.
+     *  - null            = boleh semua siswa (admin & wakasek, konsumen EWS tingkat sekolah)
+     *  - Collection<int> = daftar class_id yang boleh:
+     *      • wali kelas → kelas yang diwalikelasinya (SchoolClass.wali_kelas_id)
+     *      • guru BK    → kelas yang ia ampu (Schedule aktif miliknya)
+     *      • keduanya   → gabungan
+     *  - Collection kosong = tidak boleh siswa mana pun (guru biasa non-wali/non-BK, dsb.)
+     */
+    private function allowedClassIdsForUser(\App\Models\User $user): ?Collection
+    {
+        if (in_array($user->role, [UserRole::Admin, UserRole::Wakasek], true)) {
+            return null;
+        }
+
+        $teacher      = Teacher::where('user_id', $user->id)->first();
+        $kelasWaliIds = \App\Models\SchoolClass::where('wali_kelas_id', $user->id)->pluck('id');
+        $bkClassIds   = ($teacher && $teacher->is_bk)
+            ? Schedule::where('teacher_id', $teacher->id)->where('aktif', true)->pluck('class_id')
+            : collect();
+
+        return $kelasWaliIds->merge($bkClassIds)->unique()->values();
+    }
+
+    /**
+     * Kelas utk DAFTAR EWS (index) — SENGAJA beda dari allowedClassIdsForUser() yang
+     * menggabungkan. Daftar EWS wali kelas HANYA menampilkan siswa kelas perwaliannya
+     * (bukan kelas mapel yang ia ajar / kelas yang ia ampu sbg BK). Guru BK membuka
+     * DETAIL siswa konseling lewat menu "Murid Konseling" (+ authorizeEwsStudentAccess
+     * yang tetap union), bukan lewat daftar EWS ini. Guru BK yang BUKAN wali kelas tetap
+     * melihat kelas yang ia ampu di daftar.
+     *  - null = semua (admin/wakasek); Collection = daftar class_id; kosong = nihil.
+     */
+    private function ewsListClassIdsForUser(\App\Models\User $user, ?string $scope = null): ?Collection
+    {
+        if (in_array($user->role, [UserRole::Admin, UserRole::Wakasek], true)) {
+            return null;
+        }
+
+        $teacher      = Teacher::where('user_id', $user->id)->first();
+        $kelasWaliIds = \App\Models\SchoolClass::where('wali_kelas_id', $user->id)->pluck('id')->unique()->values();
+        $bkClassIds   = ($teacher && $teacher->is_bk)
+            ? Schedule::where('teacher_id', $teacher->id)->where('aktif', true)->pluck('class_id')->unique()->values()
+            : collect();
+
+        // Menu terpisah: EWS di menu Wali Kelas (homeroom) vs EWS di menu Guru BK (kelas
+        // yang diampu). Guru yang wali kelas SEKALIGUS BK punya DUA menu EWS berbeda.
+        if ($scope === 'bk')   return $bkClassIds;
+        if ($scope === 'wali') return $kelasWaliIds;
+
+        // Tanpa scope (mis. dashboard/prefetch lama): wali kelas didahulukan, lalu BK.
+        return $kelasWaliIds->isNotEmpty() ? $kelasWaliIds : $bkClassIds;
+    }
+
+    /**
      * GK3: satu titik otorisasi untuk SEMUA endpoint EWS per-siswa (show, dimensionPdf,
      * dan siapa pun lagi nanti) — supaya tidak ada lagi endpoint yang lupa dijaga seperti
      * yang ditemukan saat verifikasi ulang (dimensionPdf() dulu TANPA otorisasi sama
@@ -710,18 +779,24 @@ class EwsController extends Controller
             if (! $own || $own->id !== $student->id) {
                 return response()->json(['message' => 'Akses ditolak.'], 403);
             }
-        } elseif ($user->role === UserRole::OrangTua) {
+            return null;
+        }
+
+        if ($user->role === UserRole::OrangTua) {
             if (! $user->linked_student_id || $user->linked_student_id !== $student->id) {
                 return response()->json(['message' => 'Akses ditolak.'], 403);
             }
-        } elseif ($user->role === UserRole::Guru) {
-            $teacher = Teacher::where('user_id', $user->id)->first();
-            $isWaliKelasnya = $student->schoolClass?->wali_kelas_id === $user->id;
-            $isBkRelevan = $teacher?->is_bk && $student->schoolClass && Schedule::where('teacher_id', $teacher->id)
-                ->where('class_id', $student->schoolClass->id)->where('aktif', true)->exists();
-            if (! $isWaliKelasnya && ! $isBkRelevan) {
-                return response()->json(['message' => 'Anda tidak memiliki akses ke EWS siswa ini.'], 403);
-            }
+            return null;
+        }
+
+        // Staf (guru/wali kelas/BK/admin/wakasek) — dibatasi kapabilitas yang sama dengan index().
+        // Sebelumnya role literal `bk`/`wali_kelas` lolos ke `return null` (boleh akses siswa mana pun).
+        $allowed = $this->allowedClassIdsForUser($user);
+        if ($allowed === null) {
+            return null; // admin/wakasek
+        }
+        if (! $student->class_id || ! $allowed->contains($student->class_id)) {
+            return response()->json(['message' => 'Anda tidak memiliki akses ke EWS siswa ini.'], 403);
         }
 
         return null;

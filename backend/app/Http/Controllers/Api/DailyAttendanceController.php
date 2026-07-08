@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DailyAttendance;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Traits\RejectsFutureDate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,8 @@ use Illuminate\Validation\Rule;
 
 class DailyAttendanceController extends Controller
 {
+    use RejectsFutureDate;
+
     // GET /daily-attendance?tanggal=YYYY-MM-DD
     public function index(Request $request): JsonResponse
     {
@@ -63,13 +66,13 @@ class DailyAttendanceController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'tanggal'          => 'required|date',
+            'tanggal'          => ['required', 'date', $this->notFutureDateRule()],
             'class_id'         => 'nullable|string',
             'records'          => 'required|array|min:1',
             'records.*.student_id' => 'required|string',
             'records.*.status'     => ['required', Rule::in(['hadir', 'sakit', 'izin', 'alpha'])],
             'records.*.catatan'    => 'nullable|string|max:500',
-        ]);
+        ], $this->notFutureDateMessages());
 
         $kelas = $this->resolveClass($user, $request->input('class_id'));
 

@@ -34,6 +34,7 @@ function formatUkuran(bytes: number | null): string {
 export default function RiwayatDokumenPenangananPage() {
   const [search, setSearch] = useState('')
   const [tipeFilter, setTipeFilter] = useState<'semua' | 'gambar' | 'pdf'>('semua')
+  const [filterKelas, setFilterKelas] = useState('')
   const [downloadingAll, setDownloadingAll] = useState(false)
   const [downloadingPath, setDownloadingPath] = useState<string | null>(null)
 
@@ -42,15 +43,22 @@ export default function RiwayatDokumenPenangananPage() {
     queryFn: () => api.get('/handling-documents').then(r => r.data.data as DokumenPenanganan[]),
   })
 
+  // Daftar kelas unik utk filter (berguna utk admin/BK yang mencakup banyak kelas).
+  const kelasList = useMemo(
+    () => Array.from(new Set((data ?? []).map(d => d.kelas).filter(k => k && k !== '-'))).sort(),
+    [data],
+  )
+
   const filtered = useMemo(() => {
     const list = data ?? []
     return list.filter(d => {
       if (tipeFilter !== 'semua' && d.tipe !== tipeFilter) return false
+      if (filterKelas && d.kelas !== filterKelas) return false
       if (!search.trim()) return true
       const q = search.toLowerCase()
       return d.nama_siswa.toLowerCase().includes(q) || d.kelas.toLowerCase().includes(q) || d.nama_file.toLowerCase().includes(q)
     })
-  }, [data, search, tipeFilter])
+  }, [data, search, tipeFilter, filterKelas])
 
   async function downloadOne(doc: DokumenPenanganan) {
     setDownloadingPath(doc.path)
@@ -70,11 +78,14 @@ export default function RiwayatDokumenPenangananPage() {
   async function downloadAll() {
     setDownloadingAll(true)
     try {
-      const resp = await api.get('/handling-documents/download-all', { responseType: 'blob' })
+      // ZIP disusun per-kelas oleh backend; bila filter kelas aktif → hanya kelas itu.
+      const params = filterKelas ? { kelas: filterKelas } : {}
+      const resp = await api.get('/handling-documents/download-all', { params, responseType: 'blob' })
       const url = URL.createObjectURL(resp.data as Blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `riwayat_dokumen_penanganan_${new Date().toISOString().slice(0, 10)}.zip`
+      const suffix = filterKelas ? filterKelas.replace(/[^\w-]+/g, '_') : new Date().toISOString().slice(0, 10)
+      a.download = `riwayat_dokumen_penanganan_${suffix}.zip`
       a.click()
       URL.revokeObjectURL(url)
     } finally {
@@ -91,7 +102,7 @@ export default function RiwayatDokumenPenangananPage() {
         </div>
         <Button onClick={downloadAll} disabled={downloadingAll || !filtered.length}>
           {downloadingAll ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileArchive className="h-4 w-4 mr-1.5" />}
-          Download Semua (ZIP)
+          {filterKelas ? `Download Kelas ${filterKelas} (ZIP)` : 'Download Semua per Kelas (ZIP)'}
         </Button>
       </div>
 
@@ -105,6 +116,13 @@ export default function RiwayatDokumenPenangananPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+        {kelasList.length > 0 && (
+          <select value={filterKelas} onChange={e => setFilterKelas(e.target.value)}
+            className="rounded-md border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ring max-w-[200px]">
+            <option value="">Semua Kelas</option>
+            {kelasList.map(k => <option key={k} value={k}>{k}</option>)}
+          </select>
+        )}
         <div className="flex gap-1 rounded-md border p-1 bg-white">
           {(['semua', 'gambar', 'pdf'] as const).map(t => (
             <button key={t} onClick={() => setTipeFilter(t)}

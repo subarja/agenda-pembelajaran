@@ -134,7 +134,7 @@ export default function StudentCaseNotesPage() {
   return (
     <div className="max-w-2xl space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Catatan BK & Wali Kelas</h1>
+        <h1 className="text-xl font-bold">Konseling</h1>
       </div>
 
       {/* GK8/GK9: Murid Konseling — kasus yang diajukan wali kelas & sedang/sudah
@@ -209,7 +209,7 @@ export default function StudentCaseNotesPage() {
               )}
               <div className="space-y-1.5">
                 <Label htmlFor="tanggal">Tanggal</Label>
-                <Input id="tanggal" type="date" value={formTanggal} onChange={e => setFormTanggal(e.target.value)} />
+                <Input id="tanggal" type="date" value={formTanggal} max={toLocalDateStr(new Date())} onChange={e => setFormTanggal(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="catatan">Catatan <span className="text-red-500">*</span></Label>

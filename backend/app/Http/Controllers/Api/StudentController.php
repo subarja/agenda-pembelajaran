@@ -45,8 +45,8 @@ class StudentController extends Controller
 
         $keyword = $request->search;
 
-        $students = Student::whereHas('user', fn ($q) => $q->whereLike('nama', $keyword))
-            ->orWhereLike('nis', $keyword)
+        $students = Student::whereHas('user', fn ($q) => $q->whereLikeCi('nama', $keyword))
+            ->orWhereLikeCi('nis', $keyword)
             ->with(['user:id,nama', 'schoolClass'])
             ->limit(15)
             ->get()

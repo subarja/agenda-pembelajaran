@@ -23,8 +23,10 @@ class UserAdminController extends Controller
     {
         $users = User::whereIn('role', self::MANAGED_ROLES)
             ->with(['linkedStudent.user:id,nama', 'linkedStudent.schoolClass'])
-            ->when($request->search, fn ($q, $s) => $q->whereLike('nama', $s)->orWhereLike('email', $s)
-            )
+            ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->whereLikeCi('nama', $s)
+                ->orWhereLikeCi('email', $s)
+                ->orWhereLikeCi('role', $s)
+            ))
             ->orderBy('nama')
             ->paginate(20);
 
@@ -152,21 +154,29 @@ class UserAdminController extends Controller
         if ($role === 'guru') {
             $users = User::whereIn('role', [UserRole::Guru, UserRole::WaliKelas, UserRole::BK, UserRole::Wakasek])
                 ->with('teacher')
-                ->when($request->search, fn ($q, $s) => $q->whereLike('nama', $s)->orWhereLike('email', $s)
-                )
+                ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->whereLikeCi('nama', $s)
+                    ->orWhereLikeCi('email', $s)
+                    ->orWhereLikeCi('role', $s)
+                    ->orWhereHas('teacher', fn ($t) => $t->whereLikeCi('nip', $s)->orWhereLikeCi('nuptk', $s)->orWhereLikeCi('mapel_utama', $s))
+                ))
                 ->orderBy('nama')
                 ->paginate(50);
         } elseif ($role === 'siswa') {
             $users = User::where('role', UserRole::Siswa)
                 ->with(['student.schoolClass'])
-                ->when($request->search, fn ($q, $s) => $q->whereLike('nama', $s)
-                )
+                ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->whereLikeCi('nama', $s)
+                    ->orWhereLikeCi('email', $s)
+                    ->orWhereHas('student', fn ($st) => $st->whereLikeCi('nis', $s)->orWhereLikeCi('nisn', $s))
+                    ->orWhereHas('student.schoolClass', fn ($sc) => $sc->whereLikeCi("CONCAT(tingkat, ' ', jurusan, ' - ', rombel)", $s))
+                ))
                 ->orderBy('nama')
                 ->paginate(100);
         } else {
             $users = User::whereIn('role', [UserRole::Admin, UserRole::OrangTua])
-                ->when($request->search, fn ($q, $s) => $q->whereLike('nama', $s)->orWhereLike('email', $s)
-                )
+                ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->whereLikeCi('nama', $s)
+                    ->orWhereLikeCi('email', $s)
+                    ->orWhereLikeCi('role', $s)
+                ))
                 ->orderBy('nama')
                 ->paginate(50);
         }

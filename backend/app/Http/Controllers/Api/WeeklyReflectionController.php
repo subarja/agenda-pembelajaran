@@ -8,6 +8,7 @@ use App\Models\SchoolClass;
 use App\Models\WeeklyReflection;
 use App\Traits\BuildsXlsxReports;
 use App\Traits\HandlesPdfPreview;
+use App\Traits\RejectsFutureDate;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ class WeeklyReflectionController extends Controller
 {
     use HandlesPdfPreview;
     use BuildsXlsxReports;
+    use RejectsFutureDate;
 
     private function myKelas(Request $request): SchoolClass
     {
@@ -59,9 +61,9 @@ class WeeklyReflectionController extends Controller
         $teacher = $request->user()->teacher;
 
         $data = $request->validate([
-            'minggu_mulai' => ['required', 'date'],
+            'minggu_mulai' => ['required', 'date', $this->notFutureDateRule()],
             'catatan'      => ['required', 'string', 'max:5000'],
-        ]);
+        ], $this->notFutureDateMessages('minggu_mulai'));
 
         $reflection = WeeklyReflection::updateOrCreate(
             ['teacher_id' => $teacher->id, 'class_id' => $kelas->id, 'minggu_mulai' => $data['minggu_mulai']],
