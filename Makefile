@@ -15,11 +15,11 @@ setup:
 	@echo "==> [2/6] Build image dan jalankan semua service..."
 	docker compose up --build -d
 	@echo ""
-	@echo "==> [3/6] Menunggu PostgreSQL siap..."
-	@until docker compose exec -T db pg_isready -U agenda_user -d agenda_db > /dev/null 2>&1; do \
+	@echo "==> [3/6] Menunggu MySQL siap..."
+	@until docker compose exec -T db mysqladmin ping -h localhost -u agenda_user -psecret --silent > /dev/null 2>&1; do \
 		printf "."; sleep 2; \
 	done
-	@echo " ✓ PostgreSQL siap"
+	@echo " ✓ MySQL siap"
 	@echo ""
 	@echo "==> [4/6] Menunggu backend Laravel siap..."
 	@until docker compose exec -T backend php artisan --version > /dev/null 2>&1; do \

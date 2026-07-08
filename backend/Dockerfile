@@ -8,6 +8,7 @@ RUN apk add --no-cache \
         oniguruma-dev \
         icu-dev \
         postgresql16-client \
+        mysql-client \
         libpng-dev \
         libjpeg-turbo-dev \
         freetype-dev \
@@ -16,6 +17,8 @@ RUN apk add --no-cache \
     && docker-php-ext-install \
         pdo_pgsql \
         pgsql \
+        pdo_mysql \
+        mysqli \
         bcmath \
         mbstring \
         xml \
