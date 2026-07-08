@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Admin\SubjectAdminController;
 use App\Http\Controllers\Api\Admin\TeacherAdminController;
 use App\Http\Controllers\Api\Admin\CalendarController;
 use App\Http\Controllers\Api\Admin\DatabaseBackupController;
+use App\Http\Controllers\Api\Admin\R2SettingController;
 use App\Http\Controllers\Api\Admin\UserAdminController;
 use App\Http\Controllers\Api\EffectiveDayController;
 use App\Http\Controllers\Api\AgendaController;
@@ -173,9 +174,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('recommendations/{uuid}/verify',           [RecommendationController::class, 'verify']);
     Route::put('recommendations/{uuid}/status',           [RecommendationController::class, 'updateStatus']);
     Route::post('recommendations/{uuid}/sessions',        [RecommendationController::class, 'storeSession']);
+    Route::post('recommendations/{uuid}/sessions/upload', [RecommendationController::class, 'uploadDocumentation']);
     Route::put('recommendations/{uuid}/sessions/{sid}',   [RecommendationController::class, 'updateSession']);
     Route::delete('recommendations/{uuid}/sessions/{sid}',[RecommendationController::class, 'deleteSession']);
     Route::get('students/{uuid}/handling-report',         [RecommendationController::class, 'handlingReport']);
+
+    // ── Riwayat Dokumen Penanganan (admin/wakasek=semua, wali kelas=kelasnya, guru lain=miliknya) ──
+    Route::get('handling-documents',                      [RecommendationController::class, 'documents']);
+    Route::get('handling-documents/download',              [RecommendationController::class, 'downloadDocument']);
+    Route::get('handling-documents/download-all',          [RecommendationController::class, 'downloadAllDocuments']);
 
     // ── Eskalasi Konseling ke BK (GK8-GK11) ────────────────────────────────────
     Route::get('bk/konseling',                             [RecommendationController::class, 'myKonseling']);
@@ -212,6 +219,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Tujuan Pembelajaran — admin revert
         Route::post('learning-objectives/revert/{uuid}',        [LearningObjectiveController::class, 'adminRevert']);
+
+        // Penyimpanan R2 (Cloudflare object storage) — admin
+        Route::get('r2/settings',                               [R2SettingController::class, 'show']);
+        Route::put('r2/settings',                               [R2SettingController::class, 'update']);
+        Route::post('r2/test',                                  [R2SettingController::class, 'test']);
 
         // Kalender Google + Hari Efektif — admin
         Route::get('calendar/settings',                         [CalendarController::class, 'getSettings']);

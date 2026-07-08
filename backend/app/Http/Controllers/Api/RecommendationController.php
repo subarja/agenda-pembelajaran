@@ -11,13 +11,16 @@ use App\Models\PrintSetting;
 use App\Models\Recommendation;
 use App\Models\Schedule;
 use App\Models\Student;
+use App\Models\SchoolClass;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Notifications\KonselingDiajukanNotification;
+use App\Support\FileCompressor;
 use App\Traits\HandlesPdfPreview;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class RecommendationController extends Controller
 {
@@ -144,6 +147,12 @@ class RecommendationController extends Controller
             'links'                => ['nullable', 'array', 'max:5'],
             'links.*.url'          => ['required_with:links', 'url', 'max:500'],
             'links.*.keterangan'   => ['required_with:links', 'string', 'max:200'],
+            // 3 field ini cuma terisi utk link hasil "Upload File" (lihat uploadDocumentation)
+            // — link yang ditempel manual tidak punya ini. Dipakai fitur "Riwayat Dokumen
+            // Penanganan" utk membedakan file yang beneran diupload vs link eksternal.
+            'links.*.uploaded'     => ['sometimes', 'boolean'],
+            'links.*.path'         => ['sometimes', 'nullable', 'string', 'max:500'],
+            'links.*.size'         => ['sometimes', 'nullable', 'integer'],
         ]);
 
         $session = HandlingSession::create([
@@ -170,6 +179,39 @@ class RecommendationController extends Controller
         ], 201);
     }
 
+    // POST /recommendations/{uuid}/sessions/upload — upload foto/PDF dokumentasi
+    // penanganan. Tidak ada kolom DB baru: hasil upload cuma jadi URL yang lalu
+    // ditambahkan user ke array `links` (skema yang sudah ada) saat submit sesi,
+    // sama seperti kalau user tempel link manual. File dikompresi dulu (FileCompressor)
+    // sebelum disimpan — upload asli dari HP bisa besar, hasil kompresi jauh lebih kecil.
+    public function uploadDocumentation(Request $request, string $uuid): JsonResponse
+    {
+        $rec = Recommendation::where('uuid', $uuid)->firstOrFail();
+        $this->authorizeSessionWrite($request, $rec);
+
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'],
+        ]);
+
+        $file = $request->file('file');
+        $compressedPath = FileCompressor::compress($file);
+        $isPdf = $file->getMimeType() === 'application/pdf';
+        $extension = $isPdf ? 'pdf' : 'jpg'; // FileCompressor selalu re-encode gambar jadi jpg
+        $storedPath = 'dokumentasi_penanganan/'.uniqid('doc_', true).'.'.$extension;
+
+        Storage::disk('public')->put($storedPath, file_get_contents($compressedPath));
+        if ($compressedPath !== $file->getRealPath()) {
+            @unlink($compressedPath);
+        }
+
+        return response()->json([
+            'url'      => Storage::disk('public')->url($storedPath),
+            'path'     => $storedPath,
+            'filename' => $file->getClientOriginalName(),
+            'size'     => Storage::disk('public')->size($storedPath),
+        ], 201);
+    }
+
     // PUT /recommendations/{uuid}/sessions/{sessionId}
     public function updateSession(Request $request, string $uuid, string $sessionId): JsonResponse
     {
@@ -189,6 +231,9 @@ class RecommendationController extends Controller
             'links'              => ['nullable', 'array', 'max:5'],
             'links.*.url'        => ['required_with:links', 'url', 'max:500'],
             'links.*.keterangan' => ['required_with:links', 'string', 'max:200'],
+            'links.*.uploaded'   => ['sometimes', 'boolean'],
+            'links.*.path'       => ['sometimes', 'nullable', 'string', 'max:500'],
+            'links.*.size'       => ['sometimes', 'nullable', 'integer'],
         ]);
 
         $session->update($data);
@@ -449,6 +494,123 @@ class RecommendationController extends Controller
             'handled_by'   => $s->handler->nama,
             'created_at'   => $s->created_at->format('Y-m-d H:i'),
         ];
+    }
+
+    // ── Riwayat Dokumen Penanganan ────────────────────────────────────────────
+
+    // GET /handling-documents — daftar semua foto/PDF yang PERNAH diupload (bukan link
+    // manual) lewat fitur dokumentasi penanganan siswa. Scope beda per kapabilitas:
+    // admin/wakasek = semua sekolah, wali kelas = siswa di kelasnya sendiri (thn ajaran
+    // aktif), guru lain (termasuk BK) = sesi yang dia buat sendiri. Reuse pola scoping
+    // yang sama dengan EwsController::index()/UserResource::computeKapabilitas() —
+    // JANGAN cek literal role 'wali_kelas'/'bk' (lihat Isu GK6, akun guru asli selalu
+    // role='guru', status wali-kelas/BK adalah kapabilitas terpisah).
+    public function documents(Request $request): JsonResponse
+    {
+        return response()->json(['data' => $this->scopedDocuments($request)]);
+    }
+
+    // GET /handling-documents/download?path=... — download SATU dokumen dgn nama file
+    // rapi (bukan nama acak hasil uniqid() di storage). `path` divalidasi harus ada di
+    // scope dokumen yang boleh dilihat user ini, bukan sekadar percaya query param.
+    public function downloadDocument(Request $request)
+    {
+        $request->validate(['path' => ['required', 'string']]);
+
+        $doc = collect($this->scopedDocuments($request))->firstWhere('path', $request->path);
+        abort_unless($doc, 404, 'Dokumen tidak ditemukan atau bukan milik Anda.');
+
+        $ext = pathinfo($doc['path'], PATHINFO_EXTENSION);
+
+        return Storage::disk('public')->download($doc['path'], $this->safeFilename($doc).'.'.$ext);
+    }
+
+    // GET /handling-documents/download-all — ZIP semua dokumen dalam scope user ini.
+    public function downloadAllDocuments(Request $request)
+    {
+        $docs = $this->scopedDocuments($request);
+        abort_if(empty($docs), 404, 'Tidak ada dokumen untuk diunduh.');
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'riwayat_dok_').'.zip';
+        $zip = new \ZipArchive;
+        $zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+
+        $usedNames = [];
+        foreach ($docs as $doc) {
+            if (! Storage::disk('public')->exists($doc['path'])) {
+                continue;
+            }
+            $ext = pathinfo($doc['path'], PATHINFO_EXTENSION);
+            $name = $this->safeFilename($doc).'.'.$ext;
+            $i = 1;
+            while (in_array($name, $usedNames, true)) {
+                $name = $this->safeFilename($doc)."_{$i}.{$ext}";
+                $i++;
+            }
+            $usedNames[] = $name;
+            $zip->addFromString($name, Storage::disk('public')->get($doc['path']));
+        }
+        $zip->close();
+
+        return response()->download($zipPath, 'riwayat_dokumen_penanganan_'.now()->format('Y-m-d').'.zip')
+            ->deleteFileAfterSend(true);
+    }
+
+    private function safeFilename(array $doc): string
+    {
+        $raw = pathinfo("{$doc['kelas']}_{$doc['nama_siswa']}_{$doc['tanggal']}_{$doc['nama_file']}", PATHINFO_FILENAME);
+        $clean = preg_replace('/[^A-Za-z0-9 _-]/', '', str_replace('/', '-', $raw));
+
+        return trim(preg_replace('/\s+/', '_', $clean), '_') ?: 'dokumen';
+    }
+
+    private function scopedDocuments(Request $request): array
+    {
+        $user = $request->user();
+
+        $query = HandlingSession::with(['recommendation.student.user', 'recommendation.student.schoolClass', 'handler']);
+
+        if (! in_array($user->role->value, ['admin', 'wakasek'], true)) {
+            $kelasWali = SchoolClass::where('wali_kelas_id', $user->id)
+                ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+                ->first();
+
+            if ($kelasWali) {
+                $query->whereHas('recommendation.student', fn ($q) => $q->where('class_id', $kelasWali->id));
+            } else {
+                $query->where('handled_by', $user->id);
+            }
+        }
+
+        $documents = [];
+        foreach ($query->orderByDesc('tanggal')->get() as $s) {
+            $student = $s->recommendation->student;
+            $kelas = $student->schoolClass
+                ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
+                : '-';
+
+            foreach (($s->links ?? []) as $link) {
+                if (empty($link['uploaded']) || empty($link['path'])) {
+                    continue; // cuma file yang beneran diupload (punya `path`), bukan link tempel manual
+                }
+
+                $documents[] = [
+                    'session_id' => $s->uuid,
+                    'recommendation_id' => $s->recommendation->uuid,
+                    'nama_siswa' => $student->user->nama ?? '-',
+                    'kelas' => $kelas,
+                    'tanggal' => $s->tanggal->format('Y-m-d'),
+                    'diupload_oleh' => $s->handler->nama ?? '-',
+                    'nama_file' => $link['keterangan'] ?? 'Dokumen',
+                    'url' => $link['url'],
+                    'path' => $link['path'],
+                    'ukuran' => $link['size'] ?? null,
+                    'tipe' => str_ends_with(strtolower($link['path']), '.pdf') ? 'pdf' : 'gambar',
+                ];
+            }
+        }
+
+        return $documents;
     }
 
     private function authorizeAdminOrWakasek(Request $request): void

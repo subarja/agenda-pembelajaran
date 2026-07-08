@@ -12,6 +12,7 @@ RUN apk add --no-cache \
         libpng-dev \
         libjpeg-turbo-dev \
         freetype-dev \
+        ghostscript \
         $PHPIZE_DEPS \
     && docker-php-ext-configure gd --with-jpeg --with-freetype \
     && docker-php-ext-install \
@@ -26,6 +27,7 @@ RUN apk add --no-cache \
         pcntl \
         intl \
         gd \
+        exif \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apk del $PHPIZE_DEPS \

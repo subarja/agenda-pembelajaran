@@ -103,7 +103,7 @@ body {
   <table>
     <tr>
       <td rowspan="7" style="width:23mm; vertical-align:top; padding-right:3mm;">
-        <img src="file://{{ $fotoGuruPath }}" style="width:20mm; height:auto; border:1px solid #ccc;">
+        <img src="{{ $fotoGuruPath }}" style="width:20mm; height:auto; border:1px solid #ccc;">
       </td>
       <td style="width:155px">Nama Guru</td><td style="width:12px">:</td>
       <td>{{ $guru }}</td>

@@ -43,22 +43,15 @@ return [
             // Langsung ke public/storage (bukan storage/app/public + symlink) supaya
             // tidak butuh `storage:link` — banyak shared hosting (cPanel) menonaktifkan
             // symlink() dan exec() sekaligus, jadi symlink tidak bisa dibuat sama sekali.
+            //
+            // Default disk ini SELALU lokal di sini. Kalau admin aktifkan R2 lewat Admin
+            // Panel > Penyimpanan, disk ini dialihkan ke S3/R2 secara runtime lewat
+            // AppServiceProvider::configurePublicDiskFromR2Setting() — lihat R2Setting.
+            // Tidak ada jalur env (.env) untuk ini, sengaja: kredensial R2 dikelola lewat
+            // UI (terenkripsi di DB), bukan file konfigurasi server.
             'root' => public_path('storage'),
             'url' => env('APP_URL').'/storage',
             'visibility' => 'public',
-            'throw' => false,
-            'report' => false,
-        ],
-
-        's3' => [
-            'driver' => 's3',
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_BUCKET'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => false,
             'report' => false,
         ],

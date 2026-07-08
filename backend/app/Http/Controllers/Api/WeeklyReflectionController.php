@@ -133,7 +133,7 @@ class WeeklyReflectionController extends Controller
         if ($request->format === 'pdf') {
             $kopSuratPath  = 'file://' . public_path('images/kop_surat.jpg');
             $printSettings = PrintSetting::instance($request->user()->id);
-            $fotoGuruPath  = $teacher->user->foto ? \Illuminate\Support\Facades\Storage::disk('public')->path($teacher->user->foto) : public_path('images/default_avatar.jpg');
+            $fotoGuruPath  = \App\Support\ImageDataUri::forPublicDisk($teacher->user->foto, public_path('images/default_avatar.jpg'));
             $pdf = Pdf::loadView('reports.refleksi_mingguan', [
                 'rows'          => $rows,
                 'guru'          => $guru,

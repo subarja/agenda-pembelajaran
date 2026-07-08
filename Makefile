@@ -31,7 +31,7 @@ setup:
 	@KEY=$$(docker compose exec -T backend php artisan key:generate --show --no-ansi | tr -d '\r\n') \
 		&& sed -i "s|^APP_KEY=.*|APP_KEY=$$KEY|" .env \
 		&& sed -i "s|^APP_KEY=.*|APP_KEY=$$KEY|" backend/.env \
-		&& docker compose restart backend worker \
+		&& docker compose up -d backend worker \
 		&& until docker compose exec -T backend php artisan --version > /dev/null 2>&1; do sleep 2; done \
 		&& echo "    ✓ APP_KEY diset, backend restart selesai"
 	@echo ""

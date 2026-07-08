@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Models\R2Setting;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -31,5 +33,37 @@ class AppServiceProvider extends ServiceProvider
             /** @var QueryBuilder $this */
             return $this->whereLike($column, $value, 'or');
         });
+
+        $this->configurePublicDiskFromR2Setting();
+    }
+
+    // Kalau admin sudah aktifkan R2 lewat Admin Panel, disk 'public' (dipakai ~30 tempat
+    // via Storage::disk('public')) dialihkan ke R2 di sini — tidak perlu ubah .env ataupun
+    // kode lain sama sekali. Default tetap disk lokal (config/filesystems.php) kalau R2
+    // belum di-setup/di-nonaktifkan, termasuk di semua environment dev lokal.
+    //
+    // PENTING: ini jalan di SETIAP request (boot() provider) — TERMASUK saat `composer
+    // install` build Docker image (post-autoload-dump menjalankan `artisan package:
+    // discover` yang ikut boot() semua provider, padahal DB belum tentu bisa diakses
+    // sama sekali di tahap build). SELURUH isi method — termasuk Schema::hasTable() itu
+    // sendiri — WAJIB di dalam try/catch; DB unreachable/tabel belum ada/APP_KEY beda
+    // (DecryptException) semuanya harus jatuh balik diam-diam ke disk lokal, tidak boleh
+    // ada satupun exception di sini yang lolos ke atas dan mematikan boot aplikasi/build.
+    private function configurePublicDiskFromR2Setting(): void
+    {
+        try {
+            if (! Schema::hasTable('r2_settings')) {
+                return;
+            }
+
+            $r2 = R2Setting::query()->first();
+            if (! $r2 || ! $r2->aktif || ! $r2->isConfigured()) {
+                return;
+            }
+
+            config(['filesystems.disks.public' => $r2->diskConfig()]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

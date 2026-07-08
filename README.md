@@ -359,7 +359,8 @@ Cocok kalau sekolah/vendor hanya punya akses cPanel biasa (tanpa root/Docker). B
    SANCTUM_STATEFUL_DOMAINS=agenda.namasekolah.sch.id
    ```
    > `QUEUE_CONNECTION=sync` dan `SESSION_DRIVER=file`/`CACHE_STORE=file` dipakai karena shared hosting cPanel umumnya **tidak mengizinkan proses background** (`queue:work` atau Redis) berjalan terus-menerus. Job (Character Aggregation Engine, EWS) akan dieksekusi langsung saat request alih-alih di background — cukup untuk skala sekolah, tapi request jadi sedikit lebih lambat saat proses berat berjalan.
-6. Generate key & migrasi:
+6. **(Opsional, direkomendasikan) Simpan foto siswa/guru, jadwal PDF, dan dokumentasi penanganan siswa di object storage (Cloudflare R2)** alih-alih disk server — supaya file tidak ikut hilang kalau server diganti/dimigrasi, tinggal sambungkan lagi bucket yang sama. **Tidak perlu diisi di `.env`** — login sebagai admin setelah deploy, buka **Admin Panel → Penyimpanan (R2)**, isi Access Key ID, Secret Access Key, Account ID, Bucket, dan Public URL dari dashboard Cloudflare (R2 → bucket → **Manage API tokens**), klik **Tes Koneksi** untuk verifikasi, lalu aktifkan togglenya. Kredensial disimpan terenkripsi di database, bukan file. Biarkan nonaktif (default) kalau tidak mau pakai R2 — file tetap disimpan di disk server seperti biasa.
+7. Generate key & migrasi:
    ```bash
    php artisan key:generate
    php artisan migrate --force
@@ -367,12 +368,12 @@ Cocok kalau sekolah/vendor hanya punya akses cPanel biasa (tanpa root/Docker). B
    php artisan storage:link
    ```
    *(Tidak ada Terminal? Jalankan `cpanel-deploy.php?token=...&action=all` seperti dijelaskan di kotak "Tanpa Terminal?" di atas — hasilnya sama.)*
-7. Pastikan permission folder bisa ditulis web server:
+8. Pastikan permission folder bisa ditulis web server:
    ```bash
    chmod -R 775 storage bootstrap/cache
    ```
    *(Tidak ada Terminal? Lewat File Manager: klik kanan folder `storage` dan `bootstrap/cache` → **Change Permissions** → centang read/write/execute untuk owner & group → `775`.)*
-8. **Cron job pengganti scheduler** (kalau ada fitur terjadwal seperti pengecekan EWS harian) — cPanel → **Cron Jobs**, tambahkan tiap menit:
+9. **Cron job pengganti scheduler** (kalau ada fitur terjadwal seperti pengecekan EWS harian) — cPanel → **Cron Jobs**, tambahkan tiap menit:
    ```bash
    * * * * * php /home/<user>/repositories/agenda-pembelajaran/backend/artisan schedule:run >> /dev/null 2>&1
    ```

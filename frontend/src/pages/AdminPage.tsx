@@ -16,7 +16,7 @@ import PhotoEditWidget from '@/components/PhotoEditWidget'
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan']
 
 // GK26: notifikasi nilai manual (ManualNoteSubmittedNotification) mengirim
 // `?tab=nilai-manual` — dulu AdminPage sama sekali tidak baca query param ini jadi klik
@@ -2898,6 +2898,7 @@ export default function AdminPage() {
         {activeTab === 13 && <PengaturanAgendaTab />}
         {activeTab === 14 && <FotoBulkUploadTab />}
         {activeTab === 15 && <JadwalPdfBulkUploadTab />}
+        {activeTab === 16 && <R2StorageAdminTab />}
       </div>
     </div>
   )
@@ -3660,6 +3661,128 @@ function KalenderAdminTab() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Penyimpanan R2 ────────────────────────────────────────────────────────────
+type R2Settings = {
+  access_key_id_masked: string | null; secret_access_key_set: boolean
+  account_id: string | null; bucket: string | null; public_url: string | null
+  aktif: boolean; is_configured: boolean
+}
+
+function R2StorageAdminTab() {
+  const qc = useQueryClient()
+  const [accessKeyId, setAccessKeyId] = useState('')
+  const [secretKey, setSecretKey]     = useState('')
+  const [accountId, setAccountId]     = useState('')
+  const [bucket, setBucket]           = useState('')
+  const [publicUrl, setPublicUrl]     = useState('')
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
+  const { data: settings, isLoading } = useQuery<{ data: R2Settings }>({
+    queryKey: ['admin-r2-settings'],
+    queryFn: () => api.get('/admin/r2/settings').then(r => r.data),
+  })
+  const s = settings?.data
+
+  useEffect(() => {
+    if (s) {
+      setAccountId(s.account_id ?? '')
+      setBucket(s.bucket ?? '')
+      setPublicUrl(s.public_url ?? '')
+      // access_key_id/secret_access_key SENGAJA tidak di-prefill — server tidak pernah
+      // kirim nilai aslinya balik (lihat R2SettingController::show), cuma placeholder
+      // masked yang ditampilkan lewat label di bawah field.
+    }
+  }, [s])
+
+  const saveMut = useMutation({
+    mutationFn: (aktif?: boolean) => api.put('/admin/r2/settings', {
+      ...(accessKeyId ? { access_key_id: accessKeyId } : {}),
+      ...(secretKey ? { secret_access_key: secretKey } : {}),
+      account_id: accountId || null,
+      bucket: bucket || null,
+      public_url: publicUrl || null,
+      ...(aktif !== undefined ? { aktif } : {}),
+    }).then(r => r.data),
+    onSuccess: (d) => {
+      setMsg({ type: 'ok', text: d.message })
+      setAccessKeyId(''); setSecretKey('')
+      qc.invalidateQueries({ queryKey: ['admin-r2-settings'] })
+    },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal menyimpan.' }),
+  })
+
+  const testMut = useMutation({
+    mutationFn: () => api.post('/admin/r2/test').then(r => r.data),
+    onSuccess: (d) => setMsg({ type: 'ok', text: d.message }),
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Tes koneksi gagal.' }),
+  })
+
+  const inputCls = 'w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-white'
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      {msg && (
+        <div className={`rounded-md border px-3 py-2 text-sm flex items-center justify-between ${msg.type === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <span>{msg.text}</span>
+          <button onClick={() => setMsg(null)}><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+
+      <div className="rounded-lg border bg-card p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold flex items-center gap-2"><FolderOpen className="h-4 w-4" /> Penyimpanan Foto & Dokumen (Cloudflare R2)</h3>
+          {s?.aktif && <Badge className="bg-green-100 text-green-700">Aktif</Badge>}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Foto siswa/guru, jadwal PDF, dan dokumentasi penanganan siswa disimpan di sini alih-alih di disk server —
+          supaya file tidak hilang kalau server migrasi/ganti. Kredensial disimpan terenkripsi di database, bukan file.
+          Kosongkan field kredensial dan biarkan nonaktif kalau tidak mau pakai R2 (file tetap di disk server seperti biasa).
+        </p>
+
+        {isLoading ? <div className="h-20 animate-pulse bg-muted rounded" /> : (
+          <>
+            <div>
+              <label className="text-xs font-medium block mb-1">Access Key ID</label>
+              <PasswordInput className={inputCls} placeholder={s?.access_key_id_masked ?? 'Belum diisi'} value={accessKeyId} onChange={e => setAccessKeyId(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1">Secret Access Key</label>
+              <PasswordInput className={inputCls} placeholder={s?.secret_access_key_set ? '•••••••••••••••• (sudah diisi)' : 'Belum diisi'} value={secretKey} onChange={e => setSecretKey(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1">Account ID Cloudflare</label>
+              <input className={inputCls} placeholder="32 karakter hex, dari dashboard Cloudflare → R2" value={accountId} onChange={e => setAccountId(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1">Bucket Name</label>
+              <input className={inputCls} placeholder="mis. agenda-smk2" value={bucket} onChange={e => setBucket(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1">Public Development URL / Custom Domain</label>
+              <input className={inputCls} placeholder="https://pub-xxxx.r2.dev" value={publicUrl} onChange={e => setPublicUrl(e.target.value)} />
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button onClick={() => saveMut.mutate(undefined)} disabled={saveMut.isPending}>
+                {saveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null} Simpan
+              </Button>
+              <Button variant="outline" onClick={() => testMut.mutate()} disabled={testMut.isPending || !s?.is_configured}>
+                {testMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null} Tes Koneksi
+              </Button>
+              {s?.aktif ? (
+                <Button variant="outline" onClick={() => saveMut.mutate(false)} disabled={saveMut.isPending}>Nonaktifkan</Button>
+              ) : (
+                <Button variant="outline" onClick={() => saveMut.mutate(true)} disabled={saveMut.isPending || !s?.is_configured}>Aktifkan</Button>
+              )}
+            </div>
+            {!s?.is_configured && <p className="text-xs text-muted-foreground">Lengkapi & simpan semua field dulu sebelum bisa tes koneksi/aktifkan.</p>}
+          </>
         )}
       </div>
     </div>

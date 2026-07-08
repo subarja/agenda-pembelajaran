@@ -32,6 +32,7 @@ import PilihTahunAjaranPage from '@/pages/PilihTahunAjaranPage'
 import RekapPerkembanganPage from '@/pages/RekapPerkembanganPage'
 import JadwalSayaPage from '@/pages/JadwalSayaPage'
 import RefleksiMingguanPage from '@/pages/RefleksiMingguanPage'
+import RiwayatDokumenPenangananPage from '@/pages/RiwayatDokumenPenangananPage'
 
 // Spinner penuh-layar — dipakai SELAMA `hasHydrated` masih false, supaya tidak pernah
 // ada window blank putih ataupun sempat "kelihatan" redirect ke /login yang salah
@@ -104,6 +105,7 @@ export default function AppRouter() {
         <Route path="hari-efektif"              element={<HariEfektifPage />} />
         <Route path="jadwal-saya"               element={<JadwalSayaPage />} />
         <Route path="refleksi-mingguan"         element={<RefleksiMingguanPage />} />
+        <Route path="riwayat-dokumen-penanganan" element={<RiwayatDokumenPenangananPage />} />
 
         <Route path="laporan"                   element={<LaporanPage />} />
         <Route path="rekap-perkembangan"        element={<RekapPerkembanganPage />} />

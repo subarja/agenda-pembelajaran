@@ -2,6 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
+  FolderOpen,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -33,6 +34,7 @@ const allNav: Record<string, NavItem> = {
   profil:        { label: 'Profil',          path: '/profil',          icon: User },
   jadwalSaya:    { label: 'Jadwal Saya',     path: '/jadwal-saya',     icon: FileText },
   refleksi:      { label: 'Refleksi Mingguan', path: '/refleksi-mingguan', icon: BookOpenCheck },
+  riwayatDokumen: { label: 'Riwayat Dokumen Penanganan', path: '/riwayat-dokumen-penanganan', icon: FolderOpen },
 }
 
 function withSection(item: NavItem, label: string): NavItem {
@@ -46,7 +48,7 @@ export function getNavForUser(user: UserType): NavItem[] {
   const items: NavItem[] = [allNav.dashboard]
 
   if (role === 'guru') {
-    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya)
+    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya, allNav.riwayatDokumen)
 
     if (kap?.is_wali_kelas && kap?.is_bk) {
       // keduanya
@@ -77,17 +79,17 @@ export function getNavForUser(user: UserType): NavItem[] {
     items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.laporan)
     items.push(
       withSection(allNav.presensiHarian, 'Menu Wali Kelas'),
-      allNav.ews, allNav.siswa, allNav.refleksi,
+      allNav.ews, allNav.siswa, allNav.refleksi, allNav.riwayatDokumen,
     )
   } else if (role === 'bk') {
     // Legacy role — backward compat (sama alasan seperti di atas, BK tidak dapat siswa)
     items.push(allNav.laporan)
     items.push(
       withSection(allNav.ews, 'Menu BK'),
-      allNav.catatanBK,
+      allNav.catatanBK, allNav.riwayatDokumen,
     )
   } else if (role === 'admin' || role === 'wakasek') {
-    items.push(allNav.ews, allNav.ewsGuru, allNav.laporan, allNav.rekapPerkembangan, allNav.kalender, allNav.hariEfektif, allNav.admin)
+    items.push(allNav.ews, allNav.ewsGuru, allNav.laporan, allNav.rekapPerkembangan, allNav.kalender, allNav.hariEfektif, allNav.riwayatDokumen, allNav.admin)
   } else if (role === 'siswa') {
     items.push(allNav.jadwalSaya)
   } else if (role === 'orang_tua') {

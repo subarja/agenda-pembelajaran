@@ -7,7 +7,7 @@
   $mLeft = $ps->margin_left ?? 2; $mRight = $ps->margin_right ?? 2;
   $kopWidth = $ps->kop_width_percent ?? 100;
   $kopAlign = $ps->kop_position ?? 'center';
-  $fotoPath = $student->foto ? \Illuminate\Support\Facades\Storage::disk('public')->path($student->foto) : public_path('images/default_avatar.jpg');
+  $fotoPath = \App\Support\ImageDataUri::forPublicDisk($student->foto, public_path('images/default_avatar.jpg'));
 @endphp
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
@@ -51,7 +51,7 @@ table.data tr:nth-child(even) td { background:#f8fafc; }
   <table>
     <tr>
       <td rowspan="3" style="width:23mm; vertical-align:top; padding-right:3mm;">
-        <img src="file://{{ $fotoPath }}" style="width:20mm; height:auto; border:1px solid #ccc;">
+        <img src="{{ $fotoPath }}" style="width:20mm; height:auto; border:1px solid #ccc;">
       </td>
       <td>Nama Siswa</td><td>:</td><td><strong>{{ $student->user->nama }}</strong></td>
       <td style="width:20px"></td>

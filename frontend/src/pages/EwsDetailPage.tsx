@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, ClipboardList,
   Plus, Pencil, Trash2, Link, FileDown, UserPlus, MessageSquare,
-  ShieldCheck, Clock, ChevronDown, ChevronUp, X,
+  ShieldCheck, Clock, ChevronDown, ChevronUp, X, Upload, Loader2,
   Calendar, Star, BookOpen, TrendingUp,
 } from 'lucide-react'
 import { ewsApi } from '@/features/ews/api'
@@ -569,7 +569,7 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
   const [adminNote, setAdminNote]         = useState(rec.catatan_admin ?? '')
   const [handlerSearch, setHandlerSearch] = useState('')
   const [selectedHandlers, setSelectedHandlers] = useState<string[]>(rec.suggested_handlers?.map((h: any) => h.id) ?? [])
-  const [sessionForm, setSessionFormData] = useState({ tanggal: '', catatan: '', links: [] as { url: string; keterangan: string }[] })
+  const [sessionForm, setSessionFormData] = useState({ tanggal: '', catatan: '', links: [] as { url: string; keterangan: string; uploaded?: boolean; path?: string; size?: number }[] })
   const statusCfg = STATUS_CONFIG[rec.status] ?? STATUS_CONFIG.pending
 
   // Key HARUS beda dari HariEfektifPage.tsx yg juga pakai 'admin-teachers-list' tapi
@@ -593,6 +593,27 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
   const updateSession = useMutation({ mutationFn: ({ id, d }: { id: string; d: object }) => api.put(`/recommendations/${rec.id}/sessions/${id}`, d), onSuccess: () => { setEditSession(null); onRefresh() } })
   const deleteSession = useMutation({ mutationFn: (id: string) => api.delete(`/recommendations/${rec.id}/sessions/${id}`), onSuccess: () => onRefresh() })
   const updateStatus  = useMutation({ mutationFn: (status: string) => api.put(`/recommendations/${rec.id}/status`, { status }), onSuccess: () => onRefresh() })
+
+  // Upload foto/PDF dokumentasi — hasilnya berupa URL yang langsung ditambahkan ke
+  // array `links` (skema yang sudah ada), sama seperti link yang ditempel manual.
+  const uploadDoc = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return api.post(`/recommendations/${rec.id}/sessions/upload`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+        .then(r => r.data as { url: string; path: string; filename: string; size: number })
+    },
+  })
+  const newFileRef  = useRef<HTMLInputElement>(null)
+  const editFileRef = useRef<HTMLInputElement>(null)
+  // `uploaded`/`path`/`size` menandai link ini hasil upload file (bukan link tempel
+  // manual) — dipakai fitur "Riwayat Dokumen Penanganan" utk memfilter daftar dokumen.
+  const handleUploadForNew = (file: File) => {
+    uploadDoc.mutate(file, { onSuccess: (res) => setSessionFormData(f => ({ ...f, links: [...f.links, { url: res.url, keterangan: res.filename, uploaded: true, path: res.path, size: res.size }] })) })
+  }
+  const handleUploadForEdit = (file: File) => {
+    uploadDoc.mutate(file, { onSuccess: (res) => setEditSession((p: any) => ({ ...p, links: [...(p.links ?? []), { url: res.url, keterangan: res.filename, uploaded: true, path: res.path, size: res.size }] })) })
+  }
 
   // GK8-GK11: eskalasi ke BK
   const [resumeText, setResumeText] = useState('')
@@ -710,12 +731,21 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
                         {/* Multi-link edit */}
                         <div className="mb-3">
                           <div className="flex items-center justify-between mb-1">
-                            <label className="text-xs font-medium text-muted-foreground">Lampiran Link (maks. 5)</label>
-                            {(editSession.links ?? []).length < 5 && (
-                              <button type="button" onClick={() => setEditSession((p: any) => ({ ...p, links: [...(p.links ?? []), { url: '', keterangan: '' }] }))} className="text-xs text-primary hover:underline flex items-center gap-0.5">
-                                <Plus className="h-3 w-3" /> Tambah
-                              </button>
-                            )}
+                            <label className="text-xs font-medium text-muted-foreground">Lampiran Link/File (maks. 5)</label>
+                            <div className="flex items-center gap-2">
+                              {(editSession.links ?? []).length < 5 && (
+                                <button type="button" onClick={() => editFileRef.current?.click()} disabled={uploadDoc.isPending} className="text-xs text-primary hover:underline flex items-center gap-0.5 disabled:opacity-50">
+                                  {uploadDoc.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />} Upload File
+                                </button>
+                              )}
+                              {(editSession.links ?? []).length < 5 && (
+                                <button type="button" onClick={() => setEditSession((p: any) => ({ ...p, links: [...(p.links ?? []), { url: '', keterangan: '' }] }))} className="text-xs text-primary hover:underline flex items-center gap-0.5">
+                                  <Plus className="h-3 w-3" /> Tambah Link
+                                </button>
+                              )}
+                            </div>
+                            <input ref={editFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                              onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadForEdit(f); e.target.value = '' }} />
                           </div>
                           {(editSession.links ?? []).map((l: any, li: number) => (
                             <div key={li} className="flex gap-1.5 mb-1.5 items-start">
@@ -793,12 +823,21 @@ function RecommendationBlock({ rec, isAdmin, isWaliKelasCap, isBkCap, onRefresh 
               {/* Multi-link */}
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-medium text-muted-foreground">Lampiran Link (maks. 5)</label>
-                  {sessionForm.links.length < 5 && (
-                    <button type="button" onClick={() => setSessionFormData(f => ({ ...f, links: [...f.links, { url: '', keterangan: '' }] }))} className="text-xs text-primary hover:underline flex items-center gap-0.5">
-                      <Plus className="h-3 w-3" /> Tambah Link
-                    </button>
-                  )}
+                  <label className="text-xs font-medium text-muted-foreground">Lampiran Link/File (maks. 5)</label>
+                  <div className="flex items-center gap-2">
+                    {sessionForm.links.length < 5 && (
+                      <button type="button" onClick={() => newFileRef.current?.click()} disabled={uploadDoc.isPending} className="text-xs text-primary hover:underline flex items-center gap-0.5 disabled:opacity-50">
+                        {uploadDoc.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />} Upload File
+                      </button>
+                    )}
+                    {sessionForm.links.length < 5 && (
+                      <button type="button" onClick={() => setSessionFormData(f => ({ ...f, links: [...f.links, { url: '', keterangan: '' }] }))} className="text-xs text-primary hover:underline flex items-center gap-0.5">
+                        <Plus className="h-3 w-3" /> Tambah Link
+                      </button>
+                    )}
+                  </div>
+                  <input ref={newFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadForNew(f); e.target.value = '' }} />
                 </div>
                 {sessionForm.links.map((l, li) => (
                   <div key={li} className="flex gap-1.5 mb-1.5 items-start">
