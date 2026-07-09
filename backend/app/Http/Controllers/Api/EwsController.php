@@ -16,6 +16,7 @@ use App\Models\PrintSetting;
 use App\Models\Recommendation;
 use App\Models\Schedule;
 use App\Models\Student;
+use App\Support\ClassAccess;
 use App\Models\StudentAttendance;
 use App\Models\Teacher;
 use App\Traits\BuildsXlsxReports;
@@ -58,7 +59,7 @@ class EwsController extends Controller
         // Enum masih punya role literal `wali_kelas`/`bk` (akun lama belum termigrasi); dulu
         // `UserRole::BK` TIDAK ada di match ini sehingga jatuh ke `default => null` dan guru BK
         // MELIHAT SELURUH SISWA (bocor). Sekarang: hanya admin & wakasek yang lihat semua;
-        // selain siswa/orang tua, semua staf dibatasi allowedClassIdsForUser().
+        // selain siswa/orang tua, semua staf dibatasi ClassAccess::pastoralClassIds().
         match ($user->role) {
             UserRole::Siswa     => $query->whereHas('user', fn ($q) => $q->where('id', $user->id)),
             UserRole::OrangTua  => $user->linked_student_id
@@ -69,7 +70,7 @@ class EwsController extends Controller
                 //  - scope=wali → HANYA kelas perwaliannya (menu Wali Kelas)
                 //  - scope=bk   → HANYA kelas yang ia ampu sbg BK (menu Guru BK)
                 //  - tanpa scope → wali dulu lalu BK (kompat dashboard/prefetch)
-                // Beda dari allowedClassIdsForUser (union) yg dipakai otorisasi buka detail.
+                // Beda dari ClassAccess::pastoralClassIds (union) yg dipakai otorisasi buka detail.
                 $allowed = $this->ewsListClassIdsForUser($user, $request->query('scope'));
                 if ($allowed === null) return;                 // admin/wakasek: semua siswa
                 $allowed->isEmpty()
@@ -711,33 +712,7 @@ class EwsController extends Controller
     }
 
     /**
-     * Kelas mana yang boleh dilihat seorang staf di EWS — sumber kebenaran tunggal untuk
-     * scoping index() maupun otorisasi per-siswa (show/dimensionPdf), berbasis KAPABILITAS
-     * bukan role literal.
-     *  - null            = boleh semua siswa (admin & wakasek, konsumen EWS tingkat sekolah)
-     *  - Collection<int> = daftar class_id yang boleh:
-     *      • wali kelas → kelas yang diwalikelasinya (SchoolClass.wali_kelas_id)
-     *      • guru BK    → kelas yang ia ampu (Schedule aktif miliknya)
-     *      • keduanya   → gabungan
-     *  - Collection kosong = tidak boleh siswa mana pun (guru biasa non-wali/non-BK, dsb.)
-     */
-    private function allowedClassIdsForUser(\App\Models\User $user): ?Collection
-    {
-        if (in_array($user->role, [UserRole::Admin, UserRole::Wakasek], true)) {
-            return null;
-        }
-
-        $teacher      = Teacher::where('user_id', $user->id)->first();
-        $kelasWaliIds = \App\Models\SchoolClass::where('wali_kelas_id', $user->id)->pluck('id');
-        $bkClassIds   = ($teacher && $teacher->is_bk)
-            ? Schedule::where('teacher_id', $teacher->id)->where('aktif', true)->pluck('class_id')
-            : collect();
-
-        return $kelasWaliIds->merge($bkClassIds)->unique()->values();
-    }
-
-    /**
-     * Kelas utk DAFTAR EWS (index) — SENGAJA beda dari allowedClassIdsForUser() yang
+     * Kelas utk DAFTAR EWS (index) — SENGAJA beda dari ClassAccess::pastoralClassIds() yang
      * menggabungkan. Daftar EWS wali kelas HANYA menampilkan siswa kelas perwaliannya
      * (bukan kelas mapel yang ia ajar / kelas yang ia ampu sbg BK). Guru BK membuka
      * DETAIL siswa konseling lewat menu "Murid Konseling" (+ authorizeEwsStudentAccess
@@ -747,15 +722,12 @@ class EwsController extends Controller
      */
     private function ewsListClassIdsForUser(\App\Models\User $user, ?string $scope = null): ?Collection
     {
-        if (in_array($user->role, [UserRole::Admin, UserRole::Wakasek], true)) {
+        if (ClassAccess::isSchoolWide($user)) {
             return null;
         }
 
-        $teacher      = Teacher::where('user_id', $user->id)->first();
-        $kelasWaliIds = \App\Models\SchoolClass::where('wali_kelas_id', $user->id)->pluck('id')->unique()->values();
-        $bkClassIds   = ($teacher && $teacher->is_bk)
-            ? Schedule::where('teacher_id', $teacher->id)->where('aktif', true)->pluck('class_id')->unique()->values()
-            : collect();
+        $kelasWaliIds = ClassAccess::waliClassIds($user);
+        $bkClassIds   = ClassAccess::bkClassIds($user);
 
         // Menu terpisah: EWS di menu Wali Kelas (homeroom) vs EWS di menu Guru BK (kelas
         // yang diampu). Guru yang wali kelas SEKALIGUS BK punya DUA menu EWS berbeda.
@@ -791,7 +763,7 @@ class EwsController extends Controller
 
         // Staf (guru/wali kelas/BK/admin/wakasek) — dibatasi kapabilitas yang sama dengan index().
         // Sebelumnya role literal `bk`/`wali_kelas` lolos ke `return null` (boleh akses siswa mana pun).
-        $allowed = $this->allowedClassIdsForUser($user);
+        $allowed = ClassAccess::pastoralClassIds($user);
         if ($allowed === null) {
             return null; // admin/wakasek
         }

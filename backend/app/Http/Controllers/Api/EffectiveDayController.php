@@ -8,6 +8,7 @@ use App\Models\PrintSetting;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Services\EffectiveDayService;
+use App\Support\ClassAccess;
 use App\Traits\HandlesPdfPreview;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -49,15 +50,33 @@ class EffectiveDayController extends Controller
             'subject_id'       => ['sometimes', 'string'],
         ]);
 
+        $user  = $request->user();
         $class = SchoolClass::where('uuid', $request->class_id)->firstOrFail();
         $ay    = AcademicYear::where('uuid', $request->academic_year_id)->firstOrFail();
+
+        // Siapa pun yang boleh melihat kelas ini sama sekali. Cabang tanpa subject_id
+        // dulu TIDAK memeriksa kelas apa pun — guru bisa membaca rekap hari efektif kelas
+        // mana saja di sekolah (audit 2026-07-09). Pemeriksaannya cuma dipasang di cabang
+        // yang memakai subject_id.
+        abort_unless(
+            ClassAccess::allows(ClassAccess::teachingClassIds($user), $class->id),
+            403, 'Anda tidak mengajar atau mewalikelasi kelas ini.',
+        );
 
         if ($request->filled('subject_id')) {
             $subject = Subject::where('uuid', $request->subject_id)->firstOrFail();
 
-            if (! in_array($request->user()->role, ['admin', 'wakasek', 'bk'])) {
-                $teacher = $request->user()->teacher;
-                abort_if(! $teacher, 403);
+            // Selain itu, rincian PER MAPEL hanya untuk pengampu mapel itu di kelas itu.
+            //
+            // Kondisi lama `in_array($user->role, ['admin','wakasek','bk'])` selalu bernilai
+            // false: `role` sudah di-cast ke enum UserRole, dan perbandingan longgar enum
+            // dengan string di PHP 8 tidak pernah cocok. Akibatnya admin & wakasek ikut
+            // masuk cabang guru, lalu ditolak 403 oleh `abort_if(! $teacher)` karena mereka
+            // memang tidak punya baris Teacher.
+            if (! ClassAccess::isSchoolWide($user)) {
+                $teacher = $user->teacher;
+                abort_if(! $teacher, 403, 'Akun ini tidak terhubung ke data guru.');
+
                 $hasSchedule = $teacher->schedules()
                     ->where('class_id', $class->id)
                     ->where('subject_id', $subject->id)

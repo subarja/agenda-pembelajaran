@@ -6,9 +6,10 @@ use App\Models\CharacterManualNote;
 use App\Models\Student;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-class ManualNoteSubmittedNotification extends Notification
+class ManualNoteSubmittedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -20,7 +21,7 @@ class ManualNoteSubmittedNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', 'fcm'];
     }
 
     public function toDatabase(object $notifiable): array

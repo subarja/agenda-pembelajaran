@@ -354,11 +354,16 @@ Cocok kalau sekolah/vendor hanya punya akses cPanel biasa (tanpa root/Docker). B
    DB_USERNAME=<user_db_dari_cpanel>
    DB_PASSWORD=<password_db>
    SESSION_DRIVER=file
-   QUEUE_CONNECTION=sync
+   QUEUE_CONNECTION=database
    CACHE_STORE=file
+   SCHOOL_TIMEZONE=Asia/Jakarta
    SANCTUM_STATEFUL_DOMAINS=agenda.namasekolah.sch.id
    ```
-   > `QUEUE_CONNECTION=sync` dan `SESSION_DRIVER=file`/`CACHE_STORE=file` dipakai karena shared hosting cPanel umumnya **tidak mengizinkan proses background** (`queue:work` atau Redis) berjalan terus-menerus. Job (Character Aggregation Engine, EWS) akan dieksekusi langsung saat request alih-alih di background — cukup untuk skala sekolah, tapi request jadi sedikit lebih lambat saat proses berat berjalan.
+   > `SESSION_DRIVER=file`/`CACHE_STORE=file` dipakai karena shared hosting cPanel umumnya tidak menyediakan Redis.
+   >
+   > `QUEUE_CONNECTION=database` (bukan `sync`) **wajib kalau push notification diaktifkan**: pengiriman push adalah panggilan HTTP ke server Google, dan dengan `sync` panggilan itu terjadi di dalam request guru — satu input karakter untuk sekelas bisa menambah beberapa detik dan berisiko timeout. Dengan `database`, notifikasi masuk antrean dan dikirim oleh cron di langkah 9. Kalau push **tidak** dipakai, `sync` masih aman dan tidak butuh cron antrean.
+   >
+   > `SCHOOL_TIMEZONE` dipakai fitur "jam tenang" notifikasi. Biarkan `Asia/Jakarta` walau `APP_TIMEZONE` server-nya UTC — tanpa ini, jam tenang 21:00 akan berlaku pada pukul 04:00 WIB.
 6. **(Opsional, direkomendasikan) Simpan foto siswa/guru, jadwal PDF, dan dokumentasi penanganan siswa di object storage (Cloudflare R2)** alih-alih disk server — supaya file tidak ikut hilang kalau server diganti/dimigrasi, tinggal sambungkan lagi bucket yang sama. **Tidak perlu diisi di `.env`** — login sebagai admin setelah deploy, buka **Admin Panel → Penyimpanan (R2)**, isi Access Key ID, Secret Access Key, Account ID, Bucket, dan Public URL dari dashboard Cloudflare (R2 → bucket → **Manage API tokens**), klik **Tes Koneksi** untuk verifikasi, lalu aktifkan togglenya. Kredensial disimpan terenkripsi di database, bukan file. Biarkan nonaktif (default) kalau tidak mau pakai R2 — file tetap disimpan di disk server seperti biasa.
 7. Generate key & migrasi:
    ```bash
@@ -377,6 +382,28 @@ Cocok kalau sekolah/vendor hanya punya akses cPanel biasa (tanpa root/Docker). B
    ```bash
    * * * * * php /home/<user>/repositories/agenda-pembelajaran/backend/artisan schedule:run >> /dev/null 2>&1
    ```
+
+10. **Cron job pemroses antrean** — hanya perlu kalau `QUEUE_CONNECTION=database` (wajib untuk push notification). cPanel → **Cron Jobs**, tiap menit:
+    ```bash
+    * * * * * php /home/<user>/repositories/agenda-pembelajaran/backend/artisan queue:work --stop-when-empty --max-time=55 >> /dev/null 2>&1
+    ```
+    > `--stop-when-empty` membuat proses berhenti sendiri begitu antrean habis, dan `--max-time=55` menjamin ia mati sebelum cron berikutnya menyala — jadi tidak pernah ada dua worker menumpuk, dan shared hosting tidak melihat proses background permanen.
+    >
+    > Tanpa cron ini, notifikasi akan **menumpuk di tabel `jobs` dan tidak pernah terkirim** — lonceng in-app pun ikut kosong, karena penyimpanannya juga lewat antrean.
+
+11. **(Opsional) Aktifkan push notification (Firebase Cloud Messaging).** Tidak perlu diisi di `.env` — login sebagai admin, buka **Admin Panel → Notifikasi Push**. Yang dibutuhkan dari [Firebase Console](https://console.firebase.google.com) (buat proyek gratis, lalu tambahkan satu **Web app**):
+    | Kolom di Admin Panel | Lokasi di Firebase Console |
+    |---|---|
+    | Service Account JSON | Project Settings → Service Accounts → *Generate new private key* |
+    | Web API Key, Web App ID, Messaging Sender ID | Project Settings → General → Your apps → SDK setup and configuration |
+    | VAPID Public Key | Project Settings → Cloud Messaging → Web configuration → Key pair |
+
+    Klik **Simpan**, lalu **Aktifkan**, lalu **Kirim Push Percobaan** untuk verifikasi. Service account disimpan **terenkripsi** di database (bukan file `.env`), pola sama dengan kredensial R2.
+
+    Catatan penting:
+    - **Wajib HTTPS.** Push tidak berjalan di `http://` (kecuali `localhost`).
+    - **iPhone/iPad:** notifikasi baru aktif setelah pengguna menambahkan aplikasi ke Layar Utama (Bagikan → Tambahkan ke Layar Utama). Ini batasan Safari, bukan aplikasi.
+    - Selama push belum diaktifkan, aplikasi tetap berjalan normal — semua notifikasi masuk ke lonceng di dalam aplikasi. Tidak ada informasi yang hilang.
 
 **3. Setup Frontend (React statis), misal di domain utama `agenda.namasekolah.sch.id`:**
 

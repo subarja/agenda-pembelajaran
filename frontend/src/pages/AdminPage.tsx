@@ -1,9 +1,10 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing } from 'lucide-react'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
+import { fcmAdminApi } from '@/features/notifikasi/api'
 import type {
   AdminTeacher, AdminStudent, AdminClass, AdminSubject,
   AdminSchedule, AdminCharacterCategory, AdminCharacterSubitem, AdminThreshold,
@@ -17,7 +18,7 @@ import PhotoEditWidget from '@/components/PhotoEditWidget'
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Deploy & Maintenance']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Deploy & Maintenance']
 
 // GK26: notifikasi nilai manual (ManualNoteSubmittedNotification) mengirim
 // `?tab=nilai-manual` — dulu AdminPage sama sekali tidak baca query param ini jadi klik
@@ -2900,7 +2901,8 @@ export default function AdminPage() {
         {activeTab === 14 && <FotoBulkUploadTab />}
         {activeTab === 15 && <JadwalPdfBulkUploadTab />}
         {activeTab === 16 && <R2StorageAdminTab />}
-        {activeTab === 17 && <DeployToolsTab />}
+        {activeTab === 17 && <FcmPushAdminTab />}
+        {activeTab === 18 && <DeployToolsTab />}
       </div>
     </div>
   )
@@ -3375,12 +3377,27 @@ function KalenderAdminTab() {
     },
   })
 
+  // Berapa hari kerja dari acara kalender yang belum jadi hari tidak efektif. Menyinkronkan
+  // kalender TIDAK otomatis menandainya (admin berhak menolak sebagian), dan diamnya layar
+  // soal ini membuat admin mengira hari efektif guru sudah berkurang padahal belum.
+  const { data: unmarked } = useQuery<{ data: {
+    belum_ditandai: number; di_luar_semester: number
+    semester_label: string | null; semester_mulai: string | null; semester_selesai: string | null
+  } }>({
+    queryKey: ['admin-ned-unmarked'],
+    queryFn: () => api.get('/admin/non-effective-days/unmarked-count').then(r => r.data),
+  })
+  const belumDitandai   = unmarked?.data.belum_ditandai ?? 0
+  const diLuarSemester  = unmarked?.data.di_luar_semester ?? 0
+  const semesterLabel   = unmarked?.data.semester_label
+
   const autoMarkMut = useMutation({
     mutationFn: () => api.post('/admin/non-effective-days/auto-mark').then(r => r.data),
     onSuccess: (d) => {
       setMsg({ type: 'ok', text: d.message })
       qc.invalidateQueries({ queryKey: ['admin-ned'] })
       qc.invalidateQueries({ queryKey: ['calendar-events'] })
+      qc.invalidateQueries({ queryKey: ['admin-ned-unmarked'] })
     },
     onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal.' }),
   })
@@ -3591,6 +3608,46 @@ function KalenderAdminTab() {
           </label>
         </div>
 
+        {belumDitandai > 0 && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-semibold flex items-center gap-1.5">
+              <AlertCircle className="h-4 w-4" />
+              {belumDitandai} hari dari kalender belum dihitung sebagai hari tidak efektif
+            </p>
+            <p className="mt-1 text-xs">
+              Menyinkronkan kalender saja <strong>tidak</strong> mengurangi hari efektif guru — acara
+              kalender baru berlaku setelah ditandai. Selama belum ditandai, guru melihat semua hari
+              sebagai hari efektif.
+            </p>
+            <Button size="sm" className="mt-2"
+              onClick={() => { if (confirm(`Tandai ${belumDitandai} hari dari kalender sebagai hari tidak efektif? Tanggal yang sudah ditandai tidak akan diubah.`)) autoMarkMut.mutate() }}
+              disabled={autoMarkMut.isPending}>
+              {autoMarkMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+              Tandai sekarang
+            </Button>
+          </div>
+        )}
+
+        {/* Kasus yang paling membingungkan: acara kalendernya ADA, penandaannya berhasil,
+            tapi angka guru tidak bergerak sama sekali — karena hari efektif hanya dihitung
+            di dalam rentang semester aktif. Tanpa peringatan ini, gejalanya tak bisa
+            dibedakan dari bug. */}
+        {diLuarSemester > 0 && (
+          <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
+            <p className="font-semibold flex items-center gap-1.5">
+              <AlertCircle className="h-4 w-4" />
+              {diLuarSemester} hari kalender berada di luar semester aktif
+            </p>
+            <p className="mt-1 text-xs">
+              Hari efektif hanya dihitung di dalam rentang semester{semesterLabel ? <> <strong>{semesterLabel}</strong></> : ' aktif'}
+              {unmarked?.data.semester_mulai && <> ({unmarked.data.semester_mulai} s/d {unmarked.data.semester_selesai})</>}.
+              Menandai tanggal di luar rentang itu <strong>tidak akan mengubah angka apa pun</strong> yang
+              dilihat guru. Kalau ini kalender semester berikutnya, buat dulu tahun ajaran/semester
+              barunya di tab <strong>Tahun Ajaran</strong>, lalu aktifkan.
+            </p>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2 items-center">
           <Button size="sm" variant="outline" onClick={downloadTemplate}>
             <Download className="h-3.5 w-3.5 mr-1" /> Template Excel
@@ -3786,6 +3843,164 @@ function R2StorageAdminTab() {
             {!s?.is_configured && <p className="text-xs text-muted-foreground">Lengkapi & simpan semua field dulu sebelum bisa tes koneksi/aktifkan.</p>}
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Notifikasi Push (Firebase Cloud Messaging) ───────────────────────────────
+function FcmPushAdminTab() {
+  const qc = useQueryClient()
+  const [serviceAccount, setServiceAccount] = useState('')
+  const [webApiKey, setWebApiKey]           = useState('')
+  const [webAppId, setWebAppId]             = useState('')
+  const [senderId, setSenderId]             = useState('')
+  const [vapidKey, setVapidKey]             = useState('')
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
+  const { data: s, isLoading } = useQuery({
+    queryKey: ['admin-fcm-settings'],
+    queryFn: fcmAdminApi.getSettings,
+  })
+
+  useEffect(() => {
+    if (!s) return
+    setWebApiKey(s.web_api_key ?? '')
+    setWebAppId(s.web_app_id ?? '')
+    setSenderId(s.messaging_sender_id ?? '')
+    setVapidKey(s.vapid_public_key ?? '')
+    // service_account_json SENGAJA tidak di-prefill — server tidak pernah mengirim
+    // isinya balik (berisi private key). Yang ditampilkan hanya email-nya di bawah field.
+  }, [s])
+
+  const saveMut = useMutation({
+    mutationFn: (aktif?: boolean) => fcmAdminApi.updateSettings({
+      ...(serviceAccount ? { service_account_json: serviceAccount } : {}),
+      web_api_key: webApiKey,
+      web_app_id: webAppId,
+      messaging_sender_id: senderId,
+      vapid_public_key: vapidKey,
+      ...(aktif !== undefined ? { aktif } : {}),
+    }),
+    onSuccess: (d) => {
+      setMsg({ type: 'ok', text: d.message })
+      setServiceAccount('')
+      qc.invalidateQueries({ queryKey: ['admin-fcm-settings'] })
+      // Frontend meng-cache /push/config selamanya (staleTime: Infinity) — tanpa ini,
+      // admin harus memuat ulang halaman sebelum tombol "Aktifkan" muncul untuk guru.
+      qc.invalidateQueries({ queryKey: ['push-config'] })
+    },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal menyimpan.' }),
+  })
+
+  const testMut = useMutation({
+    mutationFn: fcmAdminApi.test,
+    onSuccess: (d) => setMsg({ type: 'ok', text: d.message }),
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Tes push gagal.' }),
+  })
+
+  const inputCls = 'w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-white'
+
+  if (isLoading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      {msg && (
+        <div className={`rounded-md border px-3 py-2 text-sm flex items-center justify-between ${msg.type === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <span>{msg.text}</span>
+          <button onClick={() => setMsg(null)}><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+
+      <div className="rounded-lg border bg-card p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold flex items-center gap-2"><BellRing className="h-4 w-4" /> Notifikasi Push (Firebase)</h3>
+          {s?.aktif && <Badge className="bg-green-100 text-green-700">Aktif</Badge>}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Mengirim peringatan alpha, eskalasi EWS, dan pengajuan konseling langsung ke HP guru
+          walau aplikasi tertutup. Selama belum diaktifkan, semua notifikasi tetap masuk ke lonceng
+          di dalam aplikasi — tidak ada informasi yang hilang.
+        </p>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Service Account JSON</label>
+          <textarea
+            rows={5}
+            className={`${inputCls} font-mono text-xs`}
+            placeholder={s?.service_account_set ? 'Terisi — isi hanya bila ingin mengganti' : '{ "type": "service_account", "project_id": "...", ... }'}
+            value={serviceAccount}
+            onChange={(e) => setServiceAccount(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Firebase Console → Project Settings → Service Accounts → <em>Generate new private key</em>,
+            lalu tempel seluruh isi filenya di sini.
+            {s?.service_account_email && <> Terpasang: <code className="text-[11px]">{s.service_account_email}</code></>}
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Web API Key</label>
+            <input className={inputCls} value={webApiKey} onChange={(e) => setWebApiKey(e.target.value)} placeholder="AIza…" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Messaging Sender ID</label>
+            <input className={inputCls} value={senderId} onChange={(e) => setSenderId(e.target.value)} placeholder="1234567890" />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-sm font-medium">Web App ID</label>
+            <input className={inputCls} value={webAppId} onChange={(e) => setWebAppId(e.target.value)} placeholder="1:1234567890:web:abc123" />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-sm font-medium">VAPID Public Key (Web Push certificate)</label>
+            <input className={inputCls} value={vapidKey} onChange={(e) => setVapidKey(e.target.value)} placeholder="B…" />
+            <p className="text-xs text-muted-foreground">
+              Firebase Console → Project Settings → Cloud Messaging → Web configuration → Key pair.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <Button size="sm" onClick={() => saveMut.mutate(undefined)} disabled={saveMut.isPending}>
+            {saveMut.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
+            Simpan
+          </Button>
+
+          <Button
+            size="sm"
+            variant={s?.aktif ? 'destructive' : 'secondary'}
+            onClick={() => saveMut.mutate(!s?.aktif)}
+            disabled={saveMut.isPending}
+          >
+            {s?.aktif ? 'Nonaktifkan' : 'Aktifkan'}
+          </Button>
+
+          {/* Tes memakai kredensial yang TERSIMPAN, bukan yang baru diketik — simpan dulu. */}
+          <Button size="sm" variant="outline" onClick={() => testMut.mutate()} disabled={testMut.isPending || !s?.aktif}>
+            {testMut.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+            Kirim Push Percobaan
+          </Button>
+
+          <span className="ml-auto text-xs text-muted-foreground">
+            {s?.total_perangkat ?? 0} perangkat terdaftar
+          </span>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+        <p className="font-semibold">Wajib: worker antrean harus berjalan</p>
+        <p className="mt-1">
+          Push dikirim lewat antrean agar guru tidak menunggu. Di cPanel, buat Cron Job tiap 1 menit:
+        </p>
+        <code className="mt-2 block rounded bg-amber-100 px-2 py-1.5 font-mono">
+          /usr/local/bin/php ~/agenda/artisan queue:work --stop-when-empty --max-time=55
+        </code>
+        <p className="mt-2">
+          Tanpa cron ini (dan dengan <code>QUEUE_CONNECTION=database</code>), notifikasi akan menumpuk
+          di antrean dan tidak pernah terkirim.
+        </p>
       </div>
     </div>
   )

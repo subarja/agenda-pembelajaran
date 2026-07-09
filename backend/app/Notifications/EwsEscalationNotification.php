@@ -5,10 +5,11 @@ namespace App\Notifications;
 use App\Models\EwsStatus;
 use App\Models\Student;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class EwsEscalationNotification extends Notification
+class EwsEscalationNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -20,9 +21,10 @@ class EwsEscalationNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        // Kirim email hanya untuk eskalasi ke oranye/merah
+        // Push & lonceng in-app untuk setiap kenaikan level; email hanya untuk oranye/merah
+        // (email menuntut perhatian di luar aplikasi, kenaikan ke kuning belum sepadan).
         $viaEmail = in_array($this->levelBaru, ['oranye', 'merah']);
-        return $viaEmail ? ['database', 'mail'] : ['database'];
+        return $viaEmail ? ['database', 'fcm', 'mail'] : ['database', 'fcm'];
     }
 
     public function toDatabase(object $notifiable): array

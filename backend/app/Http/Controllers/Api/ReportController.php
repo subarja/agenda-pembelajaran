@@ -23,6 +23,7 @@ use OpenSpout\Common\Entity\Cell\NumericCell;
 use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Writer\XLSX\Writer;
+use App\Support\ClassAccess;
 
 class ReportController extends Controller
 {
@@ -31,6 +32,10 @@ class ReportController extends Controller
 
     public function classes(Request $request)
     {
+        // Dropdown kelas untuk halaman Laporan. Bukan data pribadi, tapi tidak ada alasan
+        // akun siswa/orang tua menerima daftar seluruh rombel sekolah.
+        abort_if(ClassAccess::isStudentSide($request->user()), 403, 'Akses tidak diizinkan.');
+
         $ay      = \App\Models\AcademicYear::where('aktif', true)->first();
         $classes = SchoolClass::when($ay, fn ($q) => $q->where('academic_year_id', $ay->id))
             ->orderBy('tingkat')->orderBy('jurusan')->orderBy('rombel')

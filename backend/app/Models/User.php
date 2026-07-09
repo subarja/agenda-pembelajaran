@@ -76,6 +76,17 @@ class User extends Authenticatable
         return $this->hasMany(Recommendation::class, 'ditugaskan_ke');
     }
 
+    /** Perangkat/browser yang sudah mengizinkan push untuk akun ini. */
+    public function pushSubscriptions(): HasMany
+    {
+        return $this->hasMany(PushSubscription::class);
+    }
+
+    public function notificationPreference(): HasOne
+    {
+        return $this->hasOne(NotificationPreference::class);
+    }
+
     public function loadProfileRelation(): static
     {
         $this->load('currentAcademicYear');

@@ -22,6 +22,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use App\Support\ClassAccess;
 
 class RecommendationController extends Controller
 {
@@ -700,6 +701,12 @@ class RecommendationController extends Controller
     private function scopedDocuments(Request $request): array
     {
         $user = $request->user();
+
+        // Siswa & orang tua tidak pernah punya dokumen penanganan "miliknya" di sini —
+        // sebelumnya mereka lolos ke cabang `handled_by = $user->id` dan menerima daftar
+        // kosong. Hasilnya kebetulan aman, bukan karena disengaja; tolak secara eksplisit
+        // supaya perubahan cabang di masa depan tidak diam-diam membukanya.
+        abort_if(ClassAccess::isStudentSide($user), 403, 'Akses tidak diizinkan.');
 
         $query = HandlingSession::with(['recommendation.student.user', 'recommendation.student.schoolClass', 'handler']);
 

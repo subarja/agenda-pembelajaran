@@ -4,11 +4,12 @@ namespace App\Notifications;
 
 use App\Models\Student;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-// GK8: wali kelas ajukan konseling ke BK — notifikasi database saja (bukan email, beda
+// GK8: wali kelas ajukan konseling ke BK — lonceng in-app + push, bukan email (beda
 // dari EwsEscalationNotification yang memang butuh urgensi email untuk level oranye/merah).
-class KonselingDiajukanNotification extends Notification
+class KonselingDiajukanNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -19,7 +20,7 @@ class KonselingDiajukanNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', 'fcm'];
     }
 
     public function toDatabase(object $notifiable): array

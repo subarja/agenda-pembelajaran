@@ -10,6 +10,7 @@ use App\Models\LearningObjectiveLog;
 use App\Models\Schedule;
 use App\Models\Subject;
 use App\Models\User;
+use App\Support\ClassAccess;
 use App\Traits\BuildsXlsxReports;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -211,11 +212,16 @@ class LearningObjectiveController extends Controller
         $subject = Subject::where('uuid', $request->subject_id)->firstOrFail();
         $year    = $this->activeYear();
 
-        // Akses: guru yang mengajar mapel ini di fase ini, atau admin/wakasek
+        // Akses: guru yang mengajar mapel ini di fase ini, atau admin/wakasek.
+        //
+        // Kondisi lama `in_array($user->role, ['admin','wakasek'])` selalu false — `role`
+        // sudah di-cast ke enum UserRole, dan perbandingan longgar enum↔string di PHP 8
+        // tidak pernah cocok. Admin & wakasek karenanya ikut masuk cabang guru lalu
+        // ditolak 403 oleh `abort_if(! $teacher)`: riwayat TP tidak pernah bisa mereka buka.
         $user = $request->user();
-        if (! in_array($user->role, ['admin', 'wakasek'])) {
+        if (! ClassAccess::isSchoolWide($user)) {
             $teacher = $user->teacher;
-            abort_if(! $teacher, 403);
+            abort_if(! $teacher, 403, 'Akun ini tidak terhubung ke data guru.');
             $this->authorizeTeacherForSubjectFase($teacher, $subject->id, $request->fase);
         }
 

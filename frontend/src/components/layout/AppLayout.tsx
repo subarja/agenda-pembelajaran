@@ -3,6 +3,8 @@ import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import BottomNav from './BottomNav'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import PushPrimingBanner from '@/components/notifikasi/PushPrimingBanner'
+import ForegroundPushToast from '@/components/notifikasi/ForegroundPushToast'
 
 export default function AppLayout() {
   const location = useLocation()
@@ -19,6 +21,11 @@ export default function AppLayout() {
           terakhir tidak ketutup nav di iPhone/Android bezel-less. */}
       <main className="md:pl-64 pb-24 md:pb-0">
         <div className="p-4 md:p-6">
+          {/* Ajakan izin notifikasi — di luar ErrorBoundary halaman supaya halaman yang
+              crash tidak ikut menyembunyikannya, tapi tetap di dalam <main> agar ikut
+              lebar konten. Menyembunyikan diri sendiri kalau tidak relevan. */}
+          <PushPrimingBanner />
+
           {/* Boundary di-key oleh path: kalau satu halaman crash, sidebar/nav tetap
               tampil dan pindah menu otomatis mereset error (tak perlu refresh manual). */}
           <ErrorBoundary resetKey={location.pathname}>
@@ -29,6 +36,9 @@ export default function AppLayout() {
 
       {/* Mobile bottom nav */}
       <BottomNav />
+
+      {/* Push yang tiba saat aplikasi terbuka → kartu in-app, bukan notifikasi OS */}
+      <ForegroundPushToast />
     </div>
   )
 }

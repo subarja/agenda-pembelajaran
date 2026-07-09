@@ -10,6 +10,7 @@ use App\Models\CharacterInput;
 use App\Models\CharacterSubitem;
 use App\Models\Student;
 use App\Services\CharacterService;
+use App\Support\ClassAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -103,6 +104,13 @@ class CharacterController extends Controller
 
         $student = Student::where('uuid', $request->student_id)->firstOrFail();
 
+        // Sama seperti summary(): tanpa penjagaan ini, akun siswa bisa membaca riwayat
+        // pelanggaran siswa lain lengkap dengan catatan dan nama guru pencatatnya.
+        $user = $request->user();
+        if (ClassAccess::isStudentSide($user)) {
+            abort_unless(ClassAccess::isOwnStudent($user, $student), 403, 'Akses ditolak.');
+        }
+
         $inputs = CharacterInput::where('student_id', $student->id)
             ->with(['subitem.category', 'teacher.user'])
             ->orderByDesc('created_at')
@@ -134,6 +142,15 @@ class CharacterController extends Controller
         $student = Student::where('uuid', $request->student_id)
             ->with('user')
             ->firstOrFail();
+
+        // Endpoint ini dulu tanpa otorisasi: akun siswa bisa membaca nama, NIS, dan total
+        // poin karakter siswa lain (audit 2026-07-09). Seluruh guru tetap boleh — mereka
+        // butuh konteks poin berjalan saat memberi apresiasi/pelanggaran, dan itu memang
+        // inti prinsip "karakter sebagai aset kolektif".
+        $user = $request->user();
+        if (ClassAccess::isStudentSide($user)) {
+            abort_unless(ClassAccess::isOwnStudent($user, $student), 403, 'Akses ditolak.');
+        }
 
         $inputs = CharacterInput::where('student_id', $student->id)
             ->with('subitem.category')

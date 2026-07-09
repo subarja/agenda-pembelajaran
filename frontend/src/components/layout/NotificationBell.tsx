@@ -76,6 +76,17 @@ export default function NotificationBell() {
   const unreadCount = data?.unread_count ?? 0
   const notifications = data?.data ?? []
 
+  // Badge angka di ikon aplikasi PWA (taskbar/home screen), sehingga guru melihat ada
+  // notifikasi baru tanpa membuka aplikasi. Belum didukung Firefox & Safari desktop —
+  // di sana pemanggilannya tidak ada; lonceng di dalam aplikasi tetap satu-satunya
+  // sumber yang selalu benar.
+  useEffect(() => {
+    if (!('setAppBadge' in navigator)) return
+
+    if (unreadCount > 0) void navigator.setAppBadge(unreadCount).catch(() => {})
+    else void navigator.clearAppBadge().catch(() => {})
+  }, [unreadCount])
+
   function calcPos() {
     if (!buttonRef.current) return
     const rect       = buttonRef.current.getBoundingClientRect()

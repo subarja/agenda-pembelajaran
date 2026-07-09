@@ -3,7 +3,10 @@
 namespace App\Providers;
 
 use App\Models\R2Setting;
+use App\Notifications\Channels\FcmChannel;
+use App\Services\FcmClient;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -14,7 +17,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Dibaca dari DB (bukan .env) agar admin bisa mengganti kredensial Firebase dari
+        // Admin Panel — pola yang sama dengan R2Setting. Diikat sebagai closure supaya
+        // query-nya baru jalan saat notifikasi benar-benar dikirim, bukan saat boot.
+        $this->app->bind(FcmClient::class, fn () => FcmClient::fromSettings());
     }
 
     /**
@@ -43,6 +49,14 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->configurePublicDiskFromR2Setting();
+
+        // Mendaftarkan channel 'fcm' sehingga notifikasi cukup menulis 'fcm' di via().
+        // Notification::resolved() dipakai (bukan Notification::extend() langsung) agar
+        // channel manager tidak ikut dibangun di setiap request yang tidak mengirim
+        // notifikasi sama sekali — yaitu hampir semuanya.
+        Notification::resolved(function ($channelManager) {
+            $channelManager->extend('fcm', fn ($app) => $app->make(FcmChannel::class));
+        });
     }
 
     // Kalau admin sudah aktifkan R2 lewat Admin Panel, disk 'public' (dipakai ~30 tempat

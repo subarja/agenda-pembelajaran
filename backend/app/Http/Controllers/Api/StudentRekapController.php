@@ -9,6 +9,7 @@ use App\Models\Note;
 use App\Models\Recommendation;
 use App\Models\Student;
 use App\Models\StudentAttendance;
+use App\Support\ClassAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -40,21 +41,30 @@ class StudentRekapController extends Controller
         ]);
     }
 
-    // ── Akses: semua peran kecuali siswa lain dan orang tua lain ─────────────
+    /**
+     * Rekap ini memuat poin karakter, kehadiran, rekomendasi, dan status EWS — riwayat
+     * pembinaan, bukan data operasional kelas. Jadi batasnya adalah kelas yang DIBINA
+     * (perwalian ∪ kelas yang diampu sebagai BK), bukan kelas yang diajar.
+     *
+     * Versi sebelumnya berbunyi `if ($role === 'guru') return;` — role literal tanpa
+     * pemeriksaan kepemilikan kelas, sehingga guru mata pelajaran mana pun bisa membuka
+     * rekap lengkap siswa mana pun di sekolah (audit 2026-07-09). Cacat yang sama, dan
+     * dari akar yang sama, dengan kebocoran EWS BK yang diperbaiki 2026-07-08.
+     */
     private function authorizeAccess(Request $request, Student $student): void
     {
         $user = $request->user();
-        $role = $user->role->value;
 
-        if (in_array($role, ['admin', 'wakasek', 'bk'])) return;
+        if (ClassAccess::isStudentSide($user)) {
+            abort_unless(ClassAccess::isOwnStudent($user, $student), 403, 'Anda tidak memiliki akses ke rekap siswa ini.');
 
-        if ($role === 'guru' || $role === 'wali_kelas') return;
+            return;
+        }
 
-        if ($role === 'siswa' && $user->student?->id === $student->id) return;
-
-        if ($role === 'orang_tua' && $user->linked_student_id === $student->id) return;
-
-        abort(403, 'Anda tidak memiliki akses ke rekap siswa ini.');
+        abort_unless(
+            ClassAccess::allows(ClassAccess::pastoralClassIds($user), $student->class_id),
+            403, 'Anda tidak memiliki akses ke rekap siswa ini.',
+        );
     }
 
     // ── Profil ────────────────────────────────────────────────────────────────

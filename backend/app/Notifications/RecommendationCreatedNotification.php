@@ -4,9 +4,10 @@ namespace App\Notifications;
 
 use App\Models\Student;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-class RecommendationCreatedNotification extends Notification
+class RecommendationCreatedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -18,7 +19,7 @@ class RecommendationCreatedNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', 'fcm'];
     }
 
     public function toDatabase(object $notifiable): array

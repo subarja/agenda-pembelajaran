@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\Admin\TeacherAdminController;
 use App\Http\Controllers\Api\Admin\CalendarController;
 use App\Http\Controllers\Api\Admin\DatabaseBackupController;
 use App\Http\Controllers\Api\Admin\DeployToolController;
+use App\Http\Controllers\Api\Admin\FcmSettingController;
 use App\Http\Controllers\Api\Admin\R2SettingController;
 use App\Http\Controllers\Api\Admin\UserAdminController;
 use App\Http\Controllers\Api\EffectiveDayController;
@@ -39,6 +40,8 @@ use App\Http\Controllers\Api\StudentPhotoController;
 use App\Http\Controllers\Api\WeeklyReflectionController;
 use App\Http\Controllers\Api\Admin\PhotoBulkUploadController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\NotificationPreferenceController;
+use App\Http\Controllers\Api\PushSubscriptionController;
 use App\Http\Controllers\Api\RecommendationController;
 use App\Http\Controllers\Api\StudentRekapController;
 use App\Http\Controllers\Api\TeacherAttendanceController;
@@ -205,6 +208,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('notifications/{id}/read',    [NotificationController::class, 'markRead']);
     Route::delete('notifications/{id}',      [NotificationController::class, 'destroy']);
 
+    // ── Push Notification (Firebase) — semua role login ───────────────────────
+    // `push/devices/unsubscribe` didaftarkan SEBELUM `push/devices/{id}` supaya kata
+    // "unsubscribe" tidak ditangkap lebih dulu sebagai {id}.
+    Route::get('push/config',                    [PushSubscriptionController::class, 'config']);
+    Route::get('push/devices',                   [PushSubscriptionController::class, 'index']);
+    Route::post('push/devices',                  [PushSubscriptionController::class, 'store']);
+    Route::post('push/devices/unsubscribe',      [PushSubscriptionController::class, 'unsubscribe']);
+    Route::delete('push/devices/{id}',           [PushSubscriptionController::class, 'destroy'])->whereNumber('id');
+
+    Route::get('notification-preferences',       [NotificationPreferenceController::class, 'show']);
+    Route::put('notification-preferences',       [NotificationPreferenceController::class, 'update']);
+
     // ── Pengaturan Cetak PDF — per-akun (GK30), semua role login boleh akses ───
     // Dulu di bawah grup admin-only karena baris settingnya GLOBAL (satu guru bisa
     // ubah format kertas semua orang) — sekarang PrintSetting::instance($userId)
@@ -234,6 +249,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('r2/settings',                               [R2SettingController::class, 'update']);
         Route::post('r2/test',                                  [R2SettingController::class, 'test']);
 
+        // Push Notification (Firebase Cloud Messaging) — admin
+        Route::get('fcm/settings',                              [FcmSettingController::class, 'show']);
+        Route::put('fcm/settings',                              [FcmSettingController::class, 'update']);
+        Route::post('fcm/test',                                 [FcmSettingController::class, 'test']);
+
         // Kalender Google + Hari Efektif — admin
         Route::get('calendar/settings',                         [CalendarController::class, 'getSettings']);
         Route::post('calendar/settings',                        [CalendarController::class, 'saveSettings']);
@@ -247,6 +267,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('non-effective-days/import',                [CalendarController::class, 'importNonEffective']);
         Route::post('non-effective-days/auto-mark',             [CalendarController::class, 'autoMarkFromEvents']);
         Route::get('non-effective-days/template',               [CalendarController::class, 'templateNonEffective']);
+        Route::get('non-effective-days/unmarked-count',         [CalendarController::class, 'unmarkedCount']);
         Route::get('effective-days/summary',                    [EffectiveDayController::class, 'adminSummary']);
         Route::get('effective-days/export',                     [EffectiveDayController::class, 'export']);
         Route::get('effective-days/export-pdf',                 [EffectiveDayController::class, 'exportPdf']);

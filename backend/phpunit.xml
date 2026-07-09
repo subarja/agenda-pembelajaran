@@ -22,8 +22,20 @@
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_STORE" value="array"/>
-        <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
-        <!-- <env name="DB_DATABASE" value=":memory:"/> -->
+        <!-- SQLite tidak dipakai: sebagian migrasi memakai DDL khas MySQL (generated
+             column, index parsial yang diemulasi) yang tidak jalan di sana.
+
+             DB_DATABASE WAJIB diarahkan ke database terpisah. Tes memakai RefreshDatabase,
+             dan tanpa baris ini ia menjalankan migrate:fresh pada `agenda_db` — menghapus
+             seluruh data guru & siswa asli (terjadi 2026-07-08 dan 2026-07-09).
+
+             force="true" MUTLAK: tanpa itu, <env> hanya berlaku bila variabelnya belum ada,
+             sedangkan docker-compose sudah menetapkan DB_DATABASE=agenda_db di container.
+             Baris ini tanpa force = pengaman yang terlihat ada tapi tidak bekerja.
+
+             Lapis kedua ada di tests/TestCase.php (gagal keras kalau DB bukan agenda_test).
+             Buat sekali: CREATE DATABASE agenda_test; GRANT ALL ON agenda_test.* TO agenda_user@'%'; -->
+        <env name="DB_DATABASE" value="agenda_test" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

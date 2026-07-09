@@ -69,6 +69,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | School Timezone
+    |--------------------------------------------------------------------------
+    |
+    | Zona waktu tempat sekolah berada, terpisah dari APP_TIMEZONE (yang di server
+    | produksi boleh saja UTC). Dipakai untuk keputusan yang harus mengikuti jam
+    | dinding pengguna — mis. jam tenang notifikasi push: "21:00" harus berarti
+    | pukul 21:00 WIB, bukan pukul 04:00 WIB karena servernya UTC.
+    |
+    */
+
+    'school_timezone' => env('SCHOOL_TIMEZONE', 'Asia/Jakarta'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |

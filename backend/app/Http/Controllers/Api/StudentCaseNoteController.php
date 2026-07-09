@@ -2,11 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
-use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentCaseNote;
+use App\Support\ClassAccess;
 use App\Traits\RejectsFutureDate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,11 +21,13 @@ class StudentCaseNoteController extends Controller
         $student = Student::where('uuid', $request->student_id)->firstOrFail();
 
         $user = $request->user();
-        $kap  = $this->getKapabilitas($user);
 
-        // Hanya BK, wali kelas, admin, dan wakasek yang bisa lihat
+        // Dulu di sini hanya ada pemeriksaan KAPABILITAS ("apakah orang ini wali kelas?")
+        // tanpa kepemilikan ("wali kelas SISWA INI?"), sehingga wali kelas satu rombel
+        // bisa membaca catatan konseling siswa rombel lain — dibuktikan pada audit
+        // 2026-07-09. Kapabilitas bukan izin.
         abort_unless(
-            $kap['is_bk'] || $kap['is_wali_kelas'] || in_array($user->role->value, ['admin', 'wakasek']),
+            ClassAccess::allows(ClassAccess::pastoralClassIds($user), $student->class_id),
             403, 'Akses tidak diizinkan.'
         );
 
@@ -35,11 +36,14 @@ class StudentCaseNoteController extends Controller
             ->orderByDesc('tanggal')
             ->orderByDesc('created_at');
 
-        // Filter jenis berdasarkan kapabilitas (guru non-admin)
-        if (! in_array($user->role->value, ['admin', 'wakasek'])) {
+        // Jenis catatan yang boleh dibaca ditentukan oleh peran pembaca TERHADAP SISWA INI,
+        // bukan oleh kapabilitasnya di sekolah. Guru yang wali kelas di rombel A sekaligus
+        // BK di rombel B hanya melihat catatan wali_kelas untuk siswa A, dan catatan bk
+        // untuk siswa B — tidak keduanya untuk keduanya.
+        if (! ClassAccess::isSchoolWide($user)) {
             $allowedJenis = [];
-            if ($kap['is_bk'])         $allowedJenis[] = 'bk';
-            if ($kap['is_wali_kelas']) $allowedJenis[] = 'wali_kelas';
+            if (ClassAccess::waliClassIds($user)->contains($student->class_id)) $allowedJenis[] = 'wali_kelas';
+            if (ClassAccess::bkClassIds($user)->contains($student->class_id))   $allowedJenis[] = 'bk';
             $query->whereIn('jenis', $allowedJenis);
 
             // Konfidensial hanya bisa dilihat oleh author-nya sendiri
@@ -58,7 +62,6 @@ class StudentCaseNoteController extends Controller
     public function store(Request $request): JsonResponse
     {
         $user = $request->user();
-        $kap  = $this->getKapabilitas($user);
 
         $data = $request->validate([
             'student_id'    => ['required', 'string'],
@@ -69,15 +72,20 @@ class StudentCaseNoteController extends Controller
             'konfidensial'  => ['boolean'],
         ], $this->notFutureDateMessages());
 
-        // Validasi kapabilitas berdasarkan jenis
-        if ($data['jenis'] === 'bk') {
-            abort_unless($kap['is_bk'] || in_array($user->role->value, ['admin', 'wakasek']), 403, 'Anda tidak memiliki akses sebagai Guru BK.');
-        }
-        if ($data['jenis'] === 'wali_kelas') {
-            abort_unless($kap['is_wali_kelas'] || in_array($user->role->value, ['admin', 'wakasek']), 403, 'Anda tidak memiliki akses sebagai Wali Kelas.');
-        }
-
         $student = Student::where('uuid', $data['student_id'])->firstOrFail();
+
+        // Jalur TULIS dulu punya cacat yang sama dengan jalur baca: wali kelas mana pun
+        // boleh menulis catatan pada siswa mana pun. Sekarang jenis catatan harus cocok
+        // dengan peran penulis TERHADAP KELAS SISWA INI.
+        if (! ClassAccess::isSchoolWide($user)) {
+            $boleh = $data['jenis'] === 'bk'
+                ? ClassAccess::bkClassIds($user)->contains($student->class_id)
+                : ClassAccess::waliClassIds($user)->contains($student->class_id);
+
+            abort_unless($boleh, 403, $data['jenis'] === 'bk'
+                ? 'Anda bukan Guru BK yang mengampu kelas siswa ini.'
+                : 'Anda bukan wali kelas siswa ini.');
+        }
 
         $note = StudentCaseNote::create([
             'student_id'    => $student->id,
@@ -140,18 +148,5 @@ class StudentCaseNoteController extends Controller
             'author_id'     => $n->author_id,
             'created_at'    => $n->created_at->format('Y-m-d H:i'),
         ];
-    }
-
-    private function getKapabilitas(\App\Models\User $user): array
-    {
-        $teacher = $user->teacher ?? $user->load('teacher')->teacher;
-
-        $isBk = (bool) ($teacher?->is_bk ?? false);
-
-        $kelasWali   = SchoolClass::where('wali_kelas_id', $user->id)
-            ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
-            ->exists();
-
-        return ['is_bk' => $isBk, 'is_wali_kelas' => $kelasWali];
     }
 }

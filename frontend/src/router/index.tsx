@@ -33,6 +33,7 @@ import RekapPerkembanganPage from '@/pages/RekapPerkembanganPage'
 import JadwalSayaPage from '@/pages/JadwalSayaPage'
 import RefleksiMingguanPage from '@/pages/RefleksiMingguanPage'
 import RiwayatDokumenPenangananPage from '@/pages/RiwayatDokumenPenangananPage'
+import PengaturanNotifikasiPage from '@/pages/PengaturanNotifikasiPage'
 
 // Spinner penuh-layar — dipakai SELAMA `hasHydrated` masih false, supaya tidak pernah
 // ada window blank putih ataupun sempat "kelihatan" redirect ke /login yang salah
@@ -115,6 +116,7 @@ export default function AppRouter() {
         <Route path="ews-guru/:teacherId"       element={<TeacherEwsDetailPage />} />
         <Route path="pengaturan"                element={<PlaceholderPage title="Pengaturan" />} />
         <Route path="profil"                    element={<ProfilePage />} />
+        <Route path="pengaturan/notifikasi"     element={<PengaturanNotifikasiPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -53,6 +53,10 @@ export default defineConfig({
         categories: ['education', 'productivity'],
       },
       workbox: {
+        // Service worker push punya siklus hidupnya sendiri dan selalu diambil browser
+        // dari jaringan (permintaan skrip SW tidak melewati SW lain). Mem-precache-nya
+        // hanya menambah entri yang tak pernah terpakai + revisi yang harus diurus.
+        globIgnores: ['**/firebase-messaging-sw.js'],
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/v1\/.*/,

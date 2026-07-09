@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
-  FolderOpen,
+  FolderOpen, BellRing,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -32,6 +32,7 @@ const allNav: Record<string, NavItem> = {
   kalender:      { label: 'Kalender',        path: '/kalender',        icon: Calendar },
   hariEfektif:   { label: 'Minggu Efektif', path: '/hari-efektif',    icon: BarChart3 },
   pengaturan:    { label: 'Pengaturan',      path: '/pengaturan',      icon: Settings },
+  notifikasi:    { label: 'Notifikasi',      path: '/pengaturan/notifikasi', icon: BellRing },
   profil:        { label: 'Profil',          path: '/profil',          icon: User },
   jadwalSaya:    { label: 'Jadwal Saya',     path: '/jadwal-saya',     icon: FileText },
   refleksi:      { label: 'Refleksi Mingguan', path: '/refleksi-mingguan', icon: BookOpenCheck },
@@ -108,7 +109,8 @@ export function getNavForUser(user: UserType): NavItem[] {
     return true
   })
 
-  dedup.push(allNav.profil)
+  // Semua peran (termasuk siswa & orang tua) bisa mengatur notifikasinya sendiri.
+  dedup.push(allNav.notifikasi, allNav.profil)
   return dedup
 }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\CalendarEvent;
 use App\Models\CalendarSetting;
 use App\Models\NonEffectiveDay;
@@ -382,6 +383,65 @@ class CalendarController extends Controller
             'message' => "Import selesai: {$inserted} ditambahkan, {$updated} diperbarui, {$reverted} dikembalikan efektif.",
             'inserted' => $inserted, 'updated' => $updated, 'reverted' => $reverted, 'errors' => $errors,
         ]);
+    }
+
+    /**
+     * GET /admin/non-effective-days/unmarked-count
+     *
+     * Berapa hari kerja dari acara kalender yang BELUM tercatat sebagai hari tidak efektif,
+     * DIPISAH antara yang jatuh di dalam semester aktif dan yang di luarnya.
+     *
+     * Dua jebakan yang dijawab endpoint ini, keduanya ditemukan pada audit 2026-07-09:
+     *
+     * 1. Menyinkronkan kalender tidak menulis apa pun ke non_effective_days (admin berhak
+     *    menolak sebagian acara), tapi layar tidak pernah mengatakannya — admin mengira
+     *    hari efektif guru sudah berkurang.
+     * 2. EffectiveDayService hanya menghitung tanggal DI DALAM rentang semester aktif.
+     *    Kalender sekolah yang berisi libur semester berikutnya bisa menghasilkan puluhan
+     *    hari tertandai yang sama sekali tidak mengubah angka guru — persis kondisi yang
+     *    membuat "penandaan admin tidak sampai ke guru" terlihat seperti bug.
+     */
+    public function unmarkedCount(): JsonResponse
+    {
+        $marked = NonEffectiveDay::pluck('tanggal')
+            ->map(fn ($t) => Carbon::parse($t)->toDateString())
+            ->flip();
+
+        $ay = AcademicYear::where('aktif', true)->first();
+
+        // Tanggal dikumpulkan sebagai himpunan, bukan dihitung di dalam loop: dua acara
+        // yang saling bertumpang tindih (mis. "Libur Semester" dan "Rapat Kelulusan" di
+        // hari yang sama) hanya menghasilkan SATU hari tidak efektif, dan angka di layar
+        // harus cocok dengan jumlah yang benar-benar akan dibuat oleh auto-mark.
+        $belum = collect();
+
+        foreach (CalendarEvent::all() as $ev) {
+            $cur = $ev->start_date->copy();
+
+            while ($cur->lte($ev->end_date)) {
+                $tanggal = $cur->toDateString();
+
+                if (! $this->isWeekendDate($tanggal) && ! $marked->has($tanggal)) {
+                    $belum->push($tanggal);
+                }
+
+                $cur->addDay();
+            }
+        }
+
+        $belum = $belum->unique();
+
+        $dalamSemester = $ay
+            ? $belum->filter(fn ($t) => Carbon::parse($t)->betweenIncluded($ay->tanggal_mulai, $ay->tanggal_selesai))
+            : collect();
+
+        return response()->json(['data' => [
+            'belum_ditandai'    => $dalamSemester->count(),
+            'di_luar_semester'  => $belum->count() - $dalamSemester->count(),
+            'semester_label'    => $ay ? "{$ay->tahun} {$ay->semester->value}" : null,
+            'semester_mulai'    => $ay?->tanggal_mulai?->toDateString(),
+            'semester_selesai'  => $ay?->tanggal_selesai?->toDateString(),
+        ]]);
     }
 
     // ── POST /admin/non-effective-days/auto-mark ──────────────────────────────
