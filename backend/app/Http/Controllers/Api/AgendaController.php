@@ -14,6 +14,7 @@ use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\TeacherAttendance;
+use App\Support\SessionTeacher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -93,6 +94,31 @@ class AgendaController extends Controller
             }
         }
 
+        // ── Guru inval ────────────────────────────────────────────────────────
+        // Sesi yang sudah dialihkan ke guru lain (inval DISETUJUI) hilang dari daftar ini,
+        // dan sesi guru lain yang dialihkan KEPADA saya ikut masuk. Hanya di sinilah
+        // "kewajiban mengisi agenda" berpindah — lihat App\Support\SessionTeacher.
+        $dialihkan = SessionTeacher::delegatedAwayKeys($teacher->id)->flip();
+
+        $sesi = array_values(array_filter(
+            $sesi,
+            fn ($s) => ! $dialihkan->has($s['schedule']->id.'|'.$s['tanggal']),
+        ));
+
+        foreach (SessionTeacher::delegatedToSessions($teacher->id) as $ds) {
+            $tanggal = $ds->tanggal->toDateString();
+
+            // Batasi ke jendela yang sama dengan jadwal sendiri, supaya sesi inval jauh di
+            // masa lalu tidak tiba-tiba muncul kembali di daftar "perlu diisi".
+            if ($ds->schedule && $tanggal >= $mulai->toDateString() && $tanggal <= $today->toDateString()) {
+                $sesi[] = [
+                    'tanggal'   => $tanggal,
+                    'schedule'  => $ds->schedule,
+                    'inval_dari' => $ds->request->requester->user?->nama,
+                ];
+            }
+        }
+
         if (empty($sesi)) {
             return response()->json(['data' => []]);
         }
@@ -128,6 +154,9 @@ class AgendaController extends Controller
                     'deadline'     => $deadline->format('Y-m-d H:i'),
                     'bisa_diisi'   => $now->lte($deadline),
                     'jam_tersisa'  => $now->lte($deadline) ? $now->diffInHours($deadline) : null,
+                    // Terisi hanya untuk sesi yang masuk lewat inval — supaya guru pengganti
+                    // tahu ini bukan jadwalnya sendiri, dan tidak mengira aplikasinya keliru.
+                    'inval_dari'   => $s['inval_dari'] ?? null,
                 ];
             })
             ->sortBy('deadline')
@@ -144,7 +173,7 @@ class AgendaController extends Controller
             return response()->json(['data' => [], 'meta' => ['total' => 0, 'current_page' => 1, 'last_page' => 1]]);
         }
 
-        $query = Agenda::whereHas('schedule', fn ($q) => $q->where('teacher_id', $teacher->id))
+        $query = Agenda::untukGuru($teacher->id)
             ->with(['schedule.subject', 'schedule.schoolClass', 'learningObjectives', 'studentScores.student.user'])
             ->orderByDesc('tanggal')
             ->orderByDesc('created_at');
@@ -195,7 +224,18 @@ class AgendaController extends Controller
         $schedule = Schedule::where('uuid', $data['schedule_id'])->firstOrFail();
 
         $teacher = $request->user()->teacher;
-        abort_if(! $teacher || $schedule->teacher_id !== $teacher->id, 403, 'Bukan jadwal Anda.');
+        abort_if(! $teacher, 403, 'Bukan jadwal Anda.');
+
+        // BUKAN lagi `$schedule->teacher_id !== $teacher->id`. Kalau sesi ini sudah dialihkan
+        // lewat guru inval yang disetujui, yang berhak (dan wajib) mengisi adalah guru
+        // penggantinya — dan guru terjadwal justru tidak lagi berhak.
+        abort_unless(
+            SessionTeacher::isResponsible($teacher->id, $schedule->id, $data['tanggal'], $schedule->teacher_id),
+            403,
+            $schedule->teacher_id === $teacher->id
+                ? 'Sesi ini sudah dialihkan ke guru pengganti.'
+                : 'Bukan jadwal Anda.',
+        );
 
         $this->abortIfPastFillDeadline($schedule, $data['tanggal']);
 
@@ -249,7 +289,9 @@ class AgendaController extends Controller
             ->with(['schedule.subject', 'schedule.schoolClass', 'learningObjectives', 'studentScores.student.user'])
             ->firstOrFail();
 
-        abort_if(! $teacher || $agenda->schedule->teacher_id !== $teacher->id, 403);
+        // Guru pengganti yang menerima inval berhak atas agenda sesi ini; guru terjadwal
+        // yang sudah mengalihkannya tidak lagi berhak. Lihat App\Support\SessionTeacher.
+        abort_if(! $teacher || ! SessionTeacher::isResponsibleForAgenda($teacher->id, $agenda), 403);
 
         return response()->json(['data' => new AgendaResource($agenda)]);
     }
@@ -259,7 +301,9 @@ class AgendaController extends Controller
         $teacher = $request->user()->teacher;
         $agenda  = Agenda::where('uuid', $uuid)->firstOrFail();
 
-        abort_if(! $teacher || $agenda->schedule->teacher_id !== $teacher->id, 403);
+        // Guru pengganti yang menerima inval berhak atas agenda sesi ini; guru terjadwal
+        // yang sudah mengalihkannya tidak lagi berhak. Lihat App\Support\SessionTeacher.
+        abort_if(! $teacher || ! SessionTeacher::isResponsibleForAgenda($teacher->id, $agenda), 403);
 
         $data = $request->validate([
             'resume_kbm'               => ['nullable', 'string', 'max:2000'],

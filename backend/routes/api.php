@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\Admin\DatabaseBackupController;
 use App\Http\Controllers\Api\Admin\DeployToolController;
 use App\Http\Controllers\Api\Admin\FcmSettingController;
 use App\Http\Controllers\Api\Admin\R2SettingController;
+use App\Http\Controllers\Api\Admin\SubstitutionAdminController;
 use App\Http\Controllers\Api\Admin\UserAdminController;
 use App\Http\Controllers\Api\EffectiveDayController;
 use App\Http\Controllers\Api\AgendaController;
@@ -36,6 +37,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RekapPerkembanganController;
 use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\SubstitutionController;
 use App\Http\Controllers\Api\StudentPhotoController;
 use App\Http\Controllers\Api\WeeklyReflectionController;
 use App\Http\Controllers\Api\Admin\PhotoBulkUploadController;
@@ -202,6 +204,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('recommendations/{uuid}/bk-terima',         [RecommendationController::class, 'bkTerima']);
     Route::put('recommendations/{uuid}/bk-selesai',        [RecommendationController::class, 'bkSelesai']);
 
+    // ── Guru Inval (guru pengganti) ───────────────────────────────────────────
+    // `sesi-saya` & `calon-pengganti` mendahului rute {uuid} agar tidak tertangkap sbg uuid.
+    Route::get('inval/sesi-saya',            [SubstitutionController::class, 'sesiSaya']);
+    Route::get('inval/calon-pengganti',      [SubstitutionController::class, 'calonPengganti']);
+    Route::get('inval/masuk',                [SubstitutionController::class, 'masuk']);
+    Route::get('inval/keluar',               [SubstitutionController::class, 'keluar']);
+    Route::post('inval',                     [SubstitutionController::class, 'store']);
+    Route::put('inval/{uuid}/setujui',       [SubstitutionController::class, 'setujui']);
+    Route::put('inval/{uuid}/tolak',         [SubstitutionController::class, 'tolak']);
+    Route::put('inval/{uuid}/batal',         [SubstitutionController::class, 'batal']);
+
     // ── Notifikasi ────────────────────────────────────────────────────────────
     Route::get('notifications',              [NotificationController::class, 'index']);
     Route::put('notifications/read-all',     [NotificationController::class, 'markAllRead']);
@@ -248,6 +261,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('r2/settings',                               [R2SettingController::class, 'show']);
         Route::put('r2/settings',                               [R2SettingController::class, 'update']);
         Route::post('r2/test',                                  [R2SettingController::class, 'test']);
+
+        // Guru Inval — pemantauan kurikulum
+        Route::get('inval', [SubstitutionAdminController::class, 'index']);
 
         // Push Notification (Firebase Cloud Messaging) — admin
         Route::get('fcm/settings',                              [FcmSettingController::class, 'show']);

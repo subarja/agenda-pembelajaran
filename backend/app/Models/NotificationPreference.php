@@ -15,6 +15,10 @@ class NotificationPreference extends Model
         'rekomendasi'        => 'Rekomendasi tindakan baru',
         'konseling_diajukan' => 'Pengajuan konseling ke BK',
         'catatan_manual'     => 'Catatan manual karakter menunggu review',
+        'inval_diajukan'     => 'Permintaan mengajar sebagai guru pengganti',
+        'inval_disetujui'    => 'Permintaan inval Anda disetujui',
+        'inval_ditolak'      => 'Permintaan inval Anda ditolak',
+        'inval_kedaluwarsa'  => 'Permintaan inval kedaluwarsa tanpa jawaban',
     ];
 
     protected $fillable = [

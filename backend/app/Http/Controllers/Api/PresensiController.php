@@ -10,6 +10,7 @@ use App\Models\TeacherAttendance;
 use App\Services\AlphaAlertService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Support\SessionTeacher;
 
 class PresensiController extends Controller
 {
@@ -20,7 +21,9 @@ class PresensiController extends Controller
             ->firstOrFail();
 
         $teacher = $request->user()->teacher;
-        abort_if(! $teacher || $agenda->schedule->teacher_id !== $teacher->id, 403);
+        // Presensi mengikuti siapa yang benar-benar mengajar sesi itu — termasuk guru
+        // pengganti lewat inval yang disetujui.
+        abort_if(! $teacher || ! SessionTeacher::isResponsibleForAgenda($teacher->id, $agenda), 403);
 
         $students = $agenda->schedule->schoolClass->students;
         $existing = $agenda->studentAttendances->keyBy('student_id');
@@ -61,7 +64,9 @@ class PresensiController extends Controller
             ->firstOrFail();
 
         $teacher = $request->user()->teacher;
-        abort_if(! $teacher || $agenda->schedule->teacher_id !== $teacher->id, 403);
+        // Presensi mengikuti siapa yang benar-benar mengajar sesi itu — termasuk guru
+        // pengganti lewat inval yang disetujui.
+        abort_if(! $teacher || ! SessionTeacher::isResponsibleForAgenda($teacher->id, $agenda), 403);
 
         $data = $request->validate([
             'records'                      => ['required', 'array', 'min:1'],

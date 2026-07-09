@@ -20,6 +20,7 @@ use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Writer;
+use App\Support\SessionTeacher;
 
 class TeacherEwsController extends Controller
 {
@@ -50,20 +51,33 @@ class TeacherEwsController extends Controller
             ->groupBy('user_id')
             ->pluck('last_login', 'user_id');
 
-        $results = $teachers->map(function (Teacher $teacher) use ($mulai, $akhir, $lastLogins) {
+        // Peta pengalihan inval untuk SEMUA guru sekaligus. Diambil sekali di luar map():
+        // memanggil versi per-guru di dalam perulangan 97 guru berarti 194 query tambahan.
+        $delegasi = SessionTeacher::delegationMapFor($teachers->pluck('id')->all());
+
+        $results = $teachers->map(function (Teacher $teacher) use ($mulai, $akhir, $lastLogins, $delegasi) {
             // Hitung sesi yang harusnya diajar dalam periode ini
             // Berdasarkan jadwal aktif (hari + jam) × jumlah minggu yang relevan
             $schedules    = Schedule::where('teacher_id', $teacher->id)->where('aktif', true)->get();
             $totalJadwal  = $this->hitungSesiTerjadwal($schedules, $mulai, $akhir);
 
-            // Hitung agenda yang sudah terisi
-            $terisi = Agenda::whereHas('schedule', fn ($q) => $q->where('teacher_id', $teacher->id))
+            // Kewajiban ikut berpindah bersama inval yang disetujui: sesi yang dialihkan
+            // ke guru lain tidak lagi dihitung sebagai jadwalnya, dan sesi yang diterimanya
+            // dari guru lain ditambahkan. Tanpa ini, guru yang sakit tetap tercatat menunggak
+            // agenda yang secara resmi bukan lagi tanggung jawabnya.
+            $totalJadwal -= $this->hitungKunciDalamPeriode($delegasi['away'][$teacher->id] ?? [], $mulai, $akhir);
+            $totalJadwal += $this->hitungKunciDalamPeriode($delegasi['to'][$teacher->id] ?? [], $mulai, $akhir);
+            $totalJadwal  = max(0, $totalJadwal);
+
+            // Agenda::untukGuru() memakai aturan pengalihan yang sama persis, jadi
+            // pembilang dan penyebut tidak pernah menghitung sesi yang berbeda.
+            $terisi = Agenda::untukGuru($teacher->id)
                 ->whereBetween('tanggal', [$mulai->toDateString(), $akhir->toDateString()])
                 ->where('status', 'submitted')
                 ->count();
 
             // Hitung yang draft (diisi tapi belum submit)
-            $draft = Agenda::whereHas('schedule', fn ($q) => $q->where('teacher_id', $teacher->id))
+            $draft = Agenda::untukGuru($teacher->id)
                 ->whereBetween('tanggal', [$mulai->toDateString(), $akhir->toDateString()])
                 ->where('status', 'draft')
                 ->count();
@@ -507,6 +521,24 @@ class TeacherEwsController extends Controller
      * Hitung berapa sesi yang seharusnya terjadwal dalam rentang tanggal
      * berdasarkan jadwal mingguan (hari-hari yang aktif).
      */
+    /**
+     * Berapa kunci sesi "scheduleId|Y-m-d" yang jatuh di dalam periode laporan.
+     * Perbandingan string aman karena formatnya Y-m-d (leksikografis = kronologis).
+     *
+     * @param  string[]  $kunci
+     */
+    private function hitungKunciDalamPeriode(array $kunci, Carbon $mulai, Carbon $akhir): int
+    {
+        $dari  = $mulai->toDateString();
+        $sampai = $akhir->toDateString();
+
+        return count(array_filter($kunci, function (string $k) use ($dari, $sampai) {
+            $tanggal = substr($k, strpos($k, '|') + 1);
+
+            return $tanggal >= $dari && $tanggal <= $sampai;
+        }));
+    }
+
     private function hitungSesiTerjadwal($schedules, Carbon $mulai, Carbon $akhir): int
     {
         return count($this->daftarSesiTerjadwal($schedules, $mulai, $akhir));

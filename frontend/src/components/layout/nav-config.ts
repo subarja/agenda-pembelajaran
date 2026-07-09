@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
-  FolderOpen, BellRing,
+  FolderOpen, BellRing, UserPlus,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -35,6 +35,7 @@ const allNav: Record<string, NavItem> = {
   notifikasi:    { label: 'Notifikasi',      path: '/pengaturan/notifikasi', icon: BellRing },
   profil:        { label: 'Profil',          path: '/profil',          icon: User },
   jadwalSaya:    { label: 'Jadwal Saya',     path: '/jadwal-saya',     icon: FileText },
+  inval:         { label: 'Guru Inval',      path: '/inval',           icon: UserPlus },
   refleksi:      { label: 'Refleksi Mingguan', path: '/refleksi-mingguan', icon: BookOpenCheck },
   riwayatDokumen: { label: 'Riwayat Dokumen Penanganan', path: '/riwayat-dokumen-penanganan', icon: FolderOpen },
 }
@@ -52,7 +53,7 @@ export function getNavForUser(user: UserType): NavItem[] {
   if (role === 'guru') {
     // Riwayat Dokumen Penanganan SENGAJA tidak di sini — hanya untuk guru yang
     // wali kelas dan/atau BK (lihat cabang kapabilitas). Guru biasa tidak dapat.
-    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya)
+    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya)
 
     if (kap?.is_wali_kelas && kap?.is_bk) {
       // Keduanya → DUA EWS terpisah: "EWS Siswa" (kelas perwalian) di Menu Wali Kelas,
@@ -81,7 +82,7 @@ export function getNavForUser(user: UserType): NavItem[] {
     }
   } else if (role === 'wali_kelas') {
     // Legacy role — backward compat
-    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.laporan)
+    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan)
     items.push(
       withSection(allNav.presensiHarian, 'Menu Wali Kelas'),
       allNav.ews, allNav.siswa, allNav.refleksi, allNav.riwayatDokumen,

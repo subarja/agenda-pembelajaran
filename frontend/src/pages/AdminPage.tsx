@@ -1,10 +1,11 @@
-import { useRef, useState, useMemo, useEffect } from 'react'
+import { useRef, useState, useMemo, useEffect, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing } from 'lucide-react'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
 import { fcmAdminApi } from '@/features/notifikasi/api'
+import { invalAdminApi, type InvalAdminRow } from '@/features/inval/api'
 import type {
   AdminTeacher, AdminStudent, AdminClass, AdminSubject,
   AdminSchedule, AdminCharacterCategory, AdminCharacterSubitem, AdminThreshold,
@@ -18,7 +19,7 @@ import PhotoEditWidget from '@/components/PhotoEditWidget'
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Deploy & Maintenance']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance']
 
 // GK26: notifikasi nilai manual (ManualNoteSubmittedNotification) mengirim
 // `?tab=nilai-manual` — dulu AdminPage sama sekali tidak baca query param ini jadi klik
@@ -2902,7 +2903,8 @@ export default function AdminPage() {
         {activeTab === 15 && <JadwalPdfBulkUploadTab />}
         {activeTab === 16 && <R2StorageAdminTab />}
         {activeTab === 17 && <FcmPushAdminTab />}
-        {activeTab === 18 && <DeployToolsTab />}
+        {activeTab === 18 && <InvalAdminTab />}
+        {activeTab === 19 && <DeployToolsTab />}
       </div>
     </div>
   )
@@ -3844,6 +3846,149 @@ function R2StorageAdminTab() {
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+
+// ── Guru Inval (pemantauan kurikulum) ────────────────────────────────────────
+const INVAL_STATUS: Record<string, string> = {
+  diajukan: 'bg-amber-100 text-amber-800',
+  disetujui: 'bg-green-100 text-green-800',
+  ditolak: 'bg-red-100 text-red-800',
+  dibatalkan: 'bg-muted text-muted-foreground',
+  kedaluwarsa: 'bg-muted text-muted-foreground',
+}
+
+function InvalAdminTab() {
+  const [status, setStatus] = useState('')
+  const [search, setSearch] = useState('')
+  const [mulai, setMulai]   = useState('')
+  const [akhir, setAkhir]   = useState('')
+  const [page, setPage]     = useState(1)
+  const [buka, setBuka]     = useState<string | null>(null)
+
+  const debounced = useDebounce(search, 300)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-inval', status, debounced, mulai, akhir, page],
+    queryFn: () => invalAdminApi.list({
+      status: status || undefined,
+      search: debounced || undefined,
+      tanggal_mulai: mulai || undefined,
+      tanggal_akhir: akhir || undefined,
+      page,
+    }),
+  })
+
+  const inputCls = 'rounded-md border border-input px-3 py-2 text-sm bg-white'
+
+  if (isLoading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+
+  const rows = data?.data ?? []
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {Object.entries(data?.ringkasan ?? {}).map(([k, v]) => (
+          <Badge key={k} className={INVAL_STATUS[k] ?? ''}>{k}: {v}</Badge>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <input className={inputCls} placeholder="Cari nama guru…" value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1) }} />
+        <select className={inputCls} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }}>
+          <option value="">Semua status</option>
+          {Object.keys(INVAL_STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {/* Rentang menyaring TANGGAL SESI, bukan tanggal pengajuan — yang dicari kurikulum
+            adalah siapa yang diganti minggu ini, bukan siapa yang mengetik formulir. */}
+        <input type="date" className={inputCls} value={mulai} onChange={(e) => { setMulai(e.target.value); setPage(1) }} title="Tanggal sesi dari" />
+        <input type="date" className={inputCls} value={akhir} onChange={(e) => { setAkhir(e.target.value); setPage(1) }} title="Tanggal sesi sampai" />
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="py-12 text-center text-sm text-muted-foreground">Belum ada pengajuan guru inval.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left">
+              <tr>
+                <th className="px-3 py-2 font-medium">Pengaju</th>
+                <th className="px-3 py-2 font-medium">Pengganti</th>
+                <th className="px-3 py-2 font-medium">Sesi</th>
+                <th className="px-3 py-2 font-medium">Alasan</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Diajukan</th>
+                <th className="px-3 py-2 font-medium">Dijawab</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r: InvalAdminRow) => (
+                // Fragment WAJIB ber-key: ia elemen terluar dari map(). Tanpa ini React
+                // tidak punya identitas baris dan bisa mencocokkan ulang baris yang salah
+                // saat filter berubah — detail yang terbuka ikut melompat ke baris lain.
+                <Fragment key={r.id}>
+                  <tr className="border-t">
+                    <td className="px-3 py-2">{r.pengaju}</td>
+                    <td className="px-3 py-2">{r.pengganti}</td>
+                    <td className="px-3 py-2">{r.jumlah_sesi} sesi</td>
+                    <td className="max-w-[16rem] truncate px-3 py-2" title={r.alasan}>{r.alasan}</td>
+                    <td className="px-3 py-2"><Badge className={INVAL_STATUS[r.status]}>{r.status_label}</Badge></td>
+                    <td className="px-3 py-2 text-xs">{r.diajukan_pada}</td>
+                    <td className="px-3 py-2 text-xs">{r.dijawab_pada ?? '—'}</td>
+                    <td className="px-3 py-2">
+                      <Button size="sm" variant="ghost" onClick={() => setBuka(buka === r.id ? null : r.id)}>
+                        {buka === r.id ? 'Tutup' : 'Detail'}
+                      </Button>
+                    </td>
+                  </tr>
+                  {buka === r.id && (
+                    <tr className="border-t bg-muted/30">
+                      <td colSpan={8} className="px-3 py-3">
+                        <div className="space-y-2 text-xs">
+                          <div>
+                            <p className="font-semibold">Sesi yang digantikan</p>
+                            {r.sesi.map((s, i) => (
+                              <p key={i}>{s.tanggal} • {s.jam_mulai}–{s.jam_selesai} • {s.kelas}{s.mapel ? ` • ${s.mapel}` : ''}</p>
+                            ))}
+                          </div>
+                          {r.pesan && (
+                            <div>
+                              <p className="font-semibold">Pesan untuk pengganti</p>
+                              <p className="whitespace-pre-wrap">{r.pesan}</p>
+                            </div>
+                          )}
+                          {r.link_tugas && (
+                            <div>
+                              <p className="font-semibold">Lampiran tugas</p>
+                              <a href={r.link_tugas} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+                                {r.link_tugas}
+                              </a>
+                            </div>
+                          )}
+                          {r.alasan_penolakan && (
+                            <div>
+                              <p className="font-semibold text-red-700">Alasan penolakan</p>
+                              <p>{r.alasan_penolakan}</p>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data && data.meta.last_page > 1 && (
+        <Pagination meta={data.meta} page={page} onPage={setPage} />
+      )}
     </div>
   )
 }

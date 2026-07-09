@@ -6,6 +6,17 @@ use App\Models\User;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schedule;
+
+/**
+ * Pengajuan guru inval yang tidak dijawab sampai sesinya lewat ditandai kedaluwarsa, dan
+ * kedua guru diberi tahu. Tiap 15 menit sudah cukup: yang ditunggu adalah jam pelajaran
+ * berakhir, bukan detik. Butuh cron `php artisan schedule:run` tiap menit di server.
+ *
+ * Kalau cron ini mati, TIDAK ADA data yang salah — hanya status yang telat dirapikan.
+ * Kewajiban agenda tidak pernah berpindah tanpa persetujuan (lihat SessionTeacher).
+ */
+Schedule::command('inval:kedaluwarsa')->everyFifteenMinutes()->withoutOverlapping();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

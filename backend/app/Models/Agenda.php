@@ -34,6 +34,36 @@ class Agenda extends Model
         return $this->belongsTo(Schedule::class);
     }
 
+    /**
+     * Agenda yang menjadi tanggung jawab seorang guru — jadwalnya sendiri DIKURANGI sesi
+     * yang ia alihkan lewat guru inval, DITAMBAH sesi guru lain yang dialihkan kepadanya.
+     *
+     * Ditulis sebagai scope (bukan disaring di PHP) supaya paginasi, penghitungan, dan
+     * filter kelas tetap terjadi di database. Pencocokannya persis kunci yang sama dengan
+     * `SessionTeacher`: pasangan (schedule_id, tanggal).
+     */
+    public function scopeUntukGuru(\Illuminate\Database\Eloquent\Builder $query, int $teacherId): \Illuminate\Database\Eloquent\Builder
+    {
+        $sesiInval = fn (string $kolomGuru) => function ($sub) use ($teacherId, $kolomGuru) {
+            $sub->selectRaw('1')
+                ->from('substitution_sessions as ss')
+                ->join('substitution_requests as sr', 'sr.id', '=', 'ss.request_id')
+                ->whereColumn('ss.schedule_id', 'agendas.schedule_id')
+                ->whereColumn('ss.tanggal', 'agendas.tanggal')
+                ->where('sr.status', 'disetujui')
+                ->whereNull('sr.deleted_at')
+                ->where("sr.{$kolomGuru}", $teacherId);
+        };
+
+        return $query->where(function ($q) use ($teacherId, $sesiInval) {
+            $q->where(function ($milikSendiri) use ($teacherId, $sesiInval) {
+                $milikSendiri
+                    ->whereHas('schedule', fn ($s) => $s->where('teacher_id', $teacherId))
+                    ->whereNotExists($sesiInval('requester_teacher_id'));
+            })->orWhereExists($sesiInval('substitute_teacher_id'));
+        });
+    }
+
     public function learningObjectives(): BelongsToMany
     {
         return $this->belongsToMany(LearningObjective::class, 'agenda_learning_objectives');
