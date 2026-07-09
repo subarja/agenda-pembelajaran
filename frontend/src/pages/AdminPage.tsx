@@ -11,12 +11,13 @@ import type {
 } from '@/features/admin/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { PasswordInput } from '@/components/ui/password-input'
 import PhotoEditWidget from '@/components/PhotoEditWidget'
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Deploy & Maintenance']
 
 // GK26: notifikasi nilai manual (ManualNoteSubmittedNotification) mengirim
 // `?tab=nilai-manual` — dulu AdminPage sama sekali tidak baca query param ini jadi klik
@@ -2899,6 +2900,7 @@ export default function AdminPage() {
         {activeTab === 14 && <FotoBulkUploadTab />}
         {activeTab === 15 && <JadwalPdfBulkUploadTab />}
         {activeTab === 16 && <R2StorageAdminTab />}
+        {activeTab === 17 && <DeployToolsTab />}
       </div>
     </div>
   )
@@ -3927,6 +3929,154 @@ function BackupRestoreTab() {
           Pulihkan Sekarang
         </Button>
       </div>
+    </div>
+  )
+}
+
+// ── Tools Deploy & Maintenance ────────────────────────────────────────────────
+// Dipakai utk update kode di cPanel tanpa Terminal/SSH: ganti vendor/dist dari zip
+// yang sudah ada di repo (lihat backend/vendor.zip, frontend/dist.zip), migrate,
+// dan jalankan seeder — semua lewat tombol, bukan URL manual seperti cpanel-deploy.php.
+const ALLOWED_SEEDERS = ['AdminOnlySeeder', 'CharacterSeeder']
+
+function DeployToolsTab() {
+  const [log, setLog] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [seederOpen, setSeederOpen] = useState(false)
+  const [seederClass, setSeederClass] = useState(ALLOWED_SEEDERS[0])
+
+  function onResult(data: { log: string[] }) { setLog(data.log ?? []); setError(null) }
+  function onErr(err: any) { setError(err?.response?.data?.message ?? err?.message ?? 'Gagal menjalankan aksi.') }
+
+  const deployMut      = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/deploy')).data, onSuccess: onResult, onError: onErr })
+  const buildDistMut   = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/build-dist')).data, onSuccess: onResult, onError: onErr })
+  const buildVendorMut = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/build-vendor')).data, onSuccess: onResult, onError: onErr })
+  const migrateMut     = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/migrate')).data, onSuccess: onResult, onError: onErr })
+  const seedMut = useMutation({
+    mutationFn: async () => (await api.post('/admin/deploy-tools/seed', { class: seederClass })).data,
+    onSuccess: (data: { log: string[] }) => { onResult(data); setSeederOpen(false) },
+    onError: onErr,
+  })
+
+  const anyPending = deployMut.isPending || buildDistMut.isPending || buildVendorMut.isPending || migrateMut.isPending || seedMut.isPending
+
+  const actions: Array<{
+    key: string; label: string; icon: typeof RefreshCw; tone: 'green' | 'yellow' | 'blue'
+    desc: string; confirm: string; mut: { mutate: () => void; isPending: boolean }
+  }> = [
+    {
+      key: 'deploy', label: 'Deploy', icon: RefreshCw, tone: 'green',
+      desc: 'Migrate + hapus & extract dist.zip + clear semua cache — sekaligus.',
+      confirm: 'Jalankan Deploy?\n\nIni akan: migrate database, MENGHAPUS folder frontend/dist saat ini lalu menggantinya dari dist.zip, dan clear semua cache. Pastikan dist.zip sudah versi terbaru (git pull dulu).',
+      mut: deployMut,
+    },
+    {
+      key: 'build-dist', label: 'Build Dist', icon: Upload, tone: 'yellow',
+      desc: 'Hapus folder frontend/dist lama, extract dist.zip.',
+      confirm: 'Hapus folder frontend/dist saat ini dan gantikan dari dist.zip?',
+      mut: buildDistMut,
+    },
+    {
+      key: 'build-vendor', label: 'Build Vendor', icon: FolderOpen, tone: 'yellow',
+      desc: 'Hapus folder backend/vendor lama, extract vendor.zip.',
+      confirm: 'Hapus folder vendor saat ini dan gantikan dari vendor.zip? Pastikan vendor.zip sudah versi terbaru.',
+      mut: buildVendorMut,
+    },
+    {
+      key: 'migrate', label: 'Migrate', icon: FileCode2, tone: 'blue',
+      desc: 'Jalankan php artisan migrate --force.',
+      confirm: 'Jalankan migrasi database (migrate --force)?',
+      mut: migrateMut,
+    },
+  ]
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h2 className="text-base font-semibold mb-1">Tools Deploy & Maintenance</h2>
+        <p className="text-sm text-muted-foreground">
+          Update kode & database langsung dari sini — tanpa Terminal/SSH di cPanel.
+          Semua tombol di sini mengandalkan{' '}
+          <code className="px-1 py-0.5 rounded bg-muted">vendor.zip</code> /{' '}
+          <code className="px-1 py-0.5 rounded bg-muted">dist.zip</code> yang sudah
+          ter-update di server (lewat Git pull) — build ulang & commit dulu dari lokal
+          sebelum menekan tombol di sini.
+        </p>
+      </div>
+
+      <div className="rounded-lg border bg-card p-5 space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {actions.map(a => (
+            <Button
+              key={a.key}
+              size="sm"
+              disabled={anyPending}
+              onClick={() => window.confirm(a.confirm) && a.mut.mutate()}
+              className={cn(
+                a.tone === 'green' && 'bg-green-600 hover:bg-green-700 text-white',
+                a.tone === 'yellow' && 'bg-amber-500 hover:bg-amber-600 text-white',
+                a.tone === 'blue' && 'bg-blue-600 hover:bg-blue-700 text-white',
+              )}
+            >
+              {a.mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <a.icon className="h-3.5 w-3.5 mr-1" />}
+              {a.label}
+            </Button>
+          ))}
+          <Button size="sm" variant="outline" disabled={anyPending} onClick={() => setSeederOpen(true)}>
+            <Users className="h-3.5 w-3.5 mr-1" />
+            Seeder
+          </Button>
+        </div>
+
+        <ul className="text-xs text-muted-foreground space-y-0.5">
+          {actions.map(a => <li key={a.key}><span className="font-medium text-foreground">{a.label}:</span> {a.desc}</li>)}
+          <li><span className="font-medium text-foreground">Seeder:</span> pilih seeder yang aman dijalankan ulang di produksi (bukan data demo/fiktif).</li>
+        </ul>
+      </div>
+
+      {error && (
+        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 flex gap-2 text-xs text-red-700">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />{error}
+        </div>
+      )}
+
+      {log.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Hasil Terakhir
+          </h3>
+          <pre className="text-xs bg-muted rounded p-3 overflow-x-auto whitespace-pre-wrap">{log.join('\n')}</pre>
+        </div>
+      )}
+
+      <Dialog open={seederOpen} onOpenChange={setSeederOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Jalankan Seeder</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Hanya seeder yang aman dijalankan ulang di produksi yang tersedia di sini
+              — tidak termasuk data demo/fiktif (DatabaseSeeder, FullDemoSeeder).
+            </p>
+            <select
+              className="w-full rounded-md border px-3 py-1.5 text-sm"
+              value={seederClass}
+              onChange={(e) => setSeederClass(e.target.value)}
+            >
+              {ALLOWED_SEEDERS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <Button
+              size="sm"
+              disabled={seedMut.isPending}
+              onClick={() => window.confirm(`Jalankan seeder ${seederClass}?`) && seedMut.mutate()}
+            >
+              {seedMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Users className="h-3.5 w-3.5 mr-1" />}
+              Jalankan
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

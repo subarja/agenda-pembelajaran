@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Admin\SubjectAdminController;
 use App\Http\Controllers\Api\Admin\TeacherAdminController;
 use App\Http\Controllers\Api\Admin\CalendarController;
 use App\Http\Controllers\Api\Admin\DatabaseBackupController;
+use App\Http\Controllers\Api\Admin\DeployToolController;
 use App\Http\Controllers\Api\Admin\R2SettingController;
 use App\Http\Controllers\Api\Admin\UserAdminController;
 use App\Http\Controllers\Api\EffectiveDayController;
@@ -280,6 +281,14 @@ Route::middleware('auth:sanctum')->group(function () {
         // Backup & Restore (admin-only, dijaga lagi di dalam controller)
         Route::get('backup/download',             [DatabaseBackupController::class, 'download']);
         Route::post('backup/restore',             [DatabaseBackupController::class, 'restore']);
+
+        // Tools Deploy & Maintenance — cPanel tanpa Terminal (admin-only, dijaga di controller)
+        Route::get('deploy-tools/status',         [DeployToolController::class, 'status']);
+        Route::post('deploy-tools/migrate',       [DeployToolController::class, 'migrate']);
+        Route::post('deploy-tools/build-vendor',  [DeployToolController::class, 'buildVendor']);
+        Route::post('deploy-tools/build-dist',    [DeployToolController::class, 'buildDist']);
+        Route::post('deploy-tools/seed',          [DeployToolController::class, 'seed']);
+        Route::post('deploy-tools/deploy',        [DeployToolController::class, 'deploy']);
 
         // Guru
         Route::get('teachers',                    [TeacherAdminController::class, 'index']);
