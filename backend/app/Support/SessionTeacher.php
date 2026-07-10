@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use App\Models\AgendaFillSetting;
 use App\Models\SubstitutionSession;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -117,6 +119,54 @@ class SessionTeacher
     public static function acceptedSessionKeys(int $teacherId): Collection
     {
         return static::delegatedToKeys($teacherId);
+    }
+
+    /**
+     * Kelas yang SEDANG boleh dibina $teacherId karena inval, dipetakan ke guru pengampunya.
+     *
+     * Dipakai Nilai Tambah: guru inval boleh memberi poin kepada siswa kelas yang ia
+     * gantikan, tapi entrinya dicatat atas nama guru pengampu (nilai pengembaliannya).
+     *
+     * Jendelanya sengaja sama persis dengan jendela pengisian agenda: sejak tanggal sesi
+     * tiba (mulai pukul 00:00, bukan menunggu bel — guru sering menyiapkan catatan sebelum
+     * jam masuk) sampai `AgendaFillSetting::batasWaktu()` lewat. Memakai satu sumber aturan
+     * berarti "masih bisa isi agenda sesi ini" dan "masih bisa beri nilai tambah sesi ini"
+     * tidak akan pernah menjawab berbeda.
+     *
+     * Pengampu diambil dari `schedule.teacher_id`, BUKAN `request.requester_teacher_id`:
+     * yang mengajukan inval belum tentu guru terjadwalnya, dan yang berhak atas rekap kelas
+     * adalah pengampunya.
+     *
+     * @return array<int,int> class_id => teacher_id pengampu
+     */
+    public static function activeInvalClassMap(int $teacherId): array
+    {
+        $setting = AgendaFillSetting::instance();
+        $tz      = config('app.school_timezone');
+        $now     = Carbon::now($tz);
+
+        $sesi = static::approvedQuery()
+            ->whereHas('request', fn ($q) => $q->where('substitute_teacher_id', $teacherId))
+            ->with('schedule')
+            ->get();
+
+        $map = [];
+
+        foreach ($sesi as $s) {
+            if (! $s->schedule || ! ($selesai = $s->selesaiPada())) {
+                continue;
+            }
+
+            $mulaiHari = Carbon::parse($s->tanggal->toDateString().' 00:00', $tz);
+
+            if ($now->lt($mulaiHari) || $now->gt($setting->batasWaktu($selesai))) {
+                continue;
+            }
+
+            $map[$s->schedule->class_id] = $s->schedule->teacher_id;
+        }
+
+        return $map;
     }
 
     private static function keysWhere(string $column, int $teacherId): Collection

@@ -182,7 +182,7 @@ export default function KarakterPage() {
         ) : (
           // GK25: siswa lain disembunyikan hanya SETELAH terpilih — sebelum itu tampilkan
           // picker penuh (filter kelas / pencarian bebas)
-          <StudentClassPicker onPick={selectStudent} />
+          <StudentClassPicker scope="semua" onPick={selectStudent} />
         )}
       </div>
 

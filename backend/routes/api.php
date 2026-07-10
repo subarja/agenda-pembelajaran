@@ -146,6 +146,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('character-inputs',        [CharacterController::class, 'storeInput']);
     Route::get('character-inputs',         [CharacterController::class, 'indexInputs']);
     Route::get('character-summary',        [CharacterController::class, 'summary']);
+    // Seluruh kelas — bukan hanya yang diampu; lihat docblock CharacterController::classes().
+    Route::get('character/classes',        [CharacterController::class, 'classes']);
+    Route::get('character/students',       [CharacterController::class, 'studentsByClass']);
 
     // ── Catatan Manual Karakter (guru submit, admin review) ───────────────────
     Route::post('character-manual-notes',              [CharacterManualNoteController::class, 'store']);

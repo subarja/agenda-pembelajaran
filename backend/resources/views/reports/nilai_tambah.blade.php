@@ -17,13 +17,16 @@
 <table>
   <thead>
     <tr>
+      {{-- Lebar dipatok eksplisit: dgn 8 kolom, Deskripsi yg auto-width memakan sisa ruang
+           dan mendesak dua kolom nama guru sampai terlipat jadi dua baris. --}}
       <th style="width:24px">No</th>
-      <th>Nama Siswa</th>
-      <th>NIS</th>
-      <th class="text-center" style="width:50px">Nilai</th>
+      <th style="width:130px">Nama Siswa</th>
+      <th style="width:62px">NIS</th>
+      <th class="text-center" style="width:44px">Nilai</th>
       <th>Deskripsi</th>
-      <th style="width:70px">Tanggal</th>
-      <th>Diberikan Oleh</th>
+      <th style="width:88px">Tanggal &amp; Jam</th>
+      <th style="width:118px">Diberikan Oleh</th>
+      <th style="width:110px">Atas Nama</th>
     </tr>
   </thead>
   <tbody>
@@ -36,12 +39,18 @@
         {{ $r['nilai'] >= 0 ? '+' : '' }}{{ $r['nilai'] }}
       </td>
       <td>{{ $r['catatan'] }}</td>
-      <td>{{ $r['tanggal'] }}</td>
-      <td>{{ $r['guru'] }}</td>
+      <td style="white-space:nowrap">{{ $r['tanggal'] }}</td>
+      <td>
+        {{ $r['guru'] }}
+        @if($r['oleh_inval'])
+          <span style="color:#64748b; font-size:0.85em">(inval)</span>
+        @endif
+      </td>
+      <td>{{ $r['atas_nama'] }}</td>
     </tr>
     @empty
     <tr>
-      <td colspan="7" class="text-center" style="color:#94a3b8; padding:16px">Belum ada nilai tambah untuk kelas ini.</td>
+      <td colspan="8" class="text-center" style="color:#94a3b8; padding:16px">Belum ada nilai tambah untuk kelas ini.</td>
     </tr>
     @endforelse
   </tbody>

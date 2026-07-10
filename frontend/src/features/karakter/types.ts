@@ -33,6 +33,10 @@ export interface CharacterSummary {
   total_input: number
 }
 
+// 'semua' = seluruh kelas sekolah (Penilaian Karakter); 'diampu' = kelas yang diajar
+// atau diwalikelasi guru ybs (Nilai Tambah).
+export type KarakterScope = 'semua' | 'diampu'
+
 export interface StudentSearchItem {
   id: string
   nis: string

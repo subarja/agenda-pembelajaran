@@ -8,6 +8,8 @@ use App\Models\CharacterManualNote;
 use App\Models\Student;
 use App\Models\User;
 use App\Notifications\ManualNoteSubmittedNotification;
+use App\Support\ClassAccess;
+use App\Support\SessionTeacher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,6 +32,9 @@ class CharacterManualNoteController extends Controller
         $note = CharacterManualNote::create([
             'student_id' => $student->id,
             'teacher_id' => $teacher->id,
+            // Catatan manual biasa tidak lewat jalur inval — pemberi selalu pengampunya
+            // sendiri. Diisi eksplisit supaya kolom ini tidak pernah NULL.
+            'atas_nama_teacher_id' => $teacher->id,
             'catatan'    => $data['catatan'],
             'nilai'      => $data['nilai'] ?? null,
             'status'     => 'pending',
@@ -43,12 +48,26 @@ class CharacterManualNoteController extends Controller
 
         return response()->json([
             'message' => 'Catatan manual berhasil dikirim dan menunggu persetujuan admin.',
-            'data'    => $this->formatNote($note->load(['student.user', 'teacher.user'])),
+            'data'    => $this->formatNote($note->load(['student.user', 'teacher.user', 'atasNamaTeacher.user'])),
         ], 201);
     }
 
-    // POST /character-manual-notes/nilai-tambah — GK32: mirip catatan manual, tapi
-    // TIDAK butuh approval admin (langsung final) & deskripsi opsional.
+    /**
+     * POST /character-manual-notes/nilai-tambah — GK32: mirip catatan manual, tapi
+     * TIDAK butuh approval admin (langsung final) & deskripsi opsional.
+     *
+     * Berbeda dari penilaian karakter, yang sengaja lintas kelas: nilai tambah dibatasi
+     * ke kelas yang diampu. Alasannya kombinasi dua sifatnya — nilainya bebas (±20, bukan
+     * bobot terstandar dari admin) DAN langsung final tanpa direview siapa pun. Poin
+     * sebesar itu tanpa mata kedua hanya boleh diberikan oleh guru yang benar-benar
+     * mengajar atau mewalikelasi siswa tersebut.
+     *
+     * Satu pengecualian: guru inval. Selama jendela sesi yang ia gantikan, ia memegang
+     * kelas itu dan boleh memberi nilai tambah kepada siswanya. Tapi entrinya dicatat
+     * ATAS NAMA guru pengampu (`atas_nama_teacher_id`), karena rekap kelas tetap milik
+     * pengampu; `teacher_id` merekam siapa yang benar-benar memberi, dan `created_at`
+     * kapan. Ketiganya muncul di laporan Nilai Tambah.
+     */
     public function storeNilaiTambah(Request $request): JsonResponse
     {
         $teacher = $request->user()->teacher;
@@ -62,20 +81,23 @@ class CharacterManualNoteController extends Controller
 
         $student = Student::where('uuid', $data['student_id'])->with('user')->firstOrFail();
 
+        $atasNamaTeacherId = $this->atasNamaTeacherId($request->user(), $teacher->id, $student->class_id);
+
         $note = CharacterManualNote::create([
-            'student_id'  => $student->id,
-            'teacher_id'  => $teacher->id,
-            'sumber'      => 'nilai_tambah',
-            'catatan'     => $data['catatan'] ?? '',
-            'nilai'       => $data['nilai'],
-            'nilai_final' => $data['nilai'],
-            'status'      => 'approved',
-            'reviewed_at' => now(),
+            'student_id'           => $student->id,
+            'teacher_id'           => $teacher->id,
+            'atas_nama_teacher_id' => $atasNamaTeacherId,
+            'sumber'               => 'nilai_tambah',
+            'catatan'              => $data['catatan'] ?? '',
+            'nilai'                => $data['nilai'],
+            'nilai_final'          => $data['nilai'],
+            'status'               => 'approved',
+            'reviewed_at'          => now(),
         ]);
 
         return response()->json([
             'message' => 'Nilai tambah berhasil disimpan.',
-            'data'    => $this->formatNote($note->load(['student.user', 'teacher.user'])),
+            'data'    => $this->formatNote($note->load(['student.user', 'teacher.user', 'atasNamaTeacher.user'])),
         ], 201);
     }
 
@@ -86,7 +108,7 @@ class CharacterManualNoteController extends Controller
         $student = Student::where('uuid', $request->student_id)->firstOrFail();
 
         $notes = CharacterManualNote::where('student_id', $student->id)
-            ->with(['teacher.user', 'reviewer'])
+            ->with(['teacher.user', 'atasNamaTeacher.user', 'reviewer'])
             ->orderByDesc('created_at')
             ->get()
             ->map(fn ($n) => $this->formatNote($n));
@@ -99,7 +121,7 @@ class CharacterManualNoteController extends Controller
     {
         $status = $request->get('status');
 
-        $query = CharacterManualNote::with(['student.user', 'student.schoolClass', 'teacher.user', 'reviewer'])
+        $query = CharacterManualNote::with(['student.user', 'student.schoolClass', 'teacher.user', 'atasNamaTeacher.user', 'reviewer'])
             ->orderByDesc('created_at');
 
         if ($status && $status !== 'all') {
@@ -157,8 +179,32 @@ class CharacterManualNoteController extends Controller
                 'reject'  => 'Catatan manual ditolak.',
                 'adjust'  => 'Catatan manual disetujui dengan nilai yang disesuaikan.',
             },
-            'data' => $this->formatNote($note->fresh(['student.user', 'teacher.user', 'reviewer'])),
+            'data' => $this->formatNote($note->fresh(['student.user', 'teacher.user', 'atasNamaTeacher.user', 'reviewer'])),
         ]);
+    }
+
+    /**
+     * Boleh $teacherId memberi nilai tambah di kelas $classId? Kalau ya, atas nama siapa?
+     *
+     * Menolak dengan 403 kalau tidak. Mengembalikan id guru pengampu: dirinya sendiri untuk
+     * kelas yang ia ampu, atau guru terjadwal kelas itu kalau ia sedang menginval di sana.
+     */
+    private function atasNamaTeacherId(User $user, int $teacherId, ?int $classId): int
+    {
+        if (ClassAccess::allows(ClassAccess::teachingClassIds($user), $classId)) {
+            return $teacherId;
+        }
+
+        $inval = SessionTeacher::activeInvalClassMap($teacherId);
+
+        abort_unless(
+            $classId !== null && isset($inval[$classId]),
+            403,
+            'Nilai tambah hanya dapat diberikan kepada siswa di kelas yang Anda ampu, '
+            .'atau kelas yang sedang Anda inval pada sesi berjalan.',
+        );
+
+        return $inval[$classId];
     }
 
     private function formatNote(CharacterManualNote $n): array
@@ -188,6 +234,13 @@ class CharacterManualNoteController extends Controller
                 'id'   => $n->teacher?->uuid,
                 'nama' => $n->teacher?->user?->nama,
             ],
+            // Guru pengampu yang rekapnya memuat entri ini. Beda dari `teacher` hanya
+            // bila diberikan guru inval.
+            'atas_nama'     => [
+                'id'   => $n->atasNamaTeacher?->uuid,
+                'nama' => $n->atasNamaTeacher?->user?->nama,
+            ],
+            'oleh_inval'    => $n->diberikanOlehInval(),
             'created_at'    => $n->created_at?->format('Y-m-d H:i'),
         ];
     }

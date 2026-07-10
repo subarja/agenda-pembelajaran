@@ -269,17 +269,26 @@ class ReportController extends Controller
 
         $notes = CharacterManualNote::whereIn('student_id', $students->pluck('id'))
             ->where('sumber', 'nilai_tambah')
-            ->with(['student.user', 'teacher.user'])
+            ->with(['student.user', 'teacher.user', 'atasNamaTeacher.user'])
             ->orderByDesc('created_at')
+            // Pemecah seri: beberapa entri kerap lahir di detik yang sama (guru mengisi
+            // beruntun), dan tanpa ini urutan barisnya diserahkan ke MySQL — laporan yang
+            // sama bisa tercetak dengan urutan berbeda.
+            ->orderByDesc('id')
             ->get();
 
+        // "Diberikan Oleh" = pemberi sebenarnya (bisa guru inval); "Atas Nama" = guru
+        // pengampu, yang rekapnya memuat entri ini. Untuk guru biasa keduanya sama.
+        // Tanggal memuat jam supaya jelas entri inval jatuh di sesi yang mana.
         $rows = $notes->map(fn ($n) => [
-            'nama'    => $n->student->user->nama,
-            'nis'     => $n->student->nis,
-            'nilai'   => $n->nilai_final ?? $n->nilai,
-            'catatan' => $n->catatan ?: '—',
-            'tanggal' => $n->created_at->locale('id')->isoFormat('D MMM YYYY'),
-            'guru'    => $n->teacher?->nama_lengkap ?? '—',
+            'nama'       => $n->student->user->nama,
+            'nis'        => $n->student->nis,
+            'nilai'      => $n->nilai_final ?? $n->nilai,
+            'catatan'    => $n->catatan ?: '—',
+            'tanggal'    => $n->created_at->locale('id')->isoFormat('D MMM YYYY HH:mm'),
+            'guru'       => $n->teacher?->nama_lengkap ?? '—',
+            'atas_nama'  => $n->atasNamaTeacher?->nama_lengkap ?? $n->teacher?->nama_lengkap ?? '—',
+            'oleh_inval' => $n->diberikanOlehInval(),
         ]);
 
         $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
@@ -300,7 +309,7 @@ class ReportController extends Controller
         }
 
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kelasLabel, $periode, $guruNama, $guruNip) {
-            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 10, 5 => 40, 6 => 14, 7 => 22]);
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 10, 5 => 40, 6 => 20, 7 => 22, 8 => 22]);
 
             $w->addRow(Row::fromValuesWithStyle(["Laporan Nilai Tambah — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["Periode: {$periode}"]));
@@ -309,7 +318,7 @@ class ReportController extends Controller
             }
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                ['No', 'Nama Siswa', 'NIS', 'Nilai', 'Deskripsi', 'Tanggal', 'Diberikan Oleh'],
+                ['No', 'Nama Siswa', 'NIS', 'Nilai', 'Deskripsi', 'Tanggal & Jam', 'Diberikan Oleh', 'Atas Nama'],
                 $this->xlsxHeaderStyle()
             ));
 
@@ -323,7 +332,8 @@ class ReportController extends Controller
                     new NumericCell($r['nilai'], $cellCenter),
                     new StringCell($r['catatan'], $cellText),
                     new StringCell($r['tanggal'], $cellCenter),
-                    new StringCell($r['guru'], $cellText),
+                    new StringCell($r['guru'] . ($r['oleh_inval'] ? ' (inval)' : ''), $cellText),
+                    new StringCell($r['atas_nama'], $cellText),
                 ]));
             }
         });

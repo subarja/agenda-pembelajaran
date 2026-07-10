@@ -1,31 +1,46 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
-import { agendaApi } from '@/features/agenda/api'
 import { karakterApi } from '@/features/karakter/api'
-import type { StudentSearchItem } from '@/features/karakter/types'
+import type { KarakterScope, StudentSearchItem } from '@/features/karakter/types'
 import { Input } from '@/components/ui/input'
 import { useDebounce } from '@/hooks/useDebounce'
 import { cn } from '@/lib/utils'
 
 // GK25: dipakai di Karakter & Nilai Tambah — filter kelas ketik-langsung (bukan
-// dropdown). Tanpa kelas terpilih → "Semua Kelas" + pencarian nama/NIS bebas. Kelas
-// terpilih → grid foto + nomor absen, urut nama A-Z.
-export function StudentClassPicker({ onPick }: { onPick: (s: StudentSearchItem) => void }) {
+// dropdown). Kelas terpilih → grid foto + nomor absen, urut nama A-Z.
+//
+// Dua mode, mengikuti aturan siapa boleh menilai apa:
+//
+//   scope="semua"  (Penilaian Karakter) — seluruh kelas sekolah, dan tanpa kelas terpilih
+//                  guru boleh mencari siswa mana pun via nama/NIS. Karakter adalah aset
+//                  kolektif: semua guru mengamati semua siswa.
+//   scope="diampu" (Nilai Tambah) — hanya kelas yang ia ajar/walikelasi. Pencarian bebas
+//                  lintas sekolah DIMATIKAN di mode ini; kalau tidak, guru bisa memilih
+//                  siswa yang ujungnya ditolak backend saat menyimpan.
+export function StudentClassPicker({
+  onPick,
+  scope = 'semua',
+}: {
+  onPick: (s: StudentSearchItem) => void
+  scope?: KarakterScope
+}) {
   const [kelasQuery, setKelasQuery]     = useState('')
   const [selectedKelas, setSelectedKelas] = useState<{ id: string; label: string } | null>(null)
   const [showKelasDropdown, setShowKelasDropdown] = useState(false)
   const [searchQ, setSearchQ] = useState('')
   const debouncedQ = useDebounce(searchQ, 300)
 
+  const bolehCariBebas = scope === 'semua'
+
   const { data: classesRes } = useQuery({
-    queryKey: ['agenda-my-classes'],
-    queryFn: () => agendaApi.getMyClasses(),
+    queryKey: ['character-classes', scope],
+    queryFn: () => karakterApi.getClasses(scope),
   })
-  const myClasses = classesRes?.data.data ?? []
+  const classes = classesRes?.data.data ?? []
   const filteredClasses = kelasQuery
-    ? myClasses.filter((c) => c.label.toLowerCase().includes(kelasQuery.toLowerCase()))
-    : myClasses
+    ? classes.filter((c) => c.label.toLowerCase().includes(kelasQuery.toLowerCase()))
+    : classes
 
   const { data: gridRes, isFetching: loadingGrid } = useQuery({
     queryKey: ['karakter-students-by-class', selectedKelas?.id],
@@ -37,7 +52,7 @@ export function StudentClassPicker({ onPick }: { onPick: (s: StudentSearchItem) 
   const { data: searchRes, isFetching: searching } = useQuery({
     queryKey: ['student-search', debouncedQ],
     queryFn: () => karakterApi.searchStudents(debouncedQ),
-    enabled: !selectedKelas && debouncedQ.length >= 2,
+    enabled: bolehCariBebas && !selectedKelas && debouncedQ.length >= 2,
   })
   const searchResults = searchRes?.data.data ?? []
 
@@ -48,7 +63,11 @@ export function StudentClassPicker({ onPick }: { onPick: (s: StudentSearchItem) 
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           className="pl-9"
-          placeholder={selectedKelas ? selectedKelas.label : 'Ketik nama kelas... (kosongkan untuk Semua Kelas)'}
+          placeholder={
+            selectedKelas ? selectedKelas.label
+            : bolehCariBebas ? 'Ketik nama kelas... (kosongkan untuk Semua Kelas)'
+            : 'Pilih kelas yang Anda ampu...'
+          }
           value={kelasQuery}
           onChange={(e) => { setKelasQuery(e.target.value); setShowKelasDropdown(true) }}
           onFocus={() => setShowKelasDropdown(true)}
@@ -62,7 +81,7 @@ export function StudentClassPicker({ onPick }: { onPick: (s: StudentSearchItem) 
           </button>
         )}
         {showKelasDropdown && !selectedKelas && filteredClasses.length > 0 && (
-          <div className="mt-1 rounded-lg border border-border bg-background shadow-sm overflow-hidden absolute z-10 w-full">
+          <div className="mt-1 rounded-lg border border-border bg-background shadow-sm overflow-hidden absolute z-10 w-full max-h-64 overflow-y-auto">
             {filteredClasses.map((c) => (
               <button key={c.id} type="button"
                 onClick={() => { setSelectedKelas(c); setKelasQuery(''); setShowKelasDropdown(false) }}
@@ -76,11 +95,17 @@ export function StudentClassPicker({ onPick }: { onPick: (s: StudentSearchItem) 
       </div>
 
       {!selectedKelas && (
-        <p className="text-xs text-muted-foreground">Semua Kelas — ketik nama/NIS siswa untuk mencari.</p>
+        <p className="text-xs text-muted-foreground">
+          {bolehCariBebas
+            ? 'Semua Kelas — ketik nama/NIS siswa untuk mencari.'
+            : classes.length === 0
+              ? 'Anda belum mengampu kelas mana pun, jadi belum ada siswa yang bisa diberi nilai tambah.'
+              : 'Nilai tambah hanya untuk siswa di kelas yang Anda ampu atau sedang Anda inval. Pilih kelas untuk melihat daftar siswanya.'}
+        </p>
       )}
 
-      {/* Tanpa kelas: cari nama/NIS bebas */}
-      {!selectedKelas && (
+      {/* Tanpa kelas: cari nama/NIS bebas — hanya mode "semua" */}
+      {!selectedKelas && bolehCariBebas && (
         <div className="relative">
           <Input
             placeholder="Ketik nama atau NIS siswa..."

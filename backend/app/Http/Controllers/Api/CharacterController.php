@@ -8,11 +8,14 @@ use App\Enums\CharacterSifat;
 use App\Models\CharacterCategory;
 use App\Models\CharacterInput;
 use App\Models\CharacterSubitem;
+use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Services\CharacterService;
 use App\Support\ClassAccess;
+use App\Support\SessionTeacher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class CharacterController extends Controller
 {
@@ -178,5 +181,93 @@ class CharacterController extends Controller
                 'total_input'  => $inputs->count(),
             ],
         ]);
+    }
+
+    /**
+     * GET /character/classes?scope=semua|diampu — pemilih kelas untuk fitur karakter.
+     *
+     * Sengaja terpisah dari /agendas/my-classes. Endpoint itu menjawab "kelas mana yang
+     * WAJIB saya isi agendanya" dan harus tetap sempit; ini menjawab "kelas mana yang
+     * boleh saya nilai".
+     *
+     *   scope=semua  → seluruh kelas (Penilaian Karakter). Prinsip produk "karakter
+     *                  sebagai aset kolektif": guru piket yang memergoki pelanggaran siswa
+     *                  kelas lain harus bisa memilih kelas itu, bukan cuma menebak namanya.
+     *   scope=diampu → kelas yang ia ajar/walikelasi, DITAMBAH kelas yang sedang ia inval
+     *                  (Nilai Tambah).
+     *
+     * `scope` hanya MEMPERSEMPIT, tidak pernah memperluas: batasnya tetap ClassAccess,
+     * bukan parameter dari klien. Sumbernya pun sama persis dengan yang menjaga
+     * storeNilaiTambah(), supaya dropdown tidak pernah menawarkan kelas yang lalu ditolak
+     * — maupun sebaliknya menyembunyikan kelas yang sebenarnya boleh.
+     */
+    public function classes(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'scope' => ['nullable', 'in:semua,diampu'],
+        ]);
+
+        $user = $request->user();
+        abort_if(ClassAccess::isStudentSide($user), 403, 'Akses tidak diizinkan.');
+
+        $query = SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true));
+
+        if (($data['scope'] ?? 'semua') === 'diampu') {
+            $allowed = ClassAccess::teachingClassIds($user);
+            // null = admin/wakasek (lintas sekolah) → tanpa penyempitan.
+            if ($allowed !== null) {
+                $inval = $user->teacher
+                    ? array_keys(SessionTeacher::activeInvalClassMap($user->teacher->id))
+                    : [];
+
+                $query->whereIn('id', $allowed->merge($inval)->unique()->values());
+            }
+        }
+
+        $classes = $query
+            ->orderBy('tingkat')
+            ->orderBy('jurusan')
+            ->orderBy('rombel')
+            ->get()
+            ->map(fn ($c) => [
+                'id'    => $c->uuid,
+                'label' => "{$c->tingkat->value} {$c->jurusan} - {$c->rombel}",
+            ]);
+
+        return response()->json(['data' => $classes]);
+    }
+
+    /**
+     * GET /character/students?class_id=xxx — daftar absen kelas mana pun, untuk grid karakter.
+     *
+     * Terpisah dari /students?class_id= yang tetap dijaga ClassAccess::teachingClassIds():
+     * di sana daftar absen dipakai untuk presensi & nilai aktivitas, dan hanya pengampu
+     * kelas yang berkepentingan. Di sini isinya tidak melampaui apa yang sudah dikembalikan
+     * pencarian siswa global (nama, NIS, foto) kepada seluruh guru.
+     */
+    public function studentsByClass(Request $request): JsonResponse
+    {
+        $request->validate(['class_id' => ['required', 'string']]);
+
+        abort_if(ClassAccess::isStudentSide($request->user()), 403, 'Akses tidak diizinkan.');
+
+        $class = SchoolClass::where('uuid', $request->class_id)->firstOrFail();
+
+        // Nomor absen = urutan alfabetis; skema tidak punya kolom nomor absen tersendiri.
+        $students = $class->students()
+            ->with('user:id,nama')
+            ->get()
+            ->sortBy(fn ($s) => $s->user->nama)
+            ->values()
+            ->map(fn ($s, $i) => [
+                'id'          => $s->uuid,
+                'nis'         => $s->nis,
+                'nama'        => $s->user->nama,
+                'kelas'       => null,
+                'nomor_absen' => $i + 1,
+                'foto_url'    => $s->foto ? Storage::disk('public')->url($s->foto) : null,
+            ]);
+
+        return response()->json(['data' => $students]);
     }
 }

@@ -52,6 +52,7 @@ export default function NilaiTambahPage() {
         <h1 className="text-xl font-bold">Nilai Tambah</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
           Beri poin karakter tambahan secara manual — langsung berlaku, tidak perlu persetujuan admin.
+          Hanya untuk siswa di kelas yang Anda ampu.
         </p>
       </div>
 
@@ -70,7 +71,7 @@ export default function NilaiTambahPage() {
           </button>
         </div>
       ) : (
-        <StudentClassPicker onPick={(s) => { setSelectedStudent(s); setSuccess(false) }} />
+        <StudentClassPicker scope="diampu" onPick={(s) => { setSelectedStudent(s); setSuccess(false) }} />
       )}
 
       {selectedStudent && (

@@ -116,6 +116,102 @@ class StudentDataAuthorizationTest extends TestCase
         $this->getJson('/api/v1/students?search=Siswa')->assertOk();
     }
 
+    // ── Pemilih kelas untuk penilaian karakter ────────────────────────────────
+
+    public function test_guru_mapel_boleh_membuka_daftar_absen_kelas_yang_tidak_diampu_untuk_karakter(): void
+    {
+        // Kembaran longgar dari /students?class_id=. Guru mapel kelas A harus bisa memilih
+        // kelas B di grid karakter — ia tetap tidak boleh melihatnya lewat /students.
+        Sanctum::actingAs($this->guruMapel);
+
+        $this->getJson("/api/v1/character/students?class_id={$this->kelasB->uuid}")->assertOk();
+        $this->getJson("/api/v1/students?class_id={$this->kelasB->uuid}")->assertForbidden();
+    }
+
+    public function test_pemilih_kelas_karakter_menawarkan_seluruh_kelas_sekolah(): void
+    {
+        Sanctum::actingAs($this->guruMapel);
+
+        $this->getJson('/api/v1/character/classes')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+    }
+
+    public function test_pemilih_kelas_scope_diampu_hanya_kelas_yang_diajar_atau_diwalikelasi(): void
+    {
+        // Guru mapel: mengajar kelas A saja.
+        Sanctum::actingAs($this->guruMapel);
+        $this->getJson('/api/v1/character/classes?scope=diampu')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $this->kelasA->uuid);
+
+        // Wali B: tidak punya jadwal mengajar sama sekali, tapi mewalikelasi kelas B.
+        // Kalau scope=diampu hanya melihat jadwal, kelas perwaliannya akan hilang.
+        Sanctum::actingAs($this->waliB);
+        $this->getJson('/api/v1/character/classes?scope=diampu')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $this->kelasB->uuid);
+    }
+
+    // ── Nilai Tambah: TIDAK lintas kelas (beda dari penilaian karakter) ───────
+
+    public function test_guru_boleh_memberi_nilai_tambah_di_kelas_yang_diampunya(): void
+    {
+        Sanctum::actingAs($this->guruMapel);
+
+        $this->postJson('/api/v1/character-manual-notes/nilai-tambah', [
+            'student_id' => $this->siswaA->uuid,   // kelas A, yang ia ajar
+            'nilai'      => 5,
+        ])->assertCreated();
+    }
+
+    public function test_guru_tidak_boleh_memberi_nilai_tambah_di_kelas_yang_tidak_diampunya(): void
+    {
+        // Pembeda dari penilaian karakter: nilainya bebas (±20) DAN langsung final tanpa
+        // review, jadi tidak boleh diberikan lintas kelas seperti poin karakter terstandar.
+        $lain   = $this->makeUser(UserRole::Siswa, 'Siswa Kelas B');
+        $siswaB = Student::create(['user_id' => $lain->id, 'nis' => '1004', 'class_id' => $this->kelasB->id]);
+
+        Sanctum::actingAs($this->guruMapel);
+
+        $this->postJson('/api/v1/character-manual-notes/nilai-tambah', [
+            'student_id' => $siswaB->uuid,
+            'nilai'      => 20,
+        ])->assertForbidden();
+
+        // Tapi poin karakter terstandar ke siswa yang sama tetap boleh.
+        $kategori = \App\Models\CharacterCategory::create(['nama' => 'Disiplin', 'aktif' => true]);
+        $subitem  = \App\Models\CharacterSubitem::create([
+            'category_id' => $kategori->id, 'kode' => 'D1', 'deskripsi' => 'Terlambat',
+            'bobot' => 5, 'sifat' => \App\Enums\CharacterSifat::Negatif, 'aktif' => true,
+        ]);
+
+        $this->postJson('/api/v1/character-inputs', [
+            'student_id' => $siswaB->uuid,
+            'subitem_id' => $subitem->uuid,
+        ])->assertCreated();
+    }
+
+    public function test_wali_kelas_boleh_memberi_nilai_tambah_di_kelas_perwaliannya_walau_tak_mengajar(): void
+    {
+        Sanctum::actingAs($this->waliA);   // wali kelas A, tanpa jadwal mengajar
+
+        $this->postJson('/api/v1/character-manual-notes/nilai-tambah', [
+            'student_id' => $this->siswaA->uuid,
+            'nilai'      => 3,
+        ])->assertCreated();
+    }
+
+    public function test_akun_siswa_tidak_bisa_memakai_pemilih_kelas_karakter(): void
+    {
+        Sanctum::actingAs($this->siswaUser);
+
+        $this->getJson('/api/v1/character/classes')->assertForbidden();
+        $this->getJson("/api/v1/character/students?class_id={$this->kelasB->uuid}")->assertForbidden();
+    }
+
     // ── Rekap siswa ───────────────────────────────────────────────────────────
 
     public function test_wali_kelas_lain_tidak_bisa_membuka_rekap_siswa(): void
