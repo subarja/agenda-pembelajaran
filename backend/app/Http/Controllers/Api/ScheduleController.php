@@ -60,6 +60,10 @@ class ScheduleController extends Controller
         $schedules = $teacher->schedules()
             ->where('hari', $today)
             ->where('aktif', true)
+            // Mode PKL: kelas XII tidak lagi menuntut agenda harian per-sesi — kewajibannya
+            // pindah ke agenda PKL mingguan, jadi sesinya disembunyikan dari daftar "hari ini".
+            ->when(\App\Support\PklMode::isActive(), fn ($q) => $q->whereHas('schoolClass',
+                fn ($c) => $c->where('tingkat', '!=', \App\Enums\Tingkat::XII->value)))
             ->with([
                 'subject',
                 'schoolClass',

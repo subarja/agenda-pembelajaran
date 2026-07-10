@@ -14,6 +14,8 @@ use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\TeacherAttendance;
+use App\Enums\Tingkat;
+use App\Support\PklMode;
 use App\Support\SessionTeacher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -117,6 +119,15 @@ class AgendaController extends Controller
                     'inval_dari' => $ds->request->requester->user?->nama,
                 ];
             }
+        }
+
+        // Mode PKL: sesi kelas XII tidak lagi menuntut agenda harian — kewajibannya pindah
+        // ke agenda PKL mingguan. Buang dari daftar "perlu diisi" (termasuk sesi inval XII).
+        if (PklMode::isActive()) {
+            $sesi = array_values(array_filter(
+                $sesi,
+                fn ($s) => $s['schedule']->schoolClass?->tingkat !== Tingkat::XII,
+            ));
         }
 
         if (empty($sesi)) {

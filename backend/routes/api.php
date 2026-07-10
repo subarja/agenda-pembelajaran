@@ -2,6 +2,10 @@
 
 use App\Http\Controllers\Api\Admin\AcademicYearController;
 use App\Http\Controllers\Api\Admin\AgendaFillSettingController;
+use App\Http\Controllers\Api\Admin\PklObjectiveController;
+use App\Http\Controllers\Api\Admin\PklPlacementController;
+use App\Http\Controllers\Api\Admin\PklSettingController;
+use App\Http\Controllers\Api\PklController;
 use App\Http\Controllers\Api\Admin\PrintSettingController;
 use App\Http\Controllers\Api\AcademicYearSelectionController;
 use App\Http\Controllers\Api\Admin\AscXmlImportController;
@@ -155,6 +159,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('character-manual-notes',               [CharacterManualNoteController::class, 'index']);
     Route::post('character-manual-notes/nilai-tambah', [CharacterManualNoteController::class, 'storeNilaiTambah']);
 
+    // ── PKL (guru pembimbing; rekap absen juga dipakai admin/wali kelas) ───────
+    Route::get('pkl/overview',              [PklController::class, 'overview']);
+    Route::get('pkl/my-students',           [PklController::class, 'myStudents']);
+    Route::get('pkl/weeks',                 [PklController::class, 'weeks']);
+    Route::get('pkl/agenda',                [PklController::class, 'showAgenda']);
+    Route::post('pkl/agenda',               [PklController::class, 'storeAgenda']);
+    Route::get('pkl/students/export',       [PklController::class, 'exportStudents']);
+    Route::get('pkl/rekap-absen/export',    [PklController::class, 'exportRekapAbsen']);
+
     // ── Catatan Kasus Siswa (BK & Wali Kelas) ─────────────────────────────────
     Route::get('student-case-notes',                 [StudentCaseNoteController::class, 'index']);
     Route::post('student-case-notes',                [StudentCaseNoteController::class, 'store']);
@@ -296,6 +309,18 @@ Route::middleware('auth:sanctum')->group(function () {
         // ── Pengaturan Waktu Pengisian Agenda (batas hari/jam pasca jadwal) ────────
         Route::get('agenda-fill-settings',                      [AgendaFillSettingController::class, 'show']);
         Route::put('agenda-fill-settings',                      [AgendaFillSettingController::class, 'update']);
+
+        // ── Mode PKL (saklar, TP khusus, penempatan) ──────────────────────────────
+        Route::get('pkl/setting',                  [PklSettingController::class, 'show']);
+        Route::put('pkl/setting',                  [PklSettingController::class, 'toggle']);
+        Route::get('pkl/objectives',               [PklObjectiveController::class, 'index']);
+        Route::post('pkl/objectives',              [PklObjectiveController::class, 'store']);
+        Route::put('pkl/objectives/{uuid}',        [PklObjectiveController::class, 'update']);
+        Route::delete('pkl/objectives/{uuid}',     [PklObjectiveController::class, 'destroy']);
+        Route::get('pkl/placements/template',      [PklPlacementController::class, 'template']);
+        Route::post('pkl/placements/import',       [PklPlacementController::class, 'import']);
+        Route::get('pkl/placements',               [PklPlacementController::class, 'index']);
+        Route::delete('pkl/placements/{uuid}',     [PklPlacementController::class, 'destroy']);
 
         // Sinkronisasi rekomendasi untuk semua siswa (jalankan sekali untuk data lama)
         Route::post('sync-recommendations',        function () {

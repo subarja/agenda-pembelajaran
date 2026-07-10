@@ -35,6 +35,8 @@ import RefleksiMingguanPage from '@/pages/RefleksiMingguanPage'
 import RiwayatDokumenPenangananPage from '@/pages/RiwayatDokumenPenangananPage'
 import PengaturanNotifikasiPage from '@/pages/PengaturanNotifikasiPage'
 import InvalPage from '@/pages/InvalPage'
+import PklPage from '@/pages/PklPage'
+import PklAgendaFormPage from '@/pages/PklAgendaFormPage'
 
 // Spinner penuh-layar — dipakai SELAMA `hasHydrated` masih false, supaya tidak pernah
 // ada window blank putih ataupun sempat "kelihatan" redirect ke /login yang salah
@@ -119,6 +121,8 @@ export default function AppRouter() {
         <Route path="profil"                    element={<ProfilePage />} />
         <Route path="pengaturan/notifikasi"     element={<PengaturanNotifikasiPage />} />
         <Route path="inval"                     element={<InvalPage />} />
+        <Route path="pkl"                       element={<PklPage />} />
+        <Route path="pkl/agenda"                element={<PklAgendaFormPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

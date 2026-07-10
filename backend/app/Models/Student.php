@@ -44,6 +44,11 @@ class Student extends Model
         return $this->hasMany(StudentAttendance::class);
     }
 
+    public function pklPlacements(): HasMany
+    {
+        return $this->hasMany(PklPlacement::class);
+    }
+
     public function characterInputs(): HasMany
     {
         return $this->hasMany(CharacterInput::class);

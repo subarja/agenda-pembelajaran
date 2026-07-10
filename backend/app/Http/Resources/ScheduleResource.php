@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\AgendaFillSetting;
+use App\Support\PklMode;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
@@ -31,7 +32,8 @@ class ScheduleResource extends JsonResource
             'subject'    => [
                 'id'   => $this->subject->uuid,
                 'kode' => $this->subject->kode,
-                'nama' => $this->subject->nama,
+                // Mode PKL: sesi kelas XII tampil sebagai "Praktek Kerja Lapangan".
+                'nama' => PklMode::subjectLabelFor($this->resource),
             ],
             'class' => [
                 'id'      => $this->schoolClass->uuid,

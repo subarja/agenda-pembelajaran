@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\SchoolClass;
+use App\Support\PklMode;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -40,6 +41,15 @@ class UserResource extends JsonResource
             ]),
 
             'kapabilitas' => $this->whenLoaded('teacher', fn () => $this->computeKapabilitas()),
+
+            // Status Mode PKL untuk gating menu di frontend. is_pembimbing hanya dihitung
+            // saat mode aktif (menghindari query sia-sia ketika PKL mati).
+            'pkl' => [
+                'mode_aktif'    => PklMode::isActive(),
+                'is_pembimbing' => PklMode::isActive()
+                    && $this->relationLoaded('teacher') && $this->teacher
+                    && PklMode::isPembimbing($this->resource),
+            ],
 
             'student' => $this->whenLoaded('student', fn () => [
                 'id'    => $this->student->uuid,

@@ -22,6 +22,12 @@ export interface User {
   linked_student?: LinkedStudentProfile | null
   kapabilitas?: Kapabilitas | null
   current_academic_year?: AcademicYearOption | null
+  pkl?: PklStatus | null
+}
+
+export interface PklStatus {
+  mode_aktif: boolean
+  is_pembimbing: boolean
 }
 
 export interface AcademicYearOption {

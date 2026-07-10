@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
-  FolderOpen, BellRing, UserPlus,
+  FolderOpen, BellRing, UserPlus, Briefcase,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -36,6 +36,7 @@ const allNav: Record<string, NavItem> = {
   profil:        { label: 'Profil',          path: '/profil',          icon: User },
   jadwalSaya:    { label: 'Jadwal Saya',     path: '/jadwal-saya',     icon: FileText },
   inval:         { label: 'Guru Inval',      path: '/inval',           icon: UserPlus },
+  pkl:           { label: 'PKL',             path: '/pkl',             icon: Briefcase },
   refleksi:      { label: 'Refleksi Mingguan', path: '/refleksi-mingguan', icon: BookOpenCheck },
   riwayatDokumen: { label: 'Riwayat Dokumen Penanganan', path: '/riwayat-dokumen-penanganan', icon: FolderOpen },
 }
@@ -54,6 +55,11 @@ export function getNavForUser(user: UserType): NavItem[] {
     // Riwayat Dokumen Penanganan SENGAJA tidak di sini — hanya untuk guru yang
     // wali kelas dan/atau BK (lihat cabang kapabilitas). Guru biasa tidak dapat.
     items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya)
+
+    // Menu PKL hanya saat Mode PKL aktif DAN guru ini benar-benar seorang pembimbing.
+    if (user.pkl?.mode_aktif && user.pkl?.is_pembimbing) {
+      items.push(allNav.pkl)
+    }
 
     if (kap?.is_wali_kelas && kap?.is_bk) {
       // Keduanya → DUA EWS terpisah: "EWS Siswa" (kelas perwalian) di Menu Wali Kelas,
