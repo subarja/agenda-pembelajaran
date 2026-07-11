@@ -134,7 +134,7 @@ export default function TeacherEwsDetailPage() {
 
       {/* Ringkasan */}
       {d && (
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <SummaryStat label="Total Jadwal" value={d.summary.total_jadwal} cls="text-foreground" />
           <SummaryStat label="Terisi" value={d.summary.terisi} cls="text-green-700" />
           <SummaryStat label="Draft" value={d.summary.draft} cls="text-yellow-700" />

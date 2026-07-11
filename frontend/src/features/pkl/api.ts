@@ -83,8 +83,20 @@ export interface PklImportResult {
 }
 
 // ── Unduh biner (Excel / template) ──────────────────────────────────────────
+// Saat server menolak (mis. 404 "Tidak ada data PKL untuk diunduh"), body error
+// berupa blob JSON — parse dulu supaya pemanggil bisa menampilkan pesannya.
 async function downloadBlob(url: string, filename: string) {
-  const res  = await api.get(url, { responseType: 'blob' })
+  let res
+  try {
+    res = await api.get(url, { responseType: 'blob' })
+  } catch (err: unknown) {
+    const blob = (err as { response?: { data?: Blob } })?.response?.data
+    if (blob instanceof Blob) {
+      const parsed = await blob.text().then((t) => JSON.parse(t)).catch(() => null)
+      if (parsed?.message) throw new Error(parsed.message)
+    }
+    throw err
+  }
   const blob = new Blob([res.data])
   const href = URL.createObjectURL(blob)
   const a    = document.createElement('a')

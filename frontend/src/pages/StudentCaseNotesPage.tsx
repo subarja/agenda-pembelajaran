@@ -58,7 +58,9 @@ export default function StudentCaseNotesPage() {
         id: s.uuid ?? s.id,
         nama: s.user?.nama ?? s.nama ?? '—',
         nis: s.nis,
-        kelas: s.schoolClass ? `${s.schoolClass.tingkat} ${s.schoolClass.jurusan}` : (s.kelas?.label ?? null),
+        // s.kelas dari /students?search= berupa STRING label, bukan objek
+        kelas: s.schoolClass ? `${s.schoolClass.tingkat} ${s.schoolClass.jurusan}`
+          : (typeof s.kelas === 'string' ? s.kelas : s.kelas?.label ?? null),
       })) as StudentItem[]
     }),
     enabled: studentQ.length >= 2,

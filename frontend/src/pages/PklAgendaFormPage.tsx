@@ -121,7 +121,8 @@ export default function PklAgendaFormPage() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b">
-                <th className="text-left py-2 pr-2 font-medium">Nama</th>
+                {/* sticky: nama siswa tetap terlihat saat tabel digulir horizontal di HP */}
+                <th className="text-left py-2 pr-2 font-medium sticky left-0 bg-card min-w-[9rem] max-w-[11rem]">Nama</th>
                 {form.hari.map((h) => (
                   <th key={h.tanggal} className="px-1 py-2 font-medium text-center whitespace-nowrap">
                     {h.nama}
@@ -133,7 +134,7 @@ export default function PklAgendaFormPage() {
             <tbody>
               {form.students.map((s) => (
                 <tr key={s.id} className="border-b last:border-0">
-                  <td className="py-1.5 pr-2">{s.nama}</td>
+                  <td className="py-1.5 pr-2 sticky left-0 bg-card min-w-[9rem] max-w-[11rem]">{s.nama}</td>
                   {form.hari.map((h) => {
                     const future = h.tanggal > today
                     return (
@@ -165,7 +166,7 @@ export default function PklAgendaFormPage() {
       {saved && <p className="flex items-center gap-1 text-sm text-emerald-600"><CheckCircle2 className="h-4 w-4" /> Agenda PKL tersimpan.</p>}
 
       <div className="flex justify-end">
-        <Button onClick={() => save.mutate()} disabled={save.isPending}>
+        <Button className="w-full sm:w-auto" onClick={() => save.mutate()} disabled={save.isPending}>
           {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
           Simpan Agenda PKL
         </Button>

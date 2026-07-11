@@ -7,6 +7,7 @@ use App\Models\AgendaFillSetting;
 use App\Models\Schedule;
 use App\Models\SubstitutionSession;
 use App\Models\Teacher;
+use App\Support\PklMode;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -36,6 +37,12 @@ class SubstitutionService
     public function alasanTidakBolehDiajukan(Schedule $schedule, string $tanggal): ?string
     {
         $tgl = Carbon::parse($tanggal, config('app.school_timezone'))->startOfDay();
+
+        // Ditegakkan di validasi juga (bukan hanya disembunyikan dari daftar) supaya
+        // request langsung ke API pun tertolak dengan alasan yang sama.
+        if (PklMode::isActive() && PklMode::isPklClass($schedule->schoolClass?->tingkat)) {
+            return 'Kelas XII sedang PKL — sesi ini tidak memerlukan guru pengganti.';
+        }
 
         if ($tgl->dayOfWeek !== (self::HARI_MAP[$schedule->hari->value] ?? -1)) {
             return 'Tanggal ini bukan hari mengajar untuk jadwal tersebut.';
@@ -79,6 +86,12 @@ class SubstitutionService
         $hasil = collect();
 
         foreach ($schedules as $schedule) {
+            // Mode PKL: sesi kelas XII ditekan (siswa di industri, tidak ada agenda
+            // harian yang perlu digantikan) — jangan tawarkan untuk inval.
+            if (PklMode::isActive() && PklMode::isPklClass($schedule->schoolClass?->tingkat)) {
+                continue;
+            }
+
             $target = self::HARI_MAP[$schedule->hari->value] ?? null;
             if ($target === null) {
                 continue;

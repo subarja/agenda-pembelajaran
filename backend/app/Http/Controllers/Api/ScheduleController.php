@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ScheduleResource;
 use App\Models\Schedule;
+use App\Support\PklMode;
 use App\Traits\ServesStoredPdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -106,7 +107,7 @@ class ScheduleController extends Controller
                     'tanggal'     => $tanggal->toDateString(),
                     'jam_mulai'   => $s->jam_mulai,
                     'jam_selesai' => $s->jam_selesai,
-                    'subject'     => ['id' => $s->subject->uuid, 'kode' => $s->subject->kode, 'nama' => $s->subject->nama],
+                    'subject'     => ['id' => $s->subject->uuid, 'kode' => $s->subject->kode, 'nama' => PklMode::subjectLabelFor($s)],
                     'class'       => [
                         'id'    => $s->schoolClass->uuid,
                         'label' => "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}",
@@ -150,7 +151,7 @@ class ScheduleController extends Controller
                 'hari'        => $s->hari->value,
                 'jam_mulai'   => $s->jam_mulai,
                 'jam_selesai' => $s->jam_selesai,
-                'subject'     => ['nama' => $s->subject->nama, 'kode' => $s->subject->kode],
+                'subject'     => ['nama' => PklMode::subjectLabelFor($s), 'kode' => $s->subject->kode],
                 'guru'        => $s->teacher?->user?->nama ?? '—',
                 'agenda_hari_ini' => $s->agendas->first() ? [
                     'id'     => $s->agendas->first()->uuid,

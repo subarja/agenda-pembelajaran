@@ -31,15 +31,15 @@ function ModeSection() {
 
   return (
     <Card><CardContent className="p-4">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-start gap-3 justify-between">
+        <div className="min-w-0">
           <h3 className="font-semibold text-sm">Mode PKL</h3>
           <p className="text-xs text-muted-foreground max-w-lg mt-0.5">
             Saat aktif, sesi kelas XII tampil sebagai “Praktek Kerja Lapangan”, agenda harian kelas XII
             diganti agenda PKL mingguan, dan guru pembimbing mendapat menu PKL.
           </p>
         </div>
-        <Switch checked={aktif} disabled={toggle.isPending} onCheckedChange={(v) => toggle.mutate(v)} />
+        <Switch className="shrink-0" checked={aktif} disabled={toggle.isPending} onCheckedChange={(v) => toggle.mutate(v)} />
       </div>
       {aktif && <Badge variant="default" className="mt-3">Mode PKL AKTIF</Badge>}
     </CardContent></Card>
@@ -106,8 +106,8 @@ function ObjectivesSection() {
                   {o.jurusan ? `Khusus ${o.jurusan}` : 'Umum (semua jurusan)'}
                 </Badge>
               </div>
-              <button onClick={() => startEdit(o)} className="text-muted-foreground hover:text-foreground"><Pencil className="h-4 w-4" /></button>
-              <button onClick={() => del.mutate(o.id)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => startEdit(o)} aria-label="Ubah TP" className="p-2 -m-1 text-muted-foreground hover:text-foreground"><Pencil className="h-4 w-4" /></button>
+              <button onClick={() => del.mutate(o.id)} aria-label="Hapus TP" className="p-2 -m-1 text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}
           {items.length === 0 && <div className="px-3 py-6 text-center text-sm text-muted-foreground">Belum ada TP PKL.</div>}
@@ -124,6 +124,7 @@ function PlacementsSection() {
   const [result, setResult] = useState<PklImportResult | null>(null)
   const [uploading, setUploading] = useState(false)
   const [rekapClass, setRekapClass] = useState('semua')
+  const [rekapErr, setRekapErr] = useState<string | null>(null)
 
   const { data } = useQuery({ queryKey: ['pkl-placements'], queryFn: () => pklAdminApi.getPlacements() })
   const rows = data?.data.data ?? []
@@ -189,10 +190,15 @@ function PlacementsSection() {
           <option value="semua">Semua Kelas</option>
           {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
-        <Button size="sm" variant="outline" onClick={() => pklAdminApi.downloadRekap(rekapClass, `rekap_absen_pkl.xlsx`)}>
+        <Button size="sm" variant="outline" onClick={() => {
+          setRekapErr(null)
+          pklAdminApi.downloadRekap(rekapClass, `rekap_absen_pkl.xlsx`)
+            .catch((e: Error) => setRekapErr(e.message || 'Gagal mengunduh rekap.'))
+        }}>
           <Download className="h-4 w-4 mr-1" /> Unduh Excel
         </Button>
       </div>
+      {rekapErr && <p className="text-sm text-red-600 flex items-center gap-1"><AlertCircle className="h-4 w-4 shrink-0" /> {rekapErr}</p>}
 
       {/* Daftar penempatan */}
       <div className="divide-y border rounded-lg max-h-96 overflow-y-auto">
@@ -202,7 +208,7 @@ function PlacementsSection() {
               <p className="font-medium truncate">{r.nama} <span className="text-xs text-muted-foreground">({r.kelas})</span></p>
               <p className="text-xs text-muted-foreground truncate">NISN {r.nisn ?? '—'} · {r.tempat_pkl} · Pemb.: {r.pembimbing ?? '—'}</p>
             </div>
-            <button onClick={() => del.mutate(r.id)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+            <button onClick={() => del.mutate(r.id)} aria-label="Hapus penempatan" className="p-2 -m-1 shrink-0 text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
           </div>
         ))}
         {rows.length === 0 && <div className="px-3 py-6 text-center text-sm text-muted-foreground">Belum ada data penempatan PKL.</div>}

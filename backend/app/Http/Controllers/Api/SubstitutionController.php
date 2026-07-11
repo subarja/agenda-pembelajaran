@@ -12,6 +12,7 @@ use App\Notifications\SubstitutionApprovedNotification;
 use App\Notifications\SubstitutionRejectedNotification;
 use App\Notifications\SubstitutionRequestedNotification;
 use App\Services\SubstitutionService;
+use App\Support\PklMode;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -261,7 +262,7 @@ class SubstitutionController extends Controller
                 'jam_mulai'   => substr($s->schedule?->jam_mulai ?? '', 0, 5),
                 'jam_selesai' => substr($s->schedule?->jam_selesai ?? '', 0, 5),
                 'kelas'       => $s->schedule ? $this->service->labelKelas($s->schedule) : '—',
-                'mapel'       => $s->schedule?->subject?->nama,
+                'mapel'       => $s->schedule ? PklMode::subjectLabelFor($s->schedule) : null,
             ])->values(),
         ];
     }

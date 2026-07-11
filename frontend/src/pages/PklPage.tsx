@@ -14,6 +14,7 @@ export default function PklPage() {
   const pdf = usePdfPreview()
   const [classId, setClassId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [unduhErr, setUnduhErr] = useState<string | null>(null)
 
   const { data: overviewRes, isLoading } = useQuery({
     queryKey: ['pkl-overview'],
@@ -46,6 +47,7 @@ export default function PklPage() {
     if (!selected) return
     const slug = selected.label.replace(/\s+/g, '_')
     setBusy(`${kind}-${format}`)
+    setUnduhErr(null)
     try {
       if (format === 'excel') {
         if (kind === 'siswa') await pklApi.downloadStudents(selected.id, `data_pkl_${slug}.xlsx`)
@@ -55,6 +57,8 @@ export default function PklPage() {
         await pdf.openPreview(`/pkl/${ep === 'students' ? 'students' : 'rekap-absen'}/export?class_id=${selected.id}&format=pdf`,
           `${kind === 'siswa' ? 'data_pkl' : 'rekap_absen_pkl'}_${slug}.pdf`)
       }
+    } catch (e) {
+      setUnduhErr((e as Error).message || 'Gagal mengunduh berkas.')
     } finally {
       setBusy(null)
     }
@@ -93,21 +97,22 @@ export default function PklPage() {
             </div>
           )}
 
-          {/* Tombol unduh */}
-          <Card><CardContent className="p-4 flex flex-wrap gap-2">
+          {/* Tombol unduh — grid 2 kolom di HP agar rapi, baris fleksibel di desktop */}
+          <Card><CardContent className="p-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'excel')}>
-              <Download className="h-4 w-4 mr-1" /> Data Siswa (Excel)
+              <Download className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (Excel)
             </Button>
             <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'pdf')}>
-              <FileText className="h-4 w-4 mr-1" /> Data Siswa (PDF)
+              <FileText className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (PDF)
             </Button>
             <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'excel')}>
-              <Download className="h-4 w-4 mr-1" /> Rekap Absen (Excel)
+              <Download className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (Excel)
             </Button>
             <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'pdf')}>
-              <FileText className="h-4 w-4 mr-1" /> Rekap Absen (PDF)
+              <FileText className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (PDF)
             </Button>
           </CardContent></Card>
+          {unduhErr && <p className="text-sm text-red-600">{unduhErr}</p>}
 
           {/* Daftar minggu → isi agenda */}
           <div>
@@ -122,15 +127,15 @@ export default function PklPage() {
                   <button key={w.minggu_mulai}
                     disabled={!w.sudah_mulai}
                     onClick={() => navigate(`/pkl/agenda?class_id=${classId}&minggu=${w.minggu_mulai}`)}
-                    className={cn('w-full flex items-center justify-between rounded-lg border px-4 py-2.5 text-left text-sm transition-colors',
+                    className={cn('w-full flex items-center justify-between gap-2 rounded-lg border px-3 sm:px-4 py-2.5 text-left text-sm transition-colors',
                       w.sudah_mulai ? 'hover:bg-accent' : 'opacity-50 cursor-not-allowed', 'border-border')}>
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-2 min-w-0">
                       {w.terisi
-                        ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                        : <Circle className="h-4 w-4 text-muted-foreground" />}
-                      <span>{w.label}</span>
+                        ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                        : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                      <span className="truncate">{w.label}</span>
                     </span>
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-2 shrink-0">
                       {w.terisi
                         ? <Badge variant="secondary" className="text-emerald-700">Terisi</Badge>
                         : w.lewat_batas
@@ -151,12 +156,12 @@ export default function PklPage() {
             <h2 className="text-sm font-semibold mb-2">Siswa Bimbingan {selected ? `— ${selected.label}` : ''} ({students.length})</h2>
             <Card><CardContent className="p-0 divide-y">
               {students.map((s) => (
-                <div key={s.id} className="px-4 py-2.5 text-sm flex items-center justify-between">
-                  <div>
+                <div key={s.id} className="px-4 py-2.5 text-sm flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
                     <p className="font-medium">{s.nama}</p>
-                    <p className="text-xs text-muted-foreground">NISN {s.nisn ?? '—'} · {s.tempat_pkl}</p>
+                    <p className="text-xs text-muted-foreground break-words">NISN {s.nisn ?? '—'} · {s.tempat_pkl}</p>
                   </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">{s.mulai} → {s.selesai}</span>
+                  <span className="text-xs text-muted-foreground sm:whitespace-nowrap sm:shrink-0">{s.mulai} → {s.selesai}</span>
                 </div>
               ))}
               {students.length === 0 && <div className="px-4 py-6 text-center text-sm text-muted-foreground">Belum ada siswa bimbingan.</div>}

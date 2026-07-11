@@ -596,11 +596,11 @@ export default function HariEfektifPage() {
       {/* ── Admin filters ──────────────────────────────────────────────────── */}
       {isAdmin && (
         <div className="rounded-lg border bg-card p-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
               <label className="text-xs font-medium block mb-1">Tahun Ajaran</label>
               <select
-                className="rounded-md border border-input px-3 py-1.5 text-sm bg-background"
+                className="rounded-md border border-input px-3 py-1.5 text-sm bg-background max-w-full"
                 value={selAyId}
                 onChange={e => setSelAyId(e.target.value)}
               >
