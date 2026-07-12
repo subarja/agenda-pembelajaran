@@ -14,7 +14,11 @@ class ClassAdminController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $ay = AcademicYear::where('aktif', true)->first();
+        // Default TA aktif; `academic_year_id` (uuid) membuka kelas TA lain — dipakai
+        // tab Kelas untuk melihat arsip roster tahun-tahun sebelumnya.
+        $ay = $request->filled('academic_year_id')
+            ? AcademicYear::where('uuid', $request->academic_year_id)->first()
+            : AcademicYear::where('aktif', true)->first();
 
         $classes = SchoolClass::with(['waliKelas', 'academicYear'])
             ->when($ay, fn ($q) => $q->where('academic_year_id', $ay->id))
@@ -23,6 +27,33 @@ class ClassAdminController extends Controller
             ->map(fn ($c) => $this->format($c));
 
         return response()->json(['data' => $classes]);
+    }
+
+    /**
+     * GET /admin/classes/{uuid}/roster — anggota kelas dari riwayat enrollment
+     * (bukan students.class_id), sehingga kelas TA lama tetap punya daftar siswa
+     * lengkap dengan bagaimana keanggotaannya berakhir (naik/tinggal/lulus/pindah).
+     */
+    public function roster(string $uuid): JsonResponse
+    {
+        $class = SchoolClass::where('uuid', $uuid)->with('academicYear')->firstOrFail();
+
+        $rows = \App\Models\ClassEnrollment::where('class_id', $class->id)
+            ->with(['student.user:id,nama'])
+            ->get()
+            ->map(fn ($e) => [
+                'id'     => $e->student->uuid,
+                'nama'   => $e->student->user->nama,
+                'nis'    => $e->student->nis,
+                'status' => $e->status,
+            ])
+            ->sortBy('nama')
+            ->values();
+
+        return response()->json(['data' => [
+            'kelas'  => $this->format($class),
+            'siswa'  => $rows,
+        ]]);
     }
 
     public function store(Request $request): JsonResponse

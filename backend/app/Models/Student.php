@@ -37,6 +37,49 @@ class Student extends Model
         return $q->where('students.status', 'aktif');
     }
 
+    /**
+     * Riwayat keanggotaan kelas terekam otomatis di sini — jalur mana pun yang
+     * memindahkan siswa (wizard naik kelas, impor Dapodik, edit admin) tidak bisa
+     * lupa mencatat. Baris lama ditutup 'pindah' (status generik); PromotionController
+     * menimpanya dengan 'naik'/'tinggal' yang lebih spesifik setelah update.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (self $s) {
+            if ($s->class_id !== null) {
+                ClassEnrollment::firstOrCreate(
+                    ['class_id' => $s->class_id, 'student_id' => $s->id],
+                    ['status' => 'aktif'],
+                );
+            }
+        });
+
+        static::updated(function (self $s) {
+            if (! $s->wasChanged('class_id')) {
+                return;
+            }
+
+            $lama = $s->getOriginal('class_id');
+            if ($lama !== null) {
+                ClassEnrollment::where(['class_id' => $lama, 'student_id' => $s->id])
+                    ->where('status', 'aktif')
+                    ->update(['status' => 'pindah']);
+            }
+
+            if ($s->class_id !== null) {
+                ClassEnrollment::updateOrCreate(
+                    ['class_id' => $s->class_id, 'student_id' => $s->id],
+                    ['status' => 'aktif'],
+                );
+            }
+        });
+    }
+
+    public function enrollments(): HasMany
+    {
+        return $this->hasMany(ClassEnrollment::class);
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

@@ -235,6 +235,7 @@ class AgendaController extends Controller
         ], $this->notFutureDateMessages());
 
         $schedule = Schedule::where('uuid', $data['schedule_id'])->firstOrFail();
+        \App\Support\SemesterLock::assertClassWritable($schedule->class_id);
 
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403, 'Bukan jadwal Anda.');
@@ -313,6 +314,7 @@ class AgendaController extends Controller
     {
         $teacher = $request->user()->teacher;
         $agenda  = Agenda::where('uuid', $uuid)->firstOrFail();
+        \App\Support\SemesterLock::assertClassWritable($agenda->schedule?->class_id);
 
         // Guru pengganti yang menerima inval berhak atas agenda sesi ini; guru terjadwal
         // yang sudah mengalihkannya tidak lagi berhak. Lihat App\Support\SessionTeacher.

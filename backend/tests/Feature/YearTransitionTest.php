@@ -192,6 +192,66 @@ class YearTransitionTest extends TestCase
         $this->assertEquals(-5, $svc->calculateNetScore($this->siswaX->fresh(), $this->taLama->id));
     }
 
+    // ── Enrollment: riwayat roster kelas lama tetap bisa direkonstruksi ──────
+
+    public function test_roster_kelas_lama_terekam_di_enrollment(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $this->postJson('/api/v1/admin/promotion/execute', [
+            'target_academic_year_id' => $this->taBaru->uuid,
+            'tinggal' => [$this->kelasX->uuid => [$this->siswaXTinggal->uuid]],
+        ])->assertOk();
+
+        // Roster kelas X TA LAMA masih lengkap — walau students.class_id sudah pindah
+        $roster = $this->getJson("/api/v1/admin/classes/{$this->kelasX->uuid}/roster")
+            ->assertOk()->json('data.siswa');
+
+        $byNis = collect($roster)->keyBy('nis');
+        $this->assertCount(2, $roster);
+        $this->assertEquals('naik', $byNis['1001']['status']);
+        $this->assertEquals('tinggal', $byNis['1002']['status']);
+
+        $rosterXII = $this->getJson("/api/v1/admin/classes/{$this->kelasXII->uuid}/roster")
+            ->assertOk()->json('data.siswa');
+        $this->assertEquals('lulus', $rosterXII[0]['status']);
+    }
+
+    // ── Kunci semester ────────────────────────────────────────────────────────
+
+    public function test_semester_terkunci_menolak_tulis_dan_tidak_bisa_diaktifkan(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        // TA aktif tidak bisa dikunci
+        $this->putJson("/api/v1/admin/academic-years/{$this->taLama->uuid}", ['locked' => true])
+            ->assertStatus(422);
+
+        // Aktifkan TA baru, kunci TA lama
+        $this->putJson("/api/v1/admin/academic-years/{$this->taBaru->uuid}", ['aktif' => true])->assertOk();
+        $this->putJson("/api/v1/admin/academic-years/{$this->taLama->uuid}", ['locked' => true])->assertOk();
+
+        // TA terkunci tidak bisa diaktifkan lagi tanpa dibuka
+        $this->putJson("/api/v1/admin/academic-years/{$this->taLama->uuid}", ['aktif' => true])
+            ->assertStatus(422);
+
+        // Jadwal kelas TA terkunci menolak perubahan (423 Locked)
+        $jadwalLama = Schedule::where('class_id', $this->kelasX->id)->first();
+        $this->putJson("/api/v1/admin/schedules/{$jadwalLama->uuid}", ['jam_selesai' => '09:00'])
+            ->assertStatus(423);
+
+        // Naik kelas DARI TA terkunci ditolak
+        $this->postJson('/api/v1/admin/promotion/execute', [
+            'source_academic_year_id' => $this->taLama->uuid,
+            'target_academic_year_id' => $this->taBaru->uuid,
+        ])->assertStatus(423);
+
+        // Buka kunci → bisa lagi
+        $this->putJson("/api/v1/admin/academic-years/{$this->taLama->uuid}", ['locked' => false])->assertOk();
+        $this->putJson("/api/v1/admin/schedules/{$jadwalLama->uuid}", ['jam_selesai' => '09:00'])
+            ->assertOk();
+    }
+
     // ── 4. Salin jadwal ───────────────────────────────────────────────────────
 
     public function test_salin_jadwal_ke_kelas_padanan_tanpa_duplikat(): void

@@ -62,6 +62,7 @@ class PresensiController extends Controller
         $agenda = Agenda::where('uuid', $agendaUuid)
             ->with('schedule.schoolClass')
             ->firstOrFail();
+        \App\Support\SemesterLock::assertClassWritable($agenda->schedule?->class_id);
 
         $teacher = $request->user()->teacher;
         // Presensi mengikuti siapa yang benar-benar mengajar sesi itu — termasuk guru

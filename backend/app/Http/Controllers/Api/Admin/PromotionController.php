@@ -84,6 +84,10 @@ class PromotionController extends Controller
         ]);
 
         [$source, $target] = $this->resolveYears($request);
+        // Naik kelas menulis ke dua TA sekaligus (status enrollment di sumber, kelas
+        // & siswa di tujuan) — dua-duanya harus tidak terkunci.
+        \App\Support\SemesterLock::assertAyWritable($source);
+        \App\Support\SemesterLock::assertAyWritable($target);
         $tinggalMap = collect($request->input('tinggal', []));
 
         $stats = DB::transaction(function () use ($source, $target, $tinggalMap) {
@@ -123,6 +127,7 @@ class PromotionController extends Controller
                         // bukan dibiarkan menunjuk kelas arsip TA lama.
                         $kelas = $resolveTarget($c->tingkat->value, $c);
                         $s->update(['class_id' => $kelas->id]);
+                        $this->tandaiEnrollment($s->id, $c->id, 'tinggal');
                         $this->ensureEws($s->id, $target->id);
                         $tinggal++;
                     } elseif ($next === null) {
@@ -130,10 +135,12 @@ class PromotionController extends Controller
                         // akun dimatikan supaya tidak bisa login lagi.
                         $s->update(['status' => 'lulus', 'tanggal_keluar' => now('Asia/Jakarta')->toDateString()]);
                         $s->user()->update(['status' => UserStatus::Nonaktif]);
+                        $this->tandaiEnrollment($s->id, $c->id, 'lulus');
                         $lulus++;
                     } else {
                         $kelas = $resolveTarget($next, $c);
                         $s->update(['class_id' => $kelas->id]);
+                        $this->tandaiEnrollment($s->id, $c->id, 'naik');
                         $this->ensureEws($s->id, $target->id);
                         $naik++;
                     }
@@ -148,6 +155,18 @@ class PromotionController extends Controller
                 . "{$stats['lulus']} lulus, {$stats['kelasBaru']} kelas baru dibuat di {$target->tahun}.",
             'data'    => $stats,
         ]);
+    }
+
+    /**
+     * Hook Student menutup keanggotaan lama dengan status generik 'pindah' — di sini
+     * ditimpa dengan alasan yang sebenarnya (naik/tinggal/lulus) untuk arsip roster.
+     */
+    private function tandaiEnrollment(int $studentId, int $classId, string $status): void
+    {
+        \App\Models\ClassEnrollment::updateOrCreate(
+            ['class_id' => $classId, 'student_id' => $studentId],
+            ['status' => $status],
+        );
     }
 
     private function ensureEws(int $studentId, int $ayId): void

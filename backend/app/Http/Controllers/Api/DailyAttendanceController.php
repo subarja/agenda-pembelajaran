@@ -79,6 +79,7 @@ class DailyAttendanceController extends Controller
         if (! $kelas) {
             return response()->json(['message' => 'Kelas tidak ditemukan atau akses ditolak.'], 403);
         }
+        \App\Support\SemesterLock::assertClassWritable($kelas->id);
 
         // Build student UUID → DB id map for this class
         $studentMap = Student::where('class_id', $kelas->id)

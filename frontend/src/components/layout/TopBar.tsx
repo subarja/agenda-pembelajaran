@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/auth'
 import { authApi } from '@/features/auth/api'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import NotificationBell from './NotificationBell'
+import AcademicYearBadge from './AcademicYearBadge'
 
 export default function TopBar({ title = 'Agenda Pembelajaran' }: { title?: string }) {
   const { user, clearAuth } = useAuthStore()
@@ -24,10 +25,13 @@ export default function TopBar({ title = 'Agenda Pembelajaran' }: { title?: stri
   }
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center border-b border-border bg-background px-4 md:hidden">
+    <header className="sticky top-0 z-40 flex min-h-14 items-center border-b border-border bg-background px-4 py-1.5 md:hidden">
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-primary-600 truncate">{title}</p>
-        <p className="text-xs text-muted-foreground">SMKN 2 Cimahi</p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="text-xs text-muted-foreground">SMKN 2 Cimahi</p>
+          <AcademicYearBadge />
+        </div>
       </div>
 
       <div className="flex items-center gap-1 shrink-0">

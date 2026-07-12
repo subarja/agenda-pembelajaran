@@ -63,12 +63,23 @@ class AcademicYearController extends Controller
             'tahun'           => ['sometimes', 'string', 'max:10'],
             'semester'        => ['sometimes', 'in:ganjil,genap'],
             'aktif'           => ['sometimes', 'boolean'],
+            'locked'          => ['sometimes', 'boolean'],
             'tanggal_mulai'   => ['sometimes', 'nullable', 'date'],
             'tanggal_selesai' => ['sometimes', 'nullable', 'date', 'after_or_equal:tanggal_mulai'],
             ...self::PEJABAT_RULES,
         ]);
 
+        // Kunci semester: TA aktif tidak boleh dikunci (semua orang sedang menulis ke
+        // sana), dan TA terkunci tidak boleh diaktifkan tanpa dibuka dulu — dua aturan
+        // ini yang menjadikan "terkunci" benar-benar berarti arsip beku.
+        if (! empty($data['locked'])) {
+            abort_if($ay->aktif, 422,
+                'Tahun ajaran aktif tidak bisa dikunci. Aktifkan tahun ajaran lain dulu.');
+        }
         if (! empty($data['aktif'])) {
+            $akanTerkunci = $data['locked'] ?? $ay->locked;
+            abort_if($akanTerkunci, 422,
+                'Tahun ajaran ini terkunci (arsip). Buka kuncinya dulu sebelum diaktifkan.');
             AcademicYear::where('aktif', true)->where('id', '!=', $ay->id)->update(['aktif' => false]);
         }
 
@@ -84,6 +95,7 @@ class AcademicYearController extends Controller
             'tahun'           => $y->tahun,
             'semester'        => $y->semester->value,
             'aktif'           => $y->aktif,
+            'locked'          => $y->locked,
             'tanggal_mulai'   => $y->tanggal_mulai?->format('Y-m-d'),
             'tanggal_selesai' => $y->tanggal_selesai?->format('Y-m-d'),
             'wk_kurikulum_gelar_depan'      => $y->wk_kurikulum_gelar_depan,

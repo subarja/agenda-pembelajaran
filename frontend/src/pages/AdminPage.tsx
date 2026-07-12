@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo, useEffect, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing, GraduationCap, CopyPlus } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing, GraduationCap, CopyPlus, Lock, LockOpen } from 'lucide-react'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
 import { fcmAdminApi } from '@/features/notifikasi/api'
@@ -687,10 +687,24 @@ function KelasTab() {
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
-  const { data, isLoading } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
-  const { data: teachers } = useQuery({ queryKey: ['admin-teachers', 'all'], queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
+  // '' = TA aktif; uuid TA lain = mode ARSIP (baca-saja) untuk melihat roster tahun lalu
+  const [taFilter, setTaFilter] = useState('')
+  const [rosterId, setRosterId] = useState<string | null>(null)
 
-  useEffect(() => { setPage(1) }, [q, perPage])
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-classes', taFilter],
+    queryFn: () => adminApi.getClasses(taFilter ? { academic_year_id: taFilter } : undefined),
+  })
+  const { data: teachers } = useQuery({ queryKey: ['admin-teachers', 'all'], queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
+  const { data: yearsKelas } = useQuery({ queryKey: ['admin-academic-years'], queryFn: () => adminApi.getAcademicYears() })
+  const { data: roster, isLoading: rosterLoading } = useQuery({
+    queryKey: ['class-roster', rosterId],
+    queryFn: () => adminApi.getClassRoster(rosterId!),
+    enabled: !!rosterId,
+  })
+  const isArsip = taFilter !== '' && !yearsKelas?.find(y => y.id === taFilter)?.aktif
+
+  useEffect(() => { setPage(1) }, [q, perPage, taFilter])
 
   function toggleSort(col: string) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -746,6 +760,13 @@ function KelasTab() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchBar value={q} onChange={setQ} placeholder="Cari kelas / jurusan / wali..." />
+        <select className={selectCls + ' max-w-[190px]'} value={taFilter} onChange={e => setTaFilter(e.target.value)}
+          title="Lihat kelas tahun ajaran lain (arsip, baca-saja)">
+          <option value="">TA Aktif</option>
+          {yearsKelas?.filter(y => !y.aktif).map(y => (
+            <option key={y.id} value={y.id}>Arsip: {y.tahun} {y.semester}</option>
+          ))}
+        </select>
         <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Kelas
@@ -783,8 +804,14 @@ function KelasTab() {
                   <td className="px-3 py-2 text-muted-foreground">{c.tahun_ajaran}</td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">
-                      <button onClick={() => openEdit(c)} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => window.confirm('Hapus kelas ini?') && del.mutate(c.id)} className="rounded p-1 hover:bg-red-100 text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => setRosterId(c.id)} className="rounded p-1 hover:bg-accent text-blue-600"
+                        title="Daftar siswa (riwayat keanggotaan)"><Users className="h-3.5 w-3.5" /></button>
+                      {!isArsip && (
+                        <>
+                          <button onClick={() => openEdit(c)} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => window.confirm('Hapus kelas ini?') && del.mutate(c.id)} className="rounded p-1 hover:bg-red-100 text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -815,6 +842,40 @@ function KelasTab() {
             <Button variant="outline" size="sm" onClick={() => setModal(null)}>Batal</Button>
             <Button size="sm" onClick={() => save.mutate({ ...form, wali_kelas_id: form.wali_kelas_id || undefined })} disabled={save.isPending}>{save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Simpan</Button>
           </div>
+        </Modal>
+      )}
+
+      {/* Roster dari riwayat enrollment — kelas TA lama pun tetap punya daftar siswa
+          lengkap dengan bagaimana keanggotaannya berakhir (naik/tinggal/lulus/pindah) */}
+      {rosterId && (
+        <Modal title={roster ? `Daftar Siswa — ${roster.kelas.label} (${roster.kelas.tahun_ajaran ?? ''})` : 'Daftar Siswa'} onClose={() => setRosterId(null)}>
+          {rosterLoading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />Memuat…
+            </div>
+          ) : (
+            <div className="max-h-[60vh] overflow-y-auto -mx-1 px-1">
+              {(roster?.siswa ?? []).length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-6">Belum ada riwayat siswa di kelas ini.</p>
+              )}
+              {(roster?.siswa ?? []).map((s, i) => (
+                <div key={s.id} className="flex items-center gap-2 py-1.5 border-b last:border-0 text-sm">
+                  <span className="w-6 text-right text-xs text-muted-foreground shrink-0">{i + 1}</span>
+                  <span className="min-w-0 truncate">{s.nama}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">({s.nis})</span>
+                  <Badge className={
+                    'ml-auto shrink-0 ' + (
+                      s.status === 'aktif' ? 'bg-green-100 text-green-700'
+                      : s.status === 'naik' ? 'bg-blue-100 text-blue-700'
+                      : s.status === 'lulus' ? 'bg-purple-100 text-purple-700'
+                      : s.status === 'tinggal' ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-600'
+                    )
+                  }>{s.status}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
         </Modal>
       )}
 
@@ -2445,6 +2506,14 @@ function TahunAjaranTab() {
     onError: (e: any) => alert(e.response?.data?.message || 'Gagal'),
   })
 
+  // Kunci semester: TA lama dibekukan (read-only) supaya arsipnya tidak terkorup.
+  const setLocked = useMutation({
+    mutationFn: ({ id, locked }: { id: string; locked: boolean }) =>
+      adminApi.updateAcademicYear(id, { locked }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-academic-years'] }),
+    onError: (e: any) => alert(e.response?.data?.message || 'Gagal'),
+  })
+
   const del = useMutation({
     mutationFn: (id: string) => adminApi.deleteAcademicYear(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-academic-years'] }),
@@ -2517,14 +2586,18 @@ function TahunAjaranTab() {
                       : <span className="text-amber-600">Belum diisi</span>}
                   </td>
                   <td className="px-3 py-2">
-                    {y.aktif
-                      ? <Badge className="bg-green-100 text-green-700">Aktif</Badge>
-                      : <button
-                          onClick={() => setAktif.mutate(y.id)}
-                          className="text-xs text-primary hover:underline"
-                          disabled={setAktif.isPending}
-                        >Set Aktif</button>
-                    }
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {y.aktif
+                        ? <Badge className="bg-green-100 text-green-700">Aktif</Badge>
+                        : y.locked
+                          ? <Badge className="bg-slate-200 text-slate-700"><Lock className="h-3 w-3 mr-0.5" />Terkunci</Badge>
+                          : <button
+                              onClick={() => setAktif.mutate(y.id)}
+                              className="text-xs text-primary hover:underline"
+                              disabled={setAktif.isPending}
+                            >Set Aktif</button>
+                      }
+                    </div>
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">
@@ -2538,6 +2611,19 @@ function TahunAjaranTab() {
                         Edit Pejabat
                       </button>
                       {!y.aktif && (
+                        <button
+                          onClick={() => {
+                            const pesan = y.locked
+                              ? 'Buka kunci tahun ajaran ini? Data arsipnya akan bisa diubah lagi.'
+                              : 'Kunci tahun ajaran ini? Semua datanya menjadi arsip baca-saja (agenda, presensi, jadwal tidak bisa diubah).'
+                            if (window.confirm(pesan)) setLocked.mutate({ id: y.id, locked: !y.locked })
+                          }}
+                          disabled={setLocked.isPending}
+                          title={y.locked ? 'Buka kunci (arsip bisa diubah lagi)' : 'Kunci sebagai arsip baca-saja'}
+                          className={`rounded p-1 hover:bg-accent ${y.locked ? 'text-slate-700' : 'text-muted-foreground'}`}
+                        >{y.locked ? <LockOpen className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}</button>
+                      )}
+                      {!y.aktif && !y.locked && (
                         <button
                           onClick={() => window.confirm('Hapus tahun ajaran ini?') && del.mutate(y.id)}
                           className="rounded p-1 hover:bg-red-100 text-red-600"

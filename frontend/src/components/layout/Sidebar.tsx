@@ -7,6 +7,7 @@ import { getNavForUser } from './nav-config'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import NotificationBell from './NotificationBell'
+import AcademicYearBadge from './AcademicYearBadge'
 import { useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
@@ -64,6 +65,7 @@ export default function Sidebar() {
         <div className="leading-tight">
           <p className="text-sm font-semibold text-foreground">Agenda Pembelajaran</p>
           <p className="text-xs text-muted-foreground">SMKN 2 Cimahi</p>
+          <AcademicYearBadge className="mt-1" />
         </div>
       </div>
 

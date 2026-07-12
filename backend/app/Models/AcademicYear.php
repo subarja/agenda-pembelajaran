@@ -14,7 +14,7 @@ class AcademicYear extends Model
     use HasAuditTrail, HasUuid, SoftDeletes;
 
     protected $fillable = [
-        'tahun', 'semester', 'aktif',
+        'tahun', 'semester', 'aktif', 'locked',
         'tanggal_mulai', 'tanggal_selesai',
         'wk_kurikulum_gelar_depan', 'wk_kurikulum_nama', 'wk_kurikulum_gelar_belakang', 'wk_kurikulum_nip',
         'kepala_sekolah_gelar_depan', 'kepala_sekolah_nama', 'kepala_sekolah_gelar_belakang', 'kepala_sekolah_nip',
@@ -26,6 +26,7 @@ class AcademicYear extends Model
         return [
             'semester'       => Semester::class,
             'aktif'          => 'boolean',
+            'locked'         => 'boolean',
             'tanggal_mulai'  => 'date',
             'tanggal_selesai'=> 'date',
         ];

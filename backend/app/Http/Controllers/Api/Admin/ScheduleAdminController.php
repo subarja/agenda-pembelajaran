@@ -73,6 +73,7 @@ class ScheduleAdminController extends Controller
         ]);
 
         $class   = SchoolClass::where('uuid', $data['class_id'])->firstOrFail();
+        \App\Support\SemesterLock::assertClassWritable($class->id);
         $subject = Subject::where('uuid', $data['subject_id'])->firstOrFail();
         $teacher = Teacher::where('uuid', $data['teacher_id'])->firstOrFail();
 
@@ -97,6 +98,7 @@ class ScheduleAdminController extends Controller
     public function update(Request $request, string $uuid): JsonResponse
     {
         $schedule = Schedule::where('uuid', $uuid)->firstOrFail();
+        \App\Support\SemesterLock::assertClassWritable($schedule->class_id);
         $data     = $request->validate([
             'teacher_id'  => ['sometimes', 'string'],
             'hari'        => ['sometimes', 'in:senin,selasa,rabu,kamis,jumat,sabtu'],
@@ -120,6 +122,7 @@ class ScheduleAdminController extends Controller
     public function destroy(string $uuid): JsonResponse
     {
         $schedule = Schedule::where('uuid', $uuid)->firstOrFail();
+        \App\Support\SemesterLock::assertClassWritable($schedule->class_id);
         abort_if($schedule->agendas()->count() > 0, 422, 'Jadwal sudah memiliki riwayat agenda.');
         $schedule->delete();
 

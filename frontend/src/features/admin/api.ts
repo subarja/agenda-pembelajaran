@@ -56,6 +56,7 @@ export interface AdminSchedule {
 
 export interface AdminAcademicYear {
   id: string; tahun: string; semester: string; aktif: boolean
+  locked: boolean
   tanggal_mulai: string | null; tanggal_selesai: string | null
   wk_kurikulum_gelar_depan: string | null; wk_kurikulum_nama: string | null
   wk_kurikulum_gelar_belakang: string | null; wk_kurikulum_nip: string | null
@@ -90,6 +91,11 @@ export interface PromotionPreview {
   source: { id: string; label: string }
   target: { id: string; label: string }
   classes: PromotionPreviewClass[]
+}
+
+export interface ClassRoster {
+  kelas: AdminClass
+  siswa: { id: string; nama: string; nis: string; status: 'aktif' | 'naik' | 'tinggal' | 'lulus' | 'pindah' }[]
 }
 
 export interface ScheduleCopyPreview {
@@ -135,7 +141,10 @@ export const adminApi = {
   deleteStudent: (id: string) => api.delete(`/admin/students/${id}`).then(r => r.data),
 
   // Kelas
-  getClasses: () => api.get('/admin/classes').then(r => r.data.data as AdminClass[]),
+  getClasses: (params?: { academic_year_id?: string }) =>
+    api.get('/admin/classes', { params }).then(r => r.data.data as AdminClass[]),
+  getClassRoster: (id: string) =>
+    api.get(`/admin/classes/${id}/roster`).then(r => r.data.data as ClassRoster),
   createClass: (d: object) => api.post('/admin/classes', d).then(r => r.data),
   updateClass: (id: string, d: object) => api.put(`/admin/classes/${id}`, d).then(r => r.data),
   deleteClass: (id: string) => api.delete(`/admin/classes/${id}`).then(r => r.data),

@@ -379,6 +379,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Kelas
         Route::get('classes',                     [ClassAdminController::class, 'index']);
+        Route::get('classes/{uuid}/roster',       [ClassAdminController::class, 'roster']);
         Route::post('classes',                    [ClassAdminController::class, 'store']);
         Route::put('classes/{uuid}',              [ClassAdminController::class, 'update']);
         Route::delete('classes/{uuid}',           [ClassAdminController::class, 'destroy']);
