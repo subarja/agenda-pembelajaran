@@ -139,6 +139,12 @@ export default function KalenderPage() {
     return (calData?.non_effective ?? []).sort((a,b) => a.tanggal.localeCompare(b.tanggal))
   }, [calData?.non_effective])
 
+  // Resume event bulan ini utk dropdown Rekap — di layar HP event di sel kalender cuma
+  // tampil sebagai titik kecil, jadi daftar inilah satu-satunya tempat judulnya terbaca.
+  const eventList = useMemo(() => {
+    return [...(calData?.events ?? [])].sort((a,b) => a.start_date.localeCompare(b.start_date))
+  }, [calData?.events])
+
   // Akhir pekan (Sabtu/Minggu) tidak pernah dihitung sebagai hari efektif MAUPUN tidak
   // efektif — walau ada event kalender yang jatuh/ditandai di hari itu. Hari efektif =
   // total hari kerja (Sen-Jum) bulan ini dikurangi yang ditandai tidak efektif. Hari tidak
@@ -354,8 +360,10 @@ export default function KalenderPage() {
         {calData?.last_synced && <span className="ml-auto">Sync: {calData.last_synced}</span>}
       </div>
 
-      {/* ── Main layout: calendar + side panel ─────────────────────────────── */}
-      <div className="flex gap-4 items-start">
+      {/* ── Main layout: calendar + side panel ───────────────────────────────
+          Mobile (<lg): satu kolom — kalender dulu, panel rekap/detail di bawahnya.
+          Desktop (lg+): kalender fleksibel + panel samping 16rem. */}
+      <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
 
         {/* ── Calendar ─────────────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0">
@@ -366,7 +374,7 @@ export default function KalenderPage() {
               </div>
               <div className="grid grid-cols-7 divide-x divide-y border-t">
                 {Array.from({length:35}).map((_,i) => (
-                  <div key={i} className="min-h-[110px] p-2 bg-background">
+                  <div key={i} className="min-h-[56px] sm:min-h-[110px] p-1 sm:p-2 bg-background">
                     <div className="h-4 w-6 rounded bg-muted animate-pulse mb-2" />
                     <div className="h-3 w-full rounded bg-muted animate-pulse" />
                   </div>
@@ -391,7 +399,7 @@ export default function KalenderPage() {
               <div className="grid grid-cols-7 divide-x divide-y">
                 {cells.map((ds, idx) => {
                   if (!ds) return (
-                    <div key={idx} className="min-h-[110px] bg-muted/10" />
+                    <div key={idx} className="min-h-[56px] sm:min-h-[110px] bg-muted/10" />
                   )
 
                   const ned        = nedByDate[ds]
@@ -406,26 +414,31 @@ export default function KalenderPage() {
                   return (
                     <div key={ds}
                       onClick={() => {
-                        if (!canClick) return
-                        if (bulkMode) toggleSelectedDate(ds)
-                        else openDayForm(ds)
+                        if (canClick) {
+                          if (bulkMode) toggleSelectedDate(ds)
+                          else openDayForm(ds)
+                        } else if (events.length > 0) {
+                          // Perangkat sentuh tidak punya hover — tap tanggal ber-event
+                          // toggle panel detail (di bawah kalender saat layar sempit).
+                          setHoveredDate(prev => prev === ds ? null : ds)
+                        }
                       }}
                       onMouseEnter={() => events.length > 0 && setHoveredDate(ds)}
                       onMouseLeave={() => setHoveredDate(null)}
                       className={cn(
-                        'min-h-[110px] p-1.5 flex flex-col gap-0.5 transition-colors',
+                        'min-h-[56px] sm:min-h-[110px] p-1 sm:p-1.5 flex flex-col gap-0.5 transition-colors',
                         isSelected ? 'bg-blue-100 ring-2 ring-inset ring-blue-500'
                                    : ned ? 'bg-red-50'
                                    : isTeaching ? 'bg-blue-50/60'
                                    : isWeekend  ? 'bg-slate-50'
                                    : 'bg-white',
-                        canClick ? 'cursor-pointer hover:brightness-95' : '',
+                        canClick || events.length > 0 ? 'cursor-pointer hover:brightness-95' : '',
                       )}
                     >
                       {/* Day number */}
                       <div className="flex items-start justify-between mb-0.5">
                         <span className={cn(
-                          'w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold',
+                          'w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full text-xs sm:text-sm font-semibold',
                           isSelected ? 'bg-blue-500 text-white shadow-sm'
                                      : isToday ? 'bg-primary text-primary-foreground shadow-sm'
                                      : isWeekend ? 'text-red-500'
@@ -438,17 +451,28 @@ export default function KalenderPage() {
                         )}
                       </div>
 
-                      {/* Tidak Efektif label */}
+                      {/* Tidak Efektif label — layar sempit cukup latar merah + titik */}
                       {ned && (
-                        <div className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                        <div className="hidden sm:block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
                           Tidak Efektif
                         </div>
                       )}
 
-                      {/* Calendar events */}
+                      {/* Calendar events — mobile: deret titik warna, desktop: pill berjudul */}
+                      {events.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-0.5 mt-auto sm:hidden">
+                          {events.slice(0, 3).map(ev => (
+                            <span key={ev.id} className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: ev.color ?? DEFAULT_EVENT_COLOR }} />
+                          ))}
+                          {events.length > 3 && (
+                            <span className="text-[9px] leading-none text-muted-foreground">+{events.length - 3}</span>
+                          )}
+                        </div>
+                      )}
                       {events.slice(0, ned ? 2 : 4).map(ev => (
                         <div key={ev.id}
-                          className="text-[11px] px-1.5 py-0.5 rounded font-medium truncate text-white leading-tight"
+                          className="hidden sm:block text-[11px] px-1.5 py-0.5 rounded font-medium truncate text-white leading-tight"
                           style={{ backgroundColor: ev.color ?? DEFAULT_EVENT_COLOR }}
                           title={ev.title + (ev.description ? '\n' + ev.description : '')}
                         >
@@ -456,7 +480,7 @@ export default function KalenderPage() {
                         </div>
                       ))}
                       {events.length > (ned ? 2 : 4) && (
-                        <div className="text-[10px] text-muted-foreground px-1">
+                        <div className="hidden sm:block text-[10px] text-muted-foreground px-1">
                           +{events.length - (ned ? 2 : 4)} lainnya
                         </div>
                       )}
@@ -475,7 +499,7 @@ export default function KalenderPage() {
         </div>
 
         {/* ── Side panel: Hari Tidak Efektif ──────────────────────────────── */}
-        <div className="w-64 shrink-0 space-y-3">
+        <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
           <div className="rounded-xl border bg-card overflow-hidden shadow-sm">
             <button type="button" onClick={() => setNedListOpen(o => !o)}
               className="w-full bg-muted/40 px-3 py-2.5 border-b flex items-center gap-2 text-left hover:bg-muted/60 transition-colors">
@@ -510,12 +534,17 @@ export default function KalenderPage() {
               </div>
             </div>
 
-            {!nedListOpen ? null : nedList.length === 0 ? (
+            {!nedListOpen ? null : nedList.length === 0 && eventList.length === 0 ? (
               <div className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">Tidak ada hari tidak efektif bulan ini.</p>
+                <p className="text-xs text-muted-foreground">Tidak ada hari tidak efektif maupun kegiatan bulan ini.</p>
               </div>
             ) : (
-              <div className="divide-y max-h-72 overflow-y-auto">
+              <div className="max-h-72 lg:max-h-96 overflow-y-auto">
+              {nedList.length > 0 && (
+              <div className="divide-y">
+                <div className="px-3 py-1.5 bg-muted/30 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Hari Tidak Efektif
+                </div>
                 {nedList.map(n => {
                   const evs = eventsByDate[n.tanggal] ?? []
                   const d   = new Date(n.tanggal + 'T00:00:00')
@@ -553,12 +582,51 @@ export default function KalenderPage() {
                   )
                 })}
               </div>
+              )}
+
+              {/* Resume kegiatan kalender bulan ini — penting di HP karena event di sel
+                  kalender cuma tampil sebagai titik warna kecil tanpa judul. Klik item
+                  menyorot tanggalnya (buka panel detail event). */}
+              {eventList.length > 0 && (
+              <div className="divide-y border-t">
+                <div className="px-3 py-1.5 bg-muted/30 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Kegiatan Kalender
+                </div>
+                {eventList.map(ev => {
+                  const d1 = new Date(ev.start_date + 'T00:00:00')
+                  const d2 = new Date(ev.end_date + 'T00:00:00')
+                  const sameDay = ev.start_date === ev.end_date
+                  return (
+                    <div key={ev.id}
+                      className="px-3 py-2 cursor-pointer hover:bg-muted/40 transition-colors"
+                      onClick={() => setHoveredDate(prev => prev === ev.start_date ? null : ev.start_date)}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5"
+                          style={{ backgroundColor: ev.color ?? DEFAULT_EVENT_COLOR }} />
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium leading-tight">{ev.title}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {sameDay
+                              ? d1.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })
+                              : `${d1.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} – ${d2.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}`}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              )}
+              </div>
             )}
           </div>
 
-          {/* Event tooltip — semua event di tanggal yang disorot, bukan cuma satu */}
+          {/* Event tooltip — semua event di tanggal yang disorot, bukan cuma satu.
+              Di layar sempit dinaikkan ke atas panel (order-first) supaya hasil tap
+              tanggal langsung terlihat tepat di bawah kalender. */}
           {hoveredDate && (eventsByDate[hoveredDate]?.length ?? 0) > 0 && (
-            <div className="rounded-xl border bg-card p-3 shadow-md space-y-3 max-h-80 overflow-y-auto">
+            <div className="rounded-xl border bg-card p-3 shadow-md space-y-3 max-h-80 overflow-y-auto order-first lg:order-none">
               <p className="text-xs font-semibold text-muted-foreground">{formatTanggalPanjang(hoveredDate)}</p>
               {eventsByDate[hoveredDate]!.map(ev => (
                 <div key={ev.id} className="space-y-1 pb-2 border-b last:border-0 last:pb-0">

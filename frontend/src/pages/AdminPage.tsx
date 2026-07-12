@@ -359,7 +359,7 @@ function GuruTab() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchBar value={q} onChange={setQ} placeholder="Cari nama / NIP / mapel..." />
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
           </Button>
@@ -541,7 +541,7 @@ function SiswaTab() {
           <option value="">Semua Kelas</option>
           {classes?.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
           </Button>
@@ -726,7 +726,7 @@ function KelasTab() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchBar value={q} onChange={setQ} placeholder="Cari kelas / jurusan / wali..." />
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Kelas
           </Button>
@@ -988,7 +988,7 @@ function MapelTab() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchBar value={q} onChange={setQ} placeholder="Cari kode / nama / kelompok..." />
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
           </Button>
@@ -1123,7 +1123,7 @@ function JadwalTab() {
           {hariOptions.map(h => <option key={h} value={h} className="capitalize">{h.charAt(0).toUpperCase() + h.slice(1)}</option>)}
         </select>
         <p className="text-xs text-muted-foreground">{data?.meta?.total ?? 0} jadwal</p>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
           </Button>
@@ -1293,7 +1293,7 @@ function KarakterAdminTab() {
           <h3 className="font-semibold">Induk Karakter</h3>
           <SearchBar value={qCat} onChange={setQCat} placeholder="Cari nama..." />
           <span className="text-xs text-muted-foreground">{catRows.length} induk</span>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setImportCatOpen(true)}><Upload className="mr-1 h-4 w-4" />Import Excel</Button>
             <Button size="sm" onClick={() => { setSelCat(null); setErr(''); setCatForm({ nama: '', deskripsi: '' }); setCatModal('add') }}><Plus className="mr-1 h-4 w-4" />Tambah</Button>
           </div>
@@ -1334,7 +1334,7 @@ function KarakterAdminTab() {
           <h3 className="font-semibold">Sub-Karakter</h3>
           <SearchBar value={qSub} onChange={setQSub} placeholder="Cari kode / deskripsi..." />
           <span className="text-xs text-muted-foreground">{subRows.length} sub-item</span>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setImportSubOpen(true)}><Upload className="mr-1 h-4 w-4" />Import Excel</Button>
             <Button size="sm" onClick={() => { setSelSub(null); setErr(''); setSubForm({ category_id: cats?.[0]?.id || '', kode: '', deskripsi: '', bobot: '5', sifat: 'positif' }); setSubModal('add') }}><Plus className="mr-1 h-4 w-4" />Tambah</Button>
           </div>
@@ -1481,7 +1481,7 @@ function AmbangTab() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchBar value={q} onChange={setQ} placeholder="Cari rekomendasi / sifat..." />
         <p className="text-xs text-muted-foreground">{rows.length} ambang</p>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
           </Button>

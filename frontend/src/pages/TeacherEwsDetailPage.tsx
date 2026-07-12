@@ -78,21 +78,22 @@ export default function TeacherEwsDetailPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3">
+      {/* Header — flex-wrap: di layar sempit blok tombol ekspor turun ke baris kedua,
+          bukan menghimpit nama/NIP sampai terpotong */}
+      <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
         {d && (
           <img src={d.teacher.foto_url || '/images/default-avatar.jpg'} alt={d.teacher.nama} className="w-[20mm] h-auto shrink-0 rounded border" />
         )}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-[10rem]">
           <h1 className="text-xl font-bold truncate">{d?.teacher.nama ?? 'Detail Pengisian Agenda'}</h1>
           {d && (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground break-words">
               NIP: {d.teacher.nip ?? '—'} · {d.teacher.mapel_utama ?? '—'}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
           {d && d.sesi.length > 0 && (
             <>
               <Button variant="outline" size="sm" disabled={!!exporting} onClick={() => handleExport('excel')}

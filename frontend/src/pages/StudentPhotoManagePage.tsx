@@ -103,8 +103,10 @@ export default function StudentPhotoManagePage() {
         <div className="grid gap-2 sm:grid-cols-2">
           {students.map(s => (
             <Card key={s.id}>
-              <CardContent className="p-4 flex items-center justify-between gap-3">
-                <button type="button" onClick={() => openEdit(s)} className="text-left flex-1 min-w-0 group">
+              {/* flex-wrap + min-w di tombol nama: di layar sempit widget foto turun ke
+                  baris kedua, bukan menghimpit nama sampai tak terbaca */}
+              <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+                <button type="button" onClick={() => openEdit(s)} className="text-left flex-1 min-w-[9rem] group">
                   <p className="font-medium text-sm flex items-center gap-1.5 group-hover:text-primary-700 transition-colors">
                     {s.nama}
                     <Pencil className="h-3 w-3 text-muted-foreground shrink-0" />

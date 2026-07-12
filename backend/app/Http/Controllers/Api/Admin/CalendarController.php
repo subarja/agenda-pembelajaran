@@ -431,7 +431,9 @@ class CalendarController extends Controller
 
         $belum = $belum->unique();
 
-        $dalamSemester = $ay
+        // Tanggal semester nullable (admin bisa belum mengisinya) — tanpa rentang,
+        // tidak ada satu pun tanggal yang bisa disebut "dalam semester".
+        $dalamSemester = ($ay && $ay->tanggal_mulai && $ay->tanggal_selesai)
             ? $belum->filter(fn ($t) => Carbon::parse($t)->betweenIncluded($ay->tanggal_mulai, $ay->tanggal_selesai))
             : collect();
 
