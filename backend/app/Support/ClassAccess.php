@@ -138,7 +138,10 @@ class ClassAccess
 
     private static function scheduleClassIds(Teacher $teacher): Collection
     {
-        return Schedule::where('teacher_id', $teacher->id)
+        // tahunAjaran(): alasan yang sama dengan waliClassIds — akses mengikuti jadwal
+        // TA aktif, bukan jadwal arsip tahun-tahun sebelumnya.
+        return Schedule::tahunAjaran()
+            ->where('teacher_id', $teacher->id)
             ->where('aktif', true)
             ->pluck('class_id')
             ->unique()

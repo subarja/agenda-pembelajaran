@@ -58,7 +58,7 @@ class TeacherEwsController extends Controller
         $results = $teachers->map(function (Teacher $teacher) use ($mulai, $akhir, $lastLogins, $delegasi) {
             // Hitung sesi yang harusnya diajar dalam periode ini
             // Berdasarkan jadwal aktif (hari + jam) × jumlah minggu yang relevan
-            $schedules    = Schedule::where('teacher_id', $teacher->id)->where('aktif', true)->get();
+            $schedules    = Schedule::tahunAjaran()->where('teacher_id', $teacher->id)->where('aktif', true)->get();
             $totalJadwal  = $this->hitungSesiTerjadwal($schedules, $mulai, $akhir);
 
             // Kewajiban ikut berpindah bersama inval yang disetujui: sesi yang dialihkan
@@ -349,7 +349,8 @@ class TeacherEwsController extends Controller
      */
     private function buildSessionRows(Teacher $teacher, Carbon $mulai, Carbon $akhir): array
     {
-        $schedules = Schedule::where('teacher_id', $teacher->id)
+        $schedules = Schedule::tahunAjaran()
+            ->where('teacher_id', $teacher->id)
             ->where('aktif', true)
             ->with(['subject', 'schoolClass'])
             ->get();

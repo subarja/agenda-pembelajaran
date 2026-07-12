@@ -15,7 +15,10 @@ class ScheduleAdminController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Schedule::with(['schoolClass', 'subject', 'teacher.user'])
+        // Daftar admin mengikuti TA aktif — sama seperti daftar Kelas. Jadwal TA lama
+        // tetap tersimpan sebagai arsip dan terbaca lewat laporan semester lamanya.
+        $query = Schedule::tahunAjaran()
+            ->with(['schoolClass', 'subject', 'teacher.user'])
             ->when($request->class_id, fn ($q, $c) =>
                 $q->whereHas('schoolClass', fn ($sc) => $sc->where('uuid', $c))
             )

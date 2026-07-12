@@ -15,7 +15,7 @@ class Recommendation extends Model
     use HasUuid;
 
     protected $fillable = [
-        'student_id', 'threshold_id', 'alasan_manual', 'akumulasi_saat_trigger',
+        'academic_year_id', 'student_id', 'threshold_id', 'alasan_manual', 'akumulasi_saat_trigger',
         'status', 'ditugaskan_ke', 'hasil_tindak_lanjut',
         'ditangani_pada', 'created_by',
         'catatan_admin', 'verified_by', 'verified_at',
@@ -23,6 +23,21 @@ class Recommendation extends Model
         'bk_status', 'bk_teacher_id', 'diajukan_konseling_pada',
         'diterima_bk_pada', 'resume_bk', 'bk_selesai_pada',
     ];
+
+    // Penanganan yang belum selesai tetap terlihat lintas semester (kasus berjalan
+    // memang berlanjut), tapi penanda TA-nya membuat UI bisa menandai "bawaan semester
+    // sebelumnya" dan trigger ambang baru dihitung per semester.
+    protected static function booted(): void
+    {
+        static::creating(function (self $m) {
+            $m->academic_year_id ??= AcademicYear::where('aktif', true)->value('id');
+        });
+    }
+
+    public function academicYear(): BelongsTo
+    {
+        return $this->belongsTo(AcademicYear::class);
+    }
 
     protected function casts(): array
     {

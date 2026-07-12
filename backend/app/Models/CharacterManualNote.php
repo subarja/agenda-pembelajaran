@@ -11,7 +11,7 @@ class CharacterManualNote extends Model
     use HasUuid;
 
     protected $fillable = [
-        'student_id', 'teacher_id', 'atas_nama_teacher_id', 'sumber', 'catatan', 'nilai',
+        'academic_year_id', 'student_id', 'teacher_id', 'atas_nama_teacher_id', 'sumber', 'catatan', 'nilai',
         'status', 'admin_catatan', 'nilai_final',
         'reviewed_by', 'reviewed_at',
     ];
@@ -21,6 +21,28 @@ class CharacterManualNote extends Model
         'nilai_final' => 'integer',
         'reviewed_at' => 'datetime',
     ];
+
+    // Nilai Tambah dilaporkan per semester — tanpa penanda ini laporan kelas TA baru
+    // ikut memuat nilai yang diberikan saat siswa masih di tingkat sebelumnya.
+    protected static function booted(): void
+    {
+        static::creating(function (self $m) {
+            $m->academic_year_id ??= AcademicYear::where('aktif', true)->value('id');
+        });
+    }
+
+    public function academicYear(): BelongsTo
+    {
+        return $this->belongsTo(AcademicYear::class);
+    }
+
+    /** Scope ke TA tertentu (default TA aktif) — riwayat & laporan Nilai Tambah per semester. */
+    public function scopeTahunAjaran(\Illuminate\Database\Eloquent\Builder $q, ?int $academicYearId = null): \Illuminate\Database\Eloquent\Builder
+    {
+        $ayId = $academicYearId ?? AcademicYear::where('aktif', true)->value('id');
+
+        return $ayId === null ? $q : $q->where('academic_year_id', $ayId);
+    }
 
     public function student(): BelongsTo
     {

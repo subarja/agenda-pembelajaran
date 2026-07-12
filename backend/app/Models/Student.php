@@ -17,6 +17,7 @@ class Student extends Model
 
     protected $fillable = [
         'user_id', 'nis', 'nisn', 'class_id', 'angkatan',
+        'status', 'tanggal_keluar',
         'nama_ayah', 'nama_ibu', 'hp_ortu',
         'wali_nama', 'wali_kontak', 'foto',
         'created_by', 'updated_by',
@@ -25,8 +26,15 @@ class Student extends Model
     protected function casts(): array
     {
         return [
-            'angkatan' => 'integer',
+            'angkatan'       => 'integer',
+            'tanggal_keluar' => 'date',
         ];
+    }
+
+    /** Hanya siswa berstatus aktif — daftar operasional (bukan arsip alumni/pindahan). */
+    public function scopeAktif(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder
+    {
+        return $q->where('students.status', 'aktif');
     }
 
     public function user(): BelongsTo

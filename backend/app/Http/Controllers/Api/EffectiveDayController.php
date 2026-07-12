@@ -104,6 +104,7 @@ class EffectiveDayController extends Controller
         if (! $ay) return response()->json(['data' => [], 'academic_year' => null]);
 
         $classIds = $teacher->schedules()
+            ->tahunAjaran()
             ->where('aktif', true)
             ->pluck('class_id')
             ->unique();
@@ -149,7 +150,7 @@ class EffectiveDayController extends Controller
 
         $result = [];
         foreach ($teachers as $teacher) {
-            $classIds = $teacher->schedules()->where('aktif', true)->pluck('class_id')->unique();
+            $classIds = $teacher->schedules()->tahunAjaran()->where('aktif', true)->pluck('class_id')->unique();
 
             foreach ($classIds as $classId) {
                 $class = SchoolClass::find($classId);
@@ -374,7 +375,7 @@ class EffectiveDayController extends Controller
             $namaGuru = $teacher->nama_lengkap;
             $nipGuru  = $teacher->nip ?? '-';
 
-            $allClassIds = $teacher->schedules()->where('aktif', true)->pluck('class_id')->unique();
+            $allClassIds = $teacher->schedules()->tahunAjaran()->where('aktif', true)->pluck('class_id')->unique();
             if ($allClassIds->isEmpty()) continue;
 
             if ($request->filled('class_ids')) {
@@ -456,7 +457,7 @@ class EffectiveDayController extends Controller
             $namaGuru = $teacher->nama_lengkap;
             $nipGuru  = $teacher->nip ?? '—';
 
-            $allClassIds = $teacher->schedules()->where('aktif', true)->pluck('class_id')->unique();
+            $allClassIds = $teacher->schedules()->tahunAjaran()->where('aktif', true)->pluck('class_id')->unique();
             if ($allClassIds->isEmpty()) continue;
 
             if ($request->filled('class_ids')) {

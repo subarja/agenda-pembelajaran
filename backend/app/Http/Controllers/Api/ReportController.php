@@ -178,8 +178,12 @@ class ReportController extends Controller
         $periode  = now('Asia/Jakarta')->format('M Y');
         $totalInput = 0;
 
-        $rows = $students->map(function ($s) use ($kategori, &$totalInput) {
-            $inputs = CharacterInput::where('student_id', $s->id)->with('subitem.category')->get();
+        // Discope ke TA milik kelas yang dilaporkan — ekspor ulang kelas semester lama
+        // otomatis hanya memuat poin semester itu, dan kelas TA aktif tidak tercampur
+        // poin bawaan tingkat sebelumnya.
+        $rows = $students->map(function ($s) use ($kategori, &$totalInput, $class) {
+            $inputs = CharacterInput::tahunAjaran($class->academic_year_id)
+                ->where('student_id', $s->id)->with('subitem.category')->get();
             $totalInput += $inputs->count();
             $total = $inputs->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot));
             $perKat = [];
@@ -267,7 +271,8 @@ class ReportController extends Controller
         $class    = SchoolClass::where('uuid', $request->class_id)->firstOrFail();
         $students = $class->students()->with('user')->orderBy('nis')->get();
 
-        $notes = CharacterManualNote::whereIn('student_id', $students->pluck('id'))
+        $notes = CharacterManualNote::tahunAjaran($class->academic_year_id)
+            ->whereIn('student_id', $students->pluck('id'))
             ->where('sumber', 'nilai_tambah')
             ->with(['student.user', 'teacher.user', 'atasNamaTeacher.user'])
             ->orderByDesc('created_at')
@@ -348,11 +353,15 @@ class ReportController extends Controller
         $students = $class->students()->with('user')->orderBy('nis')->get();
         $periode  = now('Asia/Jakarta')->format('M Y');
 
-        $rows = $students->map(function ($s) {
-            $total     = StudentAttendance::where('student_id', $s->id)->count();
-            $hadir     = StudentAttendance::where('student_id', $s->id)->where('status', 'hadir')->count();
+        $rows = $students->map(function ($s) use ($class) {
+            // Kehadiran & poin per TA milik kelas — bukan akumulasi seumur hidup.
+            $absensi   = StudentAttendance::where('student_id', $s->id)
+                ->whereHas('agenda.schedule.schoolClass', fn ($q) => $q->where('academic_year_id', $class->academic_year_id));
+            $total     = (clone $absensi)->count();
+            $hadir     = (clone $absensi)->where('status', 'hadir')->count();
             $kehadiran = $total > 0 ? round(($hadir / $total) * 100, 1) : 100.0;
-            $inputs    = CharacterInput::where('student_id', $s->id)->with('subitem')->get();
+            $inputs    = CharacterInput::tahunAjaran($class->academic_year_id)
+                ->where('student_id', $s->id)->with('subitem')->get();
             $karakter  = $inputs->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot));
             $catatan   = Note::where('target_type', Student::class)->where('target_id', $s->id)->count();
             $nilaiAvg  = AgendaStudentScore::where('student_id', $s->id)->avg('nilai');
@@ -453,7 +462,10 @@ class ReportController extends Controller
         // Kelas & mapel diampu diambil dari SELURUH jadwal aktif guru (bukan cuma yang
         // sudah diisi agenda pada periode ini) — supaya identitas laporan tetap lengkap
         // walau guru belum sempat mengisi KBM di sebagian kelas/mapel yang ia ampu.
-        $teacherSchedules = \App\Models\Schedule::where('teacher_id', $teacher->id)
+        // Discope ke TA yang memuat awal periode laporan (fallback TA aktif) supaya
+        // ekspor ulang laporan semester lama tetap memakai jadwal semester itu.
+        $teacherSchedules = \App\Models\Schedule::tahunAjaran($this->ayIdUntukTanggal($request->tanggal_mulai))
+            ->where('teacher_id', $teacher->id)
             ->where('aktif', true)
             ->with(['subject', 'schoolClass'])
             ->get();
@@ -620,7 +632,8 @@ class ReportController extends Controller
         }
         if (! $teacher) return response()->json(['data' => []]);
 
-        $classes = \App\Models\Schedule::where('teacher_id', $teacher->id)
+        $classes = \App\Models\Schedule::tahunAjaran()
+            ->where('teacher_id', $teacher->id)
             ->where('aktif', true)
             ->with('schoolClass')
             ->get()
@@ -680,6 +693,25 @@ class ReportController extends Controller
     private function formatMapelDiampu(\Illuminate\Support\Collection $schedules): string
     {
         return $schedules->pluck('subject.nama')->filter()->unique()->sort()->values()->join(', ');
+    }
+
+    /**
+     * ID tahun ajaran yang rentang semesternya memuat $tanggal — supaya ekspor ulang
+     * laporan periode lama memakai jadwal semester itu, bukan jadwal TA aktif.
+     * Fallback null (= TA aktif, lihat Schedule::scopeTahunAjaran) kalau tidak ada
+     * TA yang rentang tanggalnya cocok / tanggal semesternya belum diisi.
+     */
+    private function ayIdUntukTanggal(?string $tanggal): ?int
+    {
+        if (! $tanggal) {
+            return null;
+        }
+
+        return \App\Models\AcademicYear::whereNotNull('tanggal_mulai')
+            ->whereNotNull('tanggal_selesai')
+            ->whereDate('tanggal_mulai', '<=', $tanggal)
+            ->whereDate('tanggal_selesai', '>=', $tanggal)
+            ->value('id');
     }
 
     // streamXlsx() dipindah ke trait BuildsXlsxReports supaya controller export Excel

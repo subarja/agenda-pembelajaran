@@ -30,6 +30,8 @@ export interface AdminManualNote {
 export interface AdminStudent {
   id: string; nama: string; email: string; status: string
   nis: string; nisn: string | null; angkatan: number | null
+  status_siswa: 'aktif' | 'lulus' | 'pindah' | 'keluar'
+  tanggal_keluar: string | null
   wali_nama: string | null; wali_kontak: string | null
   kelas: { id: string; label: string } | null
   foto_url: string | null
@@ -76,6 +78,28 @@ export interface AdminThreshold {
   kategori: { id: string; nama: string } | null
 }
 
+export interface PromotionPreviewStudent { id: string; nama: string; nis: string }
+export interface PromotionPreviewClass {
+  id: string; label: string; tingkat: 'X' | 'XI' | 'XII'
+  wali_kelas: string | null
+  tujuan: string; tujuan_ada: boolean | null
+  jumlah_siswa: number
+  students: PromotionPreviewStudent[]
+}
+export interface PromotionPreview {
+  source: { id: string; label: string }
+  target: { id: string; label: string }
+  classes: PromotionPreviewClass[]
+}
+
+export interface ScheduleCopyPreview {
+  source: { id: string; label: string }
+  target: { id: string; label: string }
+  jumlah_jadwal: number
+  kelas_cocok: number
+  tanpa_padanan: string[]
+}
+
 // ── Academic Years ────────────────────────────────────────────────────────────
 export const adminApi = {
   // Tahun Ajaran
@@ -83,6 +107,20 @@ export const adminApi = {
   createAcademicYear: (d: object) => api.post('/admin/academic-years', d).then(r => r.data),
   updateAcademicYear: (id: string, d: object) => api.put(`/admin/academic-years/${id}`, d).then(r => r.data),
   deleteAcademicYear: (id: string) => api.delete(`/admin/academic-years/${id}`).then(r => r.data),
+
+  // Wizard Naik Kelas
+  getPromotionPreview: (sourceId: string, targetId: string) =>
+    api.get('/admin/promotion/preview', { params: { source_academic_year_id: sourceId, target_academic_year_id: targetId } })
+      .then(r => r.data.data as PromotionPreview),
+  executePromotion: (d: { source_academic_year_id: string; target_academic_year_id: string; tinggal: Record<string, string[]> }) =>
+    api.post('/admin/promotion/execute', d).then(r => r.data),
+
+  // Salin Jadwal antar semester
+  getScheduleCopyPreview: (sourceId: string) =>
+    api.get('/admin/schedules/copy-preview', { params: { source_academic_year_id: sourceId } })
+      .then(r => r.data.data as ScheduleCopyPreview),
+  copySchedules: (sourceId: string) =>
+    api.post('/admin/schedules/copy-from', { source_academic_year_id: sourceId }).then(r => r.data),
 
   // Guru
   getTeachers: (params?: object) => api.get('/admin/teachers', { params }).then(r => r.data as { data: AdminTeacher[]; meta: any }),

@@ -59,6 +59,7 @@ class ScheduleController extends Controller
         $todayDate = Carbon::now('Asia/Jakarta')->toDateString();
 
         $schedules = $teacher->schedules()
+            ->tahunAjaran()
             ->where('hari', $today)
             ->where('aktif', true)
             // Mode PKL: kelas XII tidak lagi menuntut agenda harian per-sesi — kewajibannya
@@ -93,6 +94,7 @@ class ScheduleController extends Controller
         $startOfWeek = Carbon::now('Asia/Jakarta')->startOfWeek(Carbon::MONDAY);
 
         $schedules = $teacher->schedules()
+            ->tahunAjaran()
             ->where('aktif', true)
             ->with(['subject', 'schoolClass'])
             ->get()

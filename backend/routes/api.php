@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\Admin\AcademicYearController;
 use App\Http\Controllers\Api\Admin\AgendaFillSettingController;
+use App\Http\Controllers\Api\Admin\PromotionController;
+use App\Http\Controllers\Api\Admin\ScheduleCopyController;
 use App\Http\Controllers\Api\Admin\PklObjectiveController;
 use App\Http\Controllers\Api\Admin\PklPlacementController;
 use App\Http\Controllers\Api\Admin\PklSettingController;
@@ -343,6 +345,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('academic-years/{uuid}',       [AcademicYearController::class, 'update']);
         Route::delete('academic-years/{uuid}',    [AcademicYearController::class, 'destroy']);
 
+        // Wizard Naik Kelas — pergantian tahun ajaran (admin-only, dijaga di controller)
+        Route::get('promotion/preview',           [PromotionController::class, 'preview']);
+        Route::post('promotion/execute',          [PromotionController::class, 'execute']);
+
         // Backup & Restore (admin-only, dijaga lagi di dalam controller)
         Route::get('backup/download',             [DatabaseBackupController::class, 'download']);
         Route::post('backup/restore',             [DatabaseBackupController::class, 'restore']);
@@ -386,6 +392,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Jadwal
         Route::get('schedules',                   [ScheduleAdminController::class, 'index']);
+        // Salin jadwal dari semester lain ke TA aktif — didaftarkan sebelum rute {uuid}
+        Route::get('schedules/copy-preview',      [ScheduleCopyController::class, 'preview']);
+        Route::post('schedules/copy-from',        [ScheduleCopyController::class, 'copy']);
         Route::post('schedules',                  [ScheduleAdminController::class, 'store']);
         Route::put('schedules/{uuid}',            [ScheduleAdminController::class, 'update']);
         Route::delete('schedules/{uuid}',         [ScheduleAdminController::class, 'destroy']);

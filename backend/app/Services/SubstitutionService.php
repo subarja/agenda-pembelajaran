@@ -78,7 +78,8 @@ class SubstitutionService
     /** Sesi milik guru ini dalam rentang tanggal, beserta status kelayakannya. */
     public function sesiMilikGuru(Teacher $teacher, Carbon $mulai, Carbon $akhir): Collection
     {
-        $schedules = Schedule::where('teacher_id', $teacher->id)
+        $schedules = Schedule::tahunAjaran()
+            ->where('teacher_id', $teacher->id)
             ->where('aktif', true)
             ->with(['subject', 'schoolClass'])
             ->get();
@@ -173,7 +174,8 @@ class SubstitutionService
 
     private function jadwalBentrok(Teacher $teacher, Schedule $schedule, string $tanggal): ?Schedule
     {
-        return Schedule::where('teacher_id', $teacher->id)
+        return Schedule::tahunAjaran()
+            ->where('teacher_id', $teacher->id)
             ->where('aktif', true)
             ->where('hari', $schedule->hari->value)
             ->where('id', '!=', $schedule->id)

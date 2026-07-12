@@ -209,7 +209,8 @@ class EwsController extends Controller
             );
         }
 
-        $allKarakter = CharacterInput::where('student_id', $student->id)
+        $allKarakter = CharacterInput::tahunAjaran()
+            ->where('student_id', $student->id)
             ->with(['subitem.category', 'teacher.user'])
             ->orderByDesc('created_at')
             ->get()
@@ -221,7 +222,8 @@ class EwsController extends Controller
                 'tanggal'  => $i->created_at->format('Y-m-d H:i'),
             ]);
 
-        $absences = StudentAttendance::where('student_id', $student->id)
+        $absences = StudentAttendance::tahunAjaran()
+            ->where('student_id', $student->id)
             ->where('status', '!=', 'hadir')
             ->with(['agenda.schedule.subject', 'agenda.schedule.schoolClass'])
             ->orderByDesc('created_at')
@@ -271,12 +273,16 @@ class EwsController extends Controller
         $viewerIsRelevantBk = $viewerTeacher?->is_bk && Schedule::where('teacher_id', $viewerTeacher->id)
             ->where('class_id', $student->class_id)->where('aktif', true)->exists();
 
+        // Riwayat penanganan sengaja TIDAK difilter TA: kasus yang belum selesai memang
+        // berlanjut lintas semester. Penanda carry_over di bawah yang memberi tahu UI
+        // bahwa sebuah kasus berasal dari semester sebelumnya.
+        $activeAyId  = AcademicYear::where('aktif', true)->value('id');
         $rekomendasi = Recommendation::where('student_id', $student->id)
-            ->with(['threshold', 'suggestedHandlers', 'handlingSessions.handler', 'verifiedBy', 'bkTeacher.user'])
+            ->with(['threshold', 'suggestedHandlers', 'handlingSessions.handler', 'verifiedBy', 'bkTeacher.user', 'academicYear'])
             ->orderByRaw("CASE status WHEN 'pending' THEN 0 WHEN 'proses' THEN 1 WHEN 'menunggu_verifikasi' THEN 2 ELSE 3 END")
             ->orderByDesc('created_at')
             ->get()
-            ->map(function ($r) use ($viewerTeacher, $viewerIsAdmin, $viewerIsRelevantBk) {
+            ->map(function ($r) use ($viewerTeacher, $viewerIsAdmin, $viewerIsRelevantBk, $activeAyId) {
                 $waliKelasSessionCount = $r->handlingSessions
                     ->filter(fn ($s) => $s->jenis === \App\Enums\HandlingSessionJenis::WaliKelas)
                     ->count();
@@ -298,6 +304,9 @@ class EwsController extends Controller
                     'sifat'                    => $r->threshold?->sifat->value ?? 'manual',
                     'akumulasi'                => $r->akumulasi_saat_trigger,
                     'status'                   => $r->status->value,
+                    // Kasus bawaan semester sebelumnya — UI menandainya dengan label TA asal.
+                    'carry_over'               => $r->academic_year_id !== null && $activeAyId !== null && $r->academic_year_id !== $activeAyId,
+                    'tahun_ajaran_label'       => $r->academicYear ? "{$r->academicYear->tahun} " . ucfirst($r->academicYear->semester->value) : null,
                     'catatan_admin'            => $r->catatan_admin,
                     'dibuat_pada'              => $r->created_at->format('Y-m-d'),
                     'ditangani_pada'           => $r->ditangani_pada?->format('Y-m-d H:i'),
@@ -408,7 +417,8 @@ class EwsController extends Controller
 
         if ($dim === 'kehadiran') {
             $kehadiran = $this->calcKehadiran($student->id);
-            $rows = StudentAttendance::where('student_id', $student->id)
+            $rows = StudentAttendance::tahunAjaran()
+                ->where('student_id', $student->id)
                 ->where('status', '!=', 'hadir')
                 ->with(['agenda.schedule.subject', 'agenda.schedule.schoolClass'])
                 ->orderByDesc('created_at')
@@ -425,7 +435,8 @@ class EwsController extends Controller
 
         if ($dim === 'karakter') {
             $karakter = $this->calcKarakter($student->id);
-            $rows = CharacterInput::where('student_id', $student->id)
+            $rows = CharacterInput::tahunAjaran()
+                ->where('student_id', $student->id)
                 ->with(['subitem.category', 'teacher.user'])
                 ->orderByDesc('created_at')
                 ->get()
@@ -663,11 +674,12 @@ class EwsController extends Controller
 
     private function calcKehadiran(int $studentId): array
     {
-        $total   = StudentAttendance::where('student_id', $studentId)->count();
-        $hadir   = StudentAttendance::where('student_id', $studentId)->where('status', 'hadir')->count();
-        $alpha   = StudentAttendance::where('student_id', $studentId)->where('status', 'alpha')->count();
-        $sakit   = StudentAttendance::where('student_id', $studentId)->where('status', 'sakit')->count();
-        $izin    = StudentAttendance::where('student_id', $studentId)->where('status', 'izin')->count();
+        $base    = fn () => StudentAttendance::tahunAjaran()->where('student_id', $studentId);
+        $total   = $base()->count();
+        $hadir   = $base()->where('status', 'hadir')->count();
+        $alpha   = $base()->where('status', 'alpha')->count();
+        $sakit   = $base()->where('status', 'sakit')->count();
+        $izin    = $base()->where('status', 'izin')->count();
         $score   = $total > 0 ? ($hadir / $total) * 100 : 100.0;
         $warning = $score < self::THRESHOLD_KEHADIRAN ? 1 : 0;
         return compact('score', 'total', 'hadir', 'alpha', 'sakit', 'izin', 'warning');
@@ -675,7 +687,7 @@ class EwsController extends Controller
 
     private function calcKarakter(int $studentId): array
     {
-        $inputs  = CharacterInput::where('student_id', $studentId)->with('subitem')->get();
+        $inputs  = CharacterInput::tahunAjaran()->where('student_id', $studentId)->with('subitem')->get();
         $score   = $inputs->sum(fn ($i) =>
             $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot)
         );

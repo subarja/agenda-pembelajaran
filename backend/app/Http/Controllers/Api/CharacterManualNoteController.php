@@ -107,7 +107,8 @@ class CharacterManualNoteController extends Controller
         $request->validate(['student_id' => ['required', 'string']]);
         $student = Student::where('uuid', $request->student_id)->firstOrFail();
 
-        $notes = CharacterManualNote::where('student_id', $student->id)
+        $notes = CharacterManualNote::tahunAjaran()
+            ->where('student_id', $student->id)
             ->with(['teacher.user', 'atasNamaTeacher.user', 'reviewer'])
             ->orderByDesc('created_at')
             ->get()
@@ -121,7 +122,8 @@ class CharacterManualNoteController extends Controller
     {
         $status = $request->get('status');
 
-        $query = CharacterManualNote::with(['student.user', 'student.schoolClass', 'teacher.user', 'atasNamaTeacher.user', 'reviewer'])
+        $query = CharacterManualNote::tahunAjaran()
+            ->with(['student.user', 'student.schoolClass', 'teacher.user', 'atasNamaTeacher.user', 'reviewer'])
             ->orderByDesc('created_at');
 
         if ($status && $status !== 'all') {

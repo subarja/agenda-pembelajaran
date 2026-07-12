@@ -473,7 +473,7 @@ class RecommendationController extends Controller
         $teacher = $user->teacher;
         abort_if(! $teacher?->is_bk, 403, 'Hanya Guru BK yang dapat mengakses menu ini.');
 
-        $classIds = Schedule::where('teacher_id', $teacher->id)->where('aktif', true)->pluck('class_id')->unique();
+        $classIds = Schedule::tahunAjaran()->where('teacher_id', $teacher->id)->where('aktif', true)->pluck('class_id')->unique();
 
         $recs = Recommendation::where(function ($q) use ($classIds, $teacher) {
                 $q->where(function ($q2) use ($classIds) {
@@ -546,11 +546,11 @@ class RecommendationController extends Controller
 
     private function calcEwsForReport(int $studentId): array
     {
-        $total     = \App\Models\StudentAttendance::where('student_id', $studentId)->count();
-        $hadir     = \App\Models\StudentAttendance::where('student_id', $studentId)->where('status', 'hadir')->count();
+        $total     = \App\Models\StudentAttendance::tahunAjaran()->where('student_id', $studentId)->count();
+        $hadir     = \App\Models\StudentAttendance::tahunAjaran()->where('student_id', $studentId)->where('status', 'hadir')->count();
         $kehadiran = $total > 0 ? round(($hadir / $total) * 100, 1) : 100.0;
 
-        $inputs   = \App\Models\CharacterInput::where('student_id', $studentId)->with('subitem')->get();
+        $inputs   = \App\Models\CharacterInput::tahunAjaran()->where('student_id', $studentId)->with('subitem')->get();
         $karakter = $inputs->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot));
 
         $catatan = \App\Models\Note::where('target_type', \App\Models\Student::class)->where('target_id', $studentId)->count();

@@ -33,7 +33,8 @@ class AgendaController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $classIds = Schedule::where('teacher_id', $teacher->id)
+        $classIds = Schedule::tahunAjaran()
+            ->where('teacher_id', $teacher->id)
             ->distinct()
             ->pluck('class_id');
 
@@ -79,7 +80,8 @@ class AgendaController extends Controller
             'jumat' => Carbon::FRIDAY, 'sabtu' => Carbon::SATURDAY, 'minggu' => Carbon::SUNDAY,
         ];
 
-        $schedules = Schedule::where('teacher_id', $teacher->id)->where('aktif', true)
+        $schedules = Schedule::tahunAjaran()
+            ->where('teacher_id', $teacher->id)->where('aktif', true)
             ->with(['subject', 'schoolClass'])->get();
 
         $sesi = [];

@@ -30,9 +30,17 @@ class CharacterService
         $this->updateEwsStatus($student, $ay, $netScore);
     }
 
-    public function calculateNetScore(Student $student): int
+    /**
+     * Akumulasi poin per TAHUN AJARAN (semester) — bukan seumur hidup. Siswa memulai
+     * tiap semester dari nol; riwayat semester lama tetap tersimpan dan terbaca lewat
+     * ews_statuses TA-nya masing-masing (Rekap Perkembangan Lintas Semester).
+     */
+    public function calculateNetScore(Student $student, ?int $academicYearId = null): int
     {
+        $ayId = $academicYearId ?? AcademicYear::where('aktif', true)->value('id');
+
         return CharacterInput::where('student_id', $student->id)
+            ->when($ayId !== null, fn ($q) => $q->where('academic_year_id', $ayId))
             ->with('subitem')
             ->get()
             ->sum(fn ($inp) =>
@@ -77,11 +85,16 @@ class CharacterService
     public function updateEwsStatus(Student $student, AcademicYear $ay, ?int $netScore = null): void
     {
         if ($netScore === null) {
-            $netScore = $this->calculateNetScore($student);
+            $netScore = $this->calculateNetScore($student, $ay->id);
         }
 
-        $totalAbsensi = StudentAttendance::where('student_id', $student->id)->count();
-        $hadir        = StudentAttendance::where('student_id', $student->id)->where('status', 'hadir')->count();
+        // Kehadiran juga per TA — presensi menempel ke agenda → jadwal → kelas per-TA,
+        // jadi persentase EWS tahun ini tidak lagi terseret rekor tahun-tahun sebelumnya.
+        $absensiTa = StudentAttendance::where('student_id', $student->id)
+            ->whereHas('agenda.schedule.schoolClass', fn ($q) => $q->where('academic_year_id', $ay->id));
+
+        $totalAbsensi = (clone $absensiTa)->count();
+        $hadir        = (clone $absensiTa)->where('status', 'hadir')->count();
         $kehadiranPct = $totalAbsensi > 0 ? round(($hadir / $totalAbsensi) * 100, 2) : 100.0;
 
         $levelBaru = $this->resolveLevel($netScore, $kehadiranPct);

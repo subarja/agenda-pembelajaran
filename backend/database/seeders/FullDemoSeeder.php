@@ -62,7 +62,7 @@ class FullDemoSeeder extends Seeder
         $schedules = $this->seedSchedules($subjects, $teachers, $classes);
         $this->seedLearningObjectives($schedules, $ay);
         $this->seedAgendaHistory($schedules, $students, $now, $ay);
-        $this->seedCharacterInputs($students, $teachers);
+        $this->seedCharacterInputs($students, $teachers, $ay);
         $this->seedActionThresholds();
         $this->recalculateEws($ay, $students);
         $this->setupDemoTeacherAccounts();
@@ -523,7 +523,7 @@ class FullDemoSeeder extends Seeder
     }
 
     // =========================================================================
-    private function seedCharacterInputs(array $students, array $teachers): void
+    private function seedCharacterInputs(array $students, array $teachers, AcademicYear $ay): void
     {
         $subitems = CharacterSubitem::all()->keyBy('kode');
         if ($subitems->isEmpty()) return;
@@ -582,6 +582,7 @@ class FullDemoSeeder extends Seeder
                 if (! $subitem) continue;
 
                 $inputs[] = [
+                    'academic_year_id' => $ay->id,
                     'student_id' => $student->id,
                     'subitem_id' => $subitem->id,
                     'teacher_id' => $teacherId,

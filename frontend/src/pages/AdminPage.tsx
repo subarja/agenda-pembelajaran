@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo, useEffect, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing, GraduationCap, CopyPlus } from 'lucide-react'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
 import { fcmAdminApi } from '@/features/notifikasi/api'
@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { PasswordInput } from '@/components/ui/password-input'
 import PhotoEditWidget from '@/components/PhotoEditWidget'
 import PklAdminTab from '@/components/admin/PklAdminTab'
+import { NaikKelasWizard, SalinJadwalModal } from '@/components/GantiTahunAjaran'
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
@@ -30,7 +31,8 @@ const TAB_SLUG_TO_LABEL: Record<string, string> = { 'nilai-manual': 'Nilai Manua
 // ── Simple modal ──────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    // z-[60]: di atas BottomNav mobile (z-50) supaya isi/footer modal tidak tertutup nav
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h3 className="font-semibold">{title}</h3>
@@ -470,6 +472,8 @@ function SiswaTab() {
   const [err, setErr] = useState('')
   const [search, setSearch] = useState('')
   const [filterKelas, setFilterKelas] = useState('')
+  // aktif (default) | lulus | pindah | keluar | semua — alumni tidak memenuhi daftar kerja
+  const [filterStatus, setFilterStatus] = useState('aktif')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState<PerPageOpt>(25)
   const [sortCol, setSortCol] = useState<string | null>(null)
@@ -477,11 +481,11 @@ function SiswaTab() {
 
   const debouncedSearch = useDebounce(search, 350)
 
-  useEffect(() => { setPage(1) }, [debouncedSearch, filterKelas, perPage])
+  useEffect(() => { setPage(1) }, [debouncedSearch, filterKelas, filterStatus, perPage])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-students', debouncedSearch, filterKelas, page, perPage],
-    queryFn: () => adminApi.getStudents({ search: debouncedSearch || undefined, class_id: filterKelas || undefined, page, per_page: perPage === 'semua' ? 'all' : perPage }),
+    queryKey: ['admin-students', debouncedSearch, filterKelas, filterStatus, page, perPage],
+    queryFn: () => adminApi.getStudents({ search: debouncedSearch || undefined, class_id: filterKelas || undefined, status_siswa: filterStatus, page, per_page: perPage === 'semua' ? 'all' : perPage }),
     placeholderData: (prev) => prev,
   })
   const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
@@ -541,6 +545,14 @@ function SiswaTab() {
           <option value="">Semua Kelas</option>
           {classes?.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
+        <select className={selectCls + ' max-w-[140px]'} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          title="Siswa lulus/pindah tersimpan sebagai arsip — tidak dihapus">
+          <option value="aktif">Aktif</option>
+          <option value="lulus">Lulus</option>
+          <option value="pindah">Pindah</option>
+          <option value="keluar">Keluar</option>
+          <option value="semua">Semua Status</option>
+        </select>
         <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
@@ -575,7 +587,15 @@ function SiswaTab() {
                   <td className="px-3 py-2 text-muted-foreground">{s.nisn ?? '-'}</td>
                   <td className="px-3 py-2">{s.kelas?.label ?? <span className="text-muted-foreground italic">—</span>}</td>
                   <td className="px-3 py-2">{s.angkatan ?? '-'}</td>
-                  <td className="px-3 py-2"><Badge className={s.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{s.status}</Badge></td>
+                  <td className="px-3 py-2">
+                    {s.status_siswa && s.status_siswa !== 'aktif' ? (
+                      <Badge className={s.status_siswa === 'lulus' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}>
+                        {s.status_siswa}{s.status_siswa === 'lulus' && s.tanggal_keluar ? ` ${s.tanggal_keluar.slice(0, 4)}` : ''}
+                      </Badge>
+                    ) : (
+                      <Badge className={s.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{s.status}</Badge>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">
                       <button onClick={() => openEdit(s)} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5" /></button>
@@ -1068,6 +1088,13 @@ function JadwalTab() {
   const qc = useQueryClient()
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [salinOpen, setSalinOpen] = useState(false)
+  // Daftar TA untuk modal Salin Jadwal — fetch saat modal dibuka saja
+  const { data: yearsForCopy } = useQuery({
+    queryKey: ['admin-academic-years'],
+    queryFn: () => adminApi.getAcademicYears(),
+    enabled: salinOpen,
+  })
   const [selected, setSelected] = useState<AdminSchedule | null>(null)
   const [form, setForm] = useState({ class_id: '', subject_id: '', teacher_id: '', hari: 'senin', jam_mulai: '08:00', jam_selesai: '09:30' })
   const [filterKelas, setFilterKelas] = useState('')
@@ -1124,6 +1151,9 @@ function JadwalTab() {
         </select>
         <p className="text-xs text-muted-foreground">{data?.meta?.total ?? 0} jadwal</p>
         <div className="ml-auto flex flex-wrap justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setSalinOpen(true)}>
+            <CopyPlus className="mr-1 h-4 w-4" />Salin dari Semester
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
           </Button>
@@ -1132,6 +1162,8 @@ function JadwalTab() {
           </Button>
         </div>
       </div>
+
+      {salinOpen && <SalinJadwalModal years={yearsForCopy ?? []} onClose={() => setSalinOpen(false)} />}
       {isLoading ? <TableSkeleton cols={[16, 70, 90, 120, 120, 120, 40]} rows={8} /> : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
@@ -2370,6 +2402,7 @@ const EMPTY_PEJABAT_FORM = {
 function TahunAjaranTab() {
   const qc = useQueryClient()
   const [modal, setModal] = useState<'add' | 'edit' | 'pejabat' | null>(null)
+  const [wizardOpen, setWizardOpen] = useState(false)
   const [selected, setSelected] = useState<AdminAcademicYear | null>(null)
   const [form, setForm] = useState({ tahun: '', semester: 'ganjil', tanggal_mulai: '', tanggal_selesai: '' })
   const [pejabatForm, setPejabatForm] = useState(EMPTY_PEJABAT_FORM)
@@ -2451,10 +2484,15 @@ function TahunAjaranTab() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchBar value={q} onChange={setQ} placeholder="Cari tahun / semester..." />
         <p className="text-xs text-muted-foreground">{rows.length} tahun ajaran</p>
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setWizardOpen(true)}>
+            <GraduationCap className="mr-1 h-4 w-4" />Naik Kelas
+          </Button>
           <Button size="sm" onClick={openAdd}><Plus className="mr-1 h-4 w-4" />Tambah</Button>
         </div>
       </div>
+
+      {wizardOpen && <NaikKelasWizard years={years ?? []} onClose={() => setWizardOpen(false)} />}
 
       {isLoading ? <TableSkeleton cols={[100, 80, 140, 80, 40]} rows={4} /> : (
         <div className="overflow-x-auto rounded-lg border">
@@ -2821,7 +2859,7 @@ export default function AdminPage() {
   // Prefetch data ringan yang dipakai banyak tab — mount langsung
   useEffect(() => {
     qc.prefetchQuery({ queryKey: ['admin-classes'],        queryFn: adminApi.getClasses })
-    qc.prefetchQuery({ queryKey: ['admin-students', '', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getStudents({ page: 1, per_page: 25 }) })
+    qc.prefetchQuery({ queryKey: ['admin-students', '', '', 'aktif', 1, 25 as PerPageOpt], queryFn: () => adminApi.getStudents({ status_siswa: 'aktif', page: 1, per_page: 25 }) })
   }, [qc])
 
   // Prefetch on hover — data diambil saat user bergerak ke arah tab sebelum klik
@@ -2831,7 +2869,7 @@ export default function AdminPage() {
         qc.prefetchQuery({ queryKey: ['admin-teachers', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getTeachers({ page: 1, per_page: 25 }) })
         break
       case 1: // Siswa
-        qc.prefetchQuery({ queryKey: ['admin-students', '', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getStudents({ page: 1, per_page: 25 }) })
+        qc.prefetchQuery({ queryKey: ['admin-students', '', '', 'aktif', 1, 25 as PerPageOpt], queryFn: () => adminApi.getStudents({ status_siswa: 'aktif', page: 1, per_page: 25 }) })
         break
       case 2: // Kelas
         qc.prefetchQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })

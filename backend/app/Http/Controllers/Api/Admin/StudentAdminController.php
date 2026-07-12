@@ -19,10 +19,16 @@ class StudentAdminController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        // Default hanya siswa AKTIF — alumni/pindahan adalah arsip, bukan daftar kerja.
+        // `status_siswa` (bukan `status`, yang sudah dipakai untuk status akun user):
+        // aktif|lulus|pindah|keluar|semua.
+        $statusSiswa = $request->get('status_siswa', 'aktif');
+
         $q = Student::query()
             ->join('users', 'users.id', '=', 'students.user_id')
             ->select('students.*')
             ->with(['user', 'schoolClass'])
+            ->when($statusSiswa !== 'semua', fn ($qq) => $qq->where('students.status', $statusSiswa))
             ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->whereLikeCi('users.nama', $s)
                 ->orWhereLikeCi('users.email', $s)
                 ->orWhereLikeCi('students.nis', $s)
@@ -180,6 +186,8 @@ class StudentAdminController extends Controller
             'nis' => $s->nis,
             'nisn' => $s->nisn,
             'angkatan' => $s->angkatan,
+            'status_siswa' => $s->status,
+            'tanggal_keluar' => $s->tanggal_keluar?->toDateString(),
             'wali_nama' => $s->wali_nama,
             'wali_kontak' => $s->wali_kontak,
             'kelas' => $s->schoolClass ? [

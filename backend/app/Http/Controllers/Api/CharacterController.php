@@ -114,7 +114,8 @@ class CharacterController extends Controller
             abort_unless(ClassAccess::isOwnStudent($user, $student), 403, 'Akses ditolak.');
         }
 
-        $inputs = CharacterInput::where('student_id', $student->id)
+        $inputs = CharacterInput::tahunAjaran()
+            ->where('student_id', $student->id)
             ->with(['subitem.category', 'teacher.user'])
             ->orderByDesc('created_at')
             ->limit((int) $request->get('limit', 20))
@@ -155,7 +156,8 @@ class CharacterController extends Controller
             abort_unless(ClassAccess::isOwnStudent($user, $student), 403, 'Akses ditolak.');
         }
 
-        $inputs = CharacterInput::where('student_id', $student->id)
+        $inputs = CharacterInput::tahunAjaran()
+            ->where('student_id', $student->id)
             ->with('subitem.category')
             ->get();
 

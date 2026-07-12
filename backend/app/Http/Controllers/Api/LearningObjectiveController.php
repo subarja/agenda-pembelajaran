@@ -77,6 +77,7 @@ class LearningObjectiveController extends Controller
         abort_if(! $teacher, 403);
 
         $contexts = $teacher->schedules()
+            ->tahunAjaran()
             ->where('aktif', true)
             ->with(['schoolClass', 'subject'])
             ->get()
@@ -482,7 +483,8 @@ class LearningObjectiveController extends Controller
 
         $tingkat = $fase === 'E' ? ['X'] : ['XI', 'XII'];
 
-        $hasSchedule = Schedule::where('teacher_id', $teacher->id)
+        $hasSchedule = Schedule::tahunAjaran()
+            ->where('teacher_id', $teacher->id)
             ->where('subject_id', $subjectId)
             ->where('aktif', true)
             ->whereHas('schoolClass', fn ($q) => $q->whereIn('tingkat', $tingkat))

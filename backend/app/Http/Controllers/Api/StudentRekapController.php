@@ -89,7 +89,7 @@ class StudentRekapController extends Controller
     // ── Dimensi 1: Kehadiran ──────────────────────────────────────────────────
     private function buildKehadiran(Student $student): array
     {
-        $all   = StudentAttendance::where('student_id', $student->id)->with('agenda:id,tanggal')->get();
+        $all   = StudentAttendance::tahunAjaran()->where('student_id', $student->id)->with('agenda:id,tanggal')->get();
         $total = $all->count();
         $hadir = $all->where('status.value', 'hadir')->count();
         $sakit = $all->where('status.value', 'sakit')->count();
@@ -131,7 +131,8 @@ class StudentRekapController extends Controller
     // ── Dimensi 2: Karakter ───────────────────────────────────────────────────
     private function buildKarakter(Student $student): array
     {
-        $inputs = CharacterInput::where('student_id', $student->id)
+        $inputs = CharacterInput::tahunAjaran()
+            ->where('student_id', $student->id)
             ->with(['subitem.category', 'teacher.user'])
             ->orderByDesc('created_at')
             ->get();
