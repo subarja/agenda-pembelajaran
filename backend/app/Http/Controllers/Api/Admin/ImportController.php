@@ -66,9 +66,9 @@ class ImportController extends Controller
             ],
             'siswa' => [
                 'filename' => 'template_siswa.xlsx',
-                'headers'  => ['nama', 'nis', 'nisn', 'kelas', 'angkatan', 'wali_nama', 'wali_kontak'],
-                'example'  => ['Ahmad Fauzi', '2324001', '0012345678', 'XII Rekayasa Perangkat Lunak A', '2023', 'Bapak Fauzi', '081234567890'],
-                'notes'    => ['wajib', 'wajib, unik', 'opsional', 'contoh: XII Rekayasa Perangkat Lunak A', 'tahun masuk', 'opsional', 'opsional'],
+                'headers'  => ['nama', 'nis', 'nisn', 'kelas', 'angkatan', 'wali_nama', 'wali_kontak', 'jenis_kelamin'],
+                'example'  => ['Ahmad Fauzi', '2324001', '0012345678', 'XII Rekayasa Perangkat Lunak A', '2023', 'Bapak Fauzi', '081234567890', 'L'],
+                'notes'    => ['wajib', 'wajib, unik', 'opsional', 'harus sama persis dgn menu Kelas, contoh: XII Rekayasa Perangkat Lunak A', 'tahun masuk', 'opsional', 'opsional', 'L / P, opsional'],
             ],
             'kelas' => [
                 'filename' => 'template_kelas.xlsx',
@@ -196,6 +196,12 @@ class ImportController extends Controller
             $waliNama   = trim((string) ($row[5] ?? '')) ?: null;
             $waliKontak = trim((string) ($row[6] ?? '')) ?: null;
 
+            // Terima variasi umum: L/P, Laki-laki/Perempuan — dinormalkan ke huruf pertama.
+            $jenisKelamin = strtoupper(trim((string) ($row[7] ?? ''))) ?: null;
+            if ($jenisKelamin !== null) {
+                $jenisKelamin = substr($jenisKelamin, 0, 1);
+            }
+
             if ($nama === '' && $nis === '') continue;
 
             $class = null;
@@ -209,13 +215,15 @@ class ImportController extends Controller
 
             $resolvedEmail = $nis . '@smkn2cimahi.sch.id';
             $v = Validator::make(
-                ['nama' => $nama, 'nis' => $nis, 'nisn' => $nisn, 'email' => $resolvedEmail],
+                ['nama' => $nama, 'nis' => $nis, 'nisn' => $nisn, 'email' => $resolvedEmail, 'jenis_kelamin' => $jenisKelamin],
                 [
                     'nama'  => 'required|string|max:100',
                     'nis'   => 'required|string|max:20|unique:students,nis',
                     'nisn'  => 'nullable|string|max:10|unique:students,nisn',
                     'email' => 'required|email|unique:users,email',
-                ]
+                    'jenis_kelamin' => 'nullable|in:L,P',
+                ],
+                ['jenis_kelamin.in' => 'Jenis kelamin harus L atau P.']
             );
 
             if ($v->fails()) {
@@ -224,7 +232,7 @@ class ImportController extends Controller
             }
 
             try {
-                DB::transaction(function () use ($nama, $nis, $nisn, $resolvedEmail, $angkatan, $waliNama, $waliKontak, $class, $ay) {
+                DB::transaction(function () use ($nama, $nis, $nisn, $jenisKelamin, $resolvedEmail, $angkatan, $waliNama, $waliKontak, $class, $ay) {
                     $user = User::create([
                         'nama'     => $nama,
                         'email'    => $resolvedEmail,
@@ -233,13 +241,14 @@ class ImportController extends Controller
                         'status'   => UserStatus::Aktif,
                     ]);
                     $student = Student::create([
-                        'user_id'     => $user->id,
-                        'nis'         => $nis,
-                        'nisn'        => $nisn,
-                        'class_id'    => $class?->id,
-                        'angkatan'    => $angkatan,
-                        'wali_nama'   => $waliNama,
-                        'wali_kontak' => $waliKontak,
+                        'user_id'       => $user->id,
+                        'nis'           => $nis,
+                        'nisn'          => $nisn,
+                        'jenis_kelamin' => $jenisKelamin,
+                        'class_id'      => $class?->id,
+                        'angkatan'      => $angkatan,
+                        'wali_nama'     => $waliNama,
+                        'wali_kontak'   => $waliKontak,
                     ]);
                     if ($ay) {
                         EwsStatus::firstOrCreate(
@@ -698,9 +707,26 @@ class ImportController extends Controller
             ->where('tingkat', $tingkat)->where('jurusan', $jurusan)->where('rombel', $rombel)
             ->first();
 
-        return $class
-            ? [$class, null]
-            : [null, "Kelas '$label' tidak ditemukan di tahun ajaran aktif."];
+        if ($class) {
+            return [$class, null];
+        }
+
+        // Nama jurusan harus sama persis dengan menu Kelas — kesalahan paling sering
+        // adalah varian nama (mis. Excel menulis "Teknik Mekatronika" padahal di menu
+        // Kelas tercatat "Mekatronika"). Sarankan padanannya supaya admin tahu harus
+        // menulis apa, tapi JANGAN dicocokkan otomatis (pelajaran dari duplikat akun
+        // guru akibat fuzzy match).
+        $mirip = SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+            ->where('tingkat', $tingkat)->where('rombel', $rombel)
+            ->get()
+            ->first(fn ($c) => str_contains(strtolower($jurusan), strtolower($c->jurusan))
+                || str_contains(strtolower($c->jurusan), strtolower($jurusan)));
+
+        $saran = $mirip
+            ? " Mungkin maksudnya '{$tingkat} {$mirip->jurusan} {$rombel}' — nama jurusan harus sama persis dengan di menu Kelas."
+            : '';
+
+        return [null, "Kelas '$label' tidak ditemukan di tahun ajaran aktif.".$saran];
     }
 
     private function readXlsx(string $path): array

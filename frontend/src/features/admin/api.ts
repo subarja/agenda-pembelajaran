@@ -29,7 +29,7 @@ export interface AdminManualNote {
 
 export interface AdminStudent {
   id: string; nama: string; email: string; status: string
-  nis: string; nisn: string | null; angkatan: number | null
+  nis: string; nisn: string | null; jenis_kelamin: 'L' | 'P' | null; angkatan: number | null
   status_siswa: 'aktif' | 'lulus' | 'pindah' | 'keluar'
   tanggal_keluar: string | null
   wali_nama: string | null; wali_kontak: string | null

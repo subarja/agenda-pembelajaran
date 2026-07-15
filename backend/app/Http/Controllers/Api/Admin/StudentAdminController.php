@@ -67,6 +67,7 @@ class StudentAdminController extends Controller
             'email' => ['nullable', 'email', 'unique:users,email'],
             'nis' => ['required', 'string', 'max:20', 'unique:students,nis'],
             'nisn' => ['nullable', 'string', 'max:10', 'unique:students,nisn'],
+            'jenis_kelamin' => ['nullable', 'in:L,P'],
             'class_id' => ['required', 'string'],
             'angkatan' => ['nullable', 'integer', 'min:2000'],
             'wali_nama' => ['nullable', 'string', 'max:100'],
@@ -89,6 +90,7 @@ class StudentAdminController extends Controller
                 'user_id' => $user->id,
                 'nis' => $data['nis'],
                 'nisn' => $data['nisn'] ?? null,
+                'jenis_kelamin' => $data['jenis_kelamin'] ?? null,
                 'class_id' => $class->id,
                 'angkatan' => $data['angkatan'] ?? null,
                 'wali_nama' => $data['wali_nama'] ?? null,
@@ -119,6 +121,7 @@ class StudentAdminController extends Controller
             'email' => ['sometimes', 'email', 'unique:users,email,'.$student->user_id],
             'nis' => ['sometimes', 'string', 'max:20', 'unique:students,nis,'.$student->id],
             'nisn' => ['nullable', 'string', 'max:10', 'unique:students,nisn,'.$student->id],
+            'jenis_kelamin' => ['nullable', 'in:L,P'],
             'class_id' => ['sometimes', 'string'],
             'angkatan' => ['nullable', 'integer'],
             'wali_nama' => ['nullable', 'string', 'max:100'],
@@ -144,6 +147,9 @@ class StudentAdminController extends Controller
             }
             if (array_key_exists('nisn', $data)) {
                 $sFields['nisn'] = $data['nisn'];
+            }
+            if (array_key_exists('jenis_kelamin', $data)) {
+                $sFields['jenis_kelamin'] = $data['jenis_kelamin'];
             }
             if (isset($data['class_id'])) {
                 $sFields['class_id'] = SchoolClass::where('uuid', $data['class_id'])->value('id');
@@ -185,6 +191,7 @@ class StudentAdminController extends Controller
             'status' => $s->user->status->value,
             'nis' => $s->nis,
             'nisn' => $s->nisn,
+            'jenis_kelamin' => $s->jenis_kelamin,
             'angkatan' => $s->angkatan,
             'status_siswa' => $s->status,
             'tanggal_keluar' => $s->tanggal_keluar?->toDateString(),

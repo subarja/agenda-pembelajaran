@@ -16,7 +16,7 @@ class Student extends Model
     use HasAuditTrail, HasUuid, SoftDeletes;
 
     protected $fillable = [
-        'user_id', 'nis', 'nisn', 'class_id', 'angkatan',
+        'user_id', 'nis', 'nisn', 'jenis_kelamin', 'class_id', 'angkatan',
         'status', 'tanggal_keluar',
         'nama_ayah', 'nama_ibu', 'hp_ortu',
         'wali_nama', 'wali_kontak', 'foto',

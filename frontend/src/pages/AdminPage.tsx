@@ -510,7 +510,7 @@ function SiswaTab() {
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [selected, setSelected] = useState<AdminStudent | null>(null)
-  const [form, setForm] = useState({ nama: '', email: '', nis: '', nisn: '', class_id: '', angkatan: '', wali_nama: '', wali_kontak: '', password: '' })
+  const [form, setForm] = useState({ nama: '', email: '', nis: '', nisn: '', jenis_kelamin: '', class_id: '', angkatan: '', wali_nama: '', wali_kontak: '', password: '' })
   const [err, setErr] = useState('')
   const [search, setSearch] = useState('')
   const [filterKelas, setFilterKelas] = useState('')
@@ -541,6 +541,7 @@ function SiswaTab() {
     if (col === 'nama') return s.nama
     if (col === 'nis') return s.nis ?? ''
     if (col === 'nisn') return s.nisn ?? ''
+    if (col === 'jk') return s.jenis_kelamin ?? ''
     if (col === 'kelas') return s.kelas?.label ?? ''
     if (col === 'angkatan') return s.angkatan ?? 0
     if (col === 'status') return s.status
@@ -560,12 +561,12 @@ function SiswaTab() {
 
   function openAdd() {
     setSelected(null); setErr('')
-    setForm({ nama: '', email: '', nis: '', nisn: '', class_id: '', angkatan: '', wali_nama: '', wali_kontak: '', password: '' })
+    setForm({ nama: '', email: '', nis: '', nisn: '', jenis_kelamin: '', class_id: '', angkatan: '', wali_nama: '', wali_kontak: '', password: '' })
     setModal('add')
   }
   function openEdit(s: AdminStudent) {
     setSelected(s); setErr('')
-    setForm({ nama: s.nama, email: s.email, nis: s.nis, nisn: s.nisn || '', class_id: s.kelas?.id || '', angkatan: String(s.angkatan || ''), wali_nama: s.wali_nama || '', wali_kontak: s.wali_kontak || '', password: '' })
+    setForm({ nama: s.nama, email: s.email, nis: s.nis, nisn: s.nisn || '', jenis_kelamin: s.jenis_kelamin || '', class_id: s.kelas?.id || '', angkatan: String(s.angkatan || ''), wali_nama: s.wali_nama || '', wali_kontak: s.wali_kontak || '', password: '' })
     setModal('edit')
   }
   function handleSubmit() {
@@ -573,6 +574,7 @@ function SiswaTab() {
     if (!payload.password) delete payload.password
     if (!payload.email) delete payload.email
     if (!payload.nisn) delete payload.nisn
+    if (!payload.jenis_kelamin) delete payload.jenis_kelamin
     if (!payload.wali_nama) delete payload.wali_nama
     if (!payload.wali_kontak) delete payload.wali_kontak
     if (!payload.angkatan) delete payload.angkatan
@@ -604,7 +606,7 @@ function SiswaTab() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton cols={[16, 160, 80, 80, 120, 60, 60, 40]} rows={8} />
+        <TableSkeleton cols={[16, 160, 80, 80, 40, 120, 60, 60, 40]} rows={8} />
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
@@ -614,6 +616,7 @@ function SiswaTab() {
                 <SortTh label="Nama" col="nama" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="NIS" col="nis" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="NISN" col="nisn" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="JK" col="jk" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="Kelas" col="kelas" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="Angkatan" col="angkatan" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="Status" col="status" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
@@ -627,6 +630,7 @@ function SiswaTab() {
                   <td className="px-3 py-2 font-medium">{s.nama}</td>
                   <td className="px-3 py-2 text-muted-foreground">{s.nis}</td>
                   <td className="px-3 py-2 text-muted-foreground">{s.nisn ?? '-'}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{s.jenis_kelamin ?? '-'}</td>
                   <td className="px-3 py-2">{s.kelas?.label ?? <span className="text-muted-foreground italic">—</span>}</td>
                   <td className="px-3 py-2">{s.angkatan ?? '-'}</td>
                   <td className="px-3 py-2">
@@ -646,7 +650,7 @@ function SiswaTab() {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
             </tbody>
           </table>
         </div>
@@ -667,6 +671,13 @@ function SiswaTab() {
           <Field label="Nama"><input className={inputCls} value={form.nama} onChange={e => setForm(f => ({ ...f, nama: e.target.value }))} /></Field>
           <Field label="NIS"><input className={inputCls} value={form.nis} onChange={e => setForm(f => ({ ...f, nis: e.target.value }))} /></Field>
           <Field label="NISN (opsional)"><input className={inputCls} value={form.nisn} onChange={e => setForm(f => ({ ...f, nisn: e.target.value }))} /></Field>
+          <Field label="Jenis Kelamin">
+            <select className={selectCls} value={form.jenis_kelamin} onChange={e => setForm(f => ({ ...f, jenis_kelamin: e.target.value }))}>
+              <option value="">-- Belum diisi --</option>
+              <option value="L">Laki-laki (L)</option>
+              <option value="P">Perempuan (P)</option>
+            </select>
+          </Field>
           <Field label="Kelas">
             <select className={selectCls} value={form.class_id} onChange={e => setForm(f => ({ ...f, class_id: e.target.value }))}>
               <option value="">-- Pilih Kelas --</option>
