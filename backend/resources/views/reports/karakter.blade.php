@@ -21,6 +21,7 @@
       <th style="width:24px">No</th>
       <th>Nama Siswa</th>
       <th>NIS</th>
+      <th>L/P</th>
       @foreach($kategori as $kat)
         <th class="text-center" style="min-width:60px">{{ $kat }}</th>
       @endforeach
@@ -33,6 +34,7 @@
       <td class="text-center">{{ $i + 1 }}</td>
       <td>{{ $r['nama'] }}</td>
       <td>{{ $r['nis'] }}</td>
+      <td style="text-align:center">{{ $r['jk'] }}</td>
       @foreach($kategori as $kat)
         @php $val = $r['per_kategori'][$kat] ?? 0 @endphp
         <td class="text-center {{ $val < 0 ? 'warn' : ($val > 0 ? 'good' : '') }}">

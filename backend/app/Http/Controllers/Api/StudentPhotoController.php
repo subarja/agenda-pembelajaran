@@ -89,13 +89,14 @@ class StudentPhotoController extends Controller
         abort_unless($isAdmin || $isWali, 403, 'Anda tidak memiliki akses mengubah data siswa ini.');
 
         $data = $request->validate([
-            'nama'        => ['sometimes', 'string', 'max:100'],
-            'email'       => ['sometimes', 'email', 'unique:users,email,'.$student->user_id],
-            'nis'         => ['sometimes', 'string', 'max:20', 'unique:students,nis,'.$student->id],
-            'nisn'        => ['nullable', 'string', 'max:10', 'unique:students,nisn,'.$student->id],
-            'angkatan'    => ['nullable', 'integer'],
-            'wali_nama'   => ['nullable', 'string', 'max:100'],
-            'wali_kontak' => ['nullable', 'string', 'max:20'],
+            'nama'          => ['sometimes', 'string', 'max:100'],
+            'email'         => ['sometimes', 'email', 'unique:users,email,'.$student->user_id],
+            'nis'           => ['sometimes', 'string', 'max:20', 'unique:students,nis,'.$student->id],
+            'nisn'          => ['nullable', 'string', 'max:10', 'unique:students,nisn,'.$student->id],
+            'jenis_kelamin' => ['nullable', 'in:L,P'],
+            'angkatan'      => ['nullable', 'integer'],
+            'wali_nama'     => ['nullable', 'string', 'max:100'],
+            'wali_kontak'   => ['nullable', 'string', 'max:20'],
         ]);
 
         \Illuminate\Support\Facades\DB::transaction(function () use ($student, $data) {
@@ -110,6 +111,7 @@ class StudentPhotoController extends Controller
             $sFields = [];
             if (isset($data['nis']))                     $sFields['nis'] = $data['nis'];
             if (array_key_exists('nisn', $data))          $sFields['nisn'] = $data['nisn'];
+            if (array_key_exists('jenis_kelamin', $data)) $sFields['jenis_kelamin'] = $data['jenis_kelamin'];
             if (isset($data['angkatan']))                 $sFields['angkatan'] = $data['angkatan'];
             if (array_key_exists('wali_nama', $data))     $sFields['wali_nama'] = $data['wali_nama'];
             if (array_key_exists('wali_kontak', $data))   $sFields['wali_kontak'] = $data['wali_kontak'];
@@ -130,6 +132,7 @@ class StudentPhotoController extends Controller
             'email'       => $s->user->email,
             'nis'         => $s->nis,
             'nisn'        => $s->nisn,
+            'jenis_kelamin' => $s->jenis_kelamin,
             'angkatan'    => $s->angkatan,
             'wali_nama'   => $s->wali_nama,
             'wali_kontak' => $s->wali_kontak,

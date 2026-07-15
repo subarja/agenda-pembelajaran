@@ -12,6 +12,7 @@ interface MyClassStudent {
   email: string
   nis: string
   nisn: string | null
+  jenis_kelamin: 'L' | 'P' | null
   angkatan: number | null
   wali_nama: string | null
   wali_kontak: string | null
@@ -31,7 +32,7 @@ const inputCls = 'w-full rounded-md border border-input px-3 py-2 text-sm focus:
 export default function StudentPhotoManagePage() {
   const qc = useQueryClient()
   const [editing, setEditing] = useState<MyClassStudent | null>(null)
-  const [form, setForm] = useState({ nama: '', email: '', nis: '', nisn: '', angkatan: '', wali_nama: '', wali_kontak: '' })
+  const [form, setForm] = useState({ nama: '', email: '', nis: '', nisn: '', jenis_kelamin: '', angkatan: '', wali_nama: '', wali_kontak: '' })
   const [err, setErr] = useState('')
 
   const { data, isLoading, error } = useQuery<{ data: MyClassStudent[]; kelas: { id: string; label: string } }>({
@@ -45,6 +46,7 @@ export default function StudentPhotoManagePage() {
       email: form.email,
       nis: form.nis,
       nisn: form.nisn || null,
+      jenis_kelamin: form.jenis_kelamin || null,
       angkatan: form.angkatan ? Number(form.angkatan) : null,
       wali_nama: form.wali_nama || null,
       wali_kontak: form.wali_kontak || null,
@@ -62,6 +64,7 @@ export default function StudentPhotoManagePage() {
     setErr('')
     setForm({
       nama: s.nama, email: s.email, nis: s.nis, nisn: s.nisn ?? '',
+      jenis_kelamin: s.jenis_kelamin ?? '',
       angkatan: s.angkatan ? String(s.angkatan) : '',
       wali_nama: s.wali_nama ?? '', wali_kontak: s.wali_kontak ?? '',
     })
@@ -111,7 +114,7 @@ export default function StudentPhotoManagePage() {
                     {s.nama}
                     <Pencil className="h-3 w-3 text-muted-foreground shrink-0" />
                   </p>
-                  <p className="text-xs text-muted-foreground">NIS: {s.nis}{s.nisn ? ` · NISN: ${s.nisn}` : ''}</p>
+                  <p className="text-xs text-muted-foreground">NIS: {s.nis}{s.nisn ? ` · NISN: ${s.nisn}` : ''}{s.jenis_kelamin ? ` · ${s.jenis_kelamin}` : ''}</p>
                 </button>
                 <PhotoEditWidget
                   fotoUrl={s.foto_url}
@@ -155,8 +158,20 @@ export default function StudentPhotoManagePage() {
                 </div>
               </div>
 
-              <label className="text-xs font-medium block">Angkatan</label>
-              <input type="number" className={inputCls} value={form.angkatan} onChange={e => setForm(f => ({ ...f, angkatan: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-medium block">Jenis Kelamin</label>
+                  <select className={inputCls} value={form.jenis_kelamin} onChange={e => setForm(f => ({ ...f, jenis_kelamin: e.target.value }))}>
+                    <option value="">-- Belum diisi --</option>
+                    <option value="L">Laki-laki (L)</option>
+                    <option value="P">Perempuan (P)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium block">Angkatan</label>
+                  <input type="number" className={inputCls} value={form.angkatan} onChange={e => setForm(f => ({ ...f, angkatan: e.target.value }))} />
+                </div>
+              </div>
 
               <label className="text-xs font-medium block">Nama Wali</label>
               <input className={inputCls} value={form.wali_nama} onChange={e => setForm(f => ({ ...f, wali_nama: e.target.value }))} />

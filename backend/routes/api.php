@@ -477,14 +477,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('template/{entity}',  [ImportController::class, 'template']);
 
         // Import Excel
-        Route::post('import/teachers',              [ImportController::class, 'importTeachers']);
-        Route::post('import/students',              [ImportController::class, 'importStudents']);
-        Route::post('import/classes',               [ImportController::class, 'importClasses']);
-        Route::post('import/subjects',              [ImportController::class, 'importSubjects']);
-        Route::post('import/schedules',             [ImportController::class, 'importSchedules']);
-        Route::post('import/character-categories',  [ImportController::class, 'importCharacterCategories']);
-        Route::post('import/character-subitems',    [ImportController::class, 'importCharacterSubitems']);
-        Route::post('import/thresholds',            [ImportController::class, 'importThresholds']);
+        // Slug entity di sini WAJIB sama dengan yang dipakai ImportModal frontend dan
+        // kunci config template/{entity} — dulu route ini berbahasa Inggris (students,
+        // classes, ...) sementara FE mengirim slug Indonesia (siswa, kelas, ...), jadi
+        // SEMUA import lewat modal generik 404 tanpa pernah ketahuan.
+        Route::post('import/guru',                  [ImportController::class, 'importTeachers']);
+        Route::post('import/siswa',                 [ImportController::class, 'importStudents']);
+        Route::post('import/kelas',                 [ImportController::class, 'importClasses']);
+        Route::post('import/mapel',                 [ImportController::class, 'importSubjects']);
+        Route::post('import/jadwal',                [ImportController::class, 'importSchedules']);
+        Route::post('import/karakter_kategori',     [ImportController::class, 'importCharacterCategories']);
+        Route::post('import/karakter_subitem',      [ImportController::class, 'importCharacterSubitems']);
+        Route::post('import/ambang',                [ImportController::class, 'importThresholds']);
         Route::post('import/wali-kelas',            [ImportController::class, 'importWaliKelas']);
         Route::get('export/wali-kelas',             [ImportController::class, 'exportWaliKelas']);
     });

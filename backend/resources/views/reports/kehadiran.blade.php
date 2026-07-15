@@ -21,6 +21,7 @@
       <th style="width:20px">No</th>
       <th>Nama Siswa</th>
       <th>NIS</th>
+      <th>L/P</th>
       <th class="text-center">Hadir</th>
       <th class="text-center">Sakit</th>
       <th class="text-center">Izin</th>
@@ -35,6 +36,7 @@
       <td class="text-center">{{ $i + 1 }}</td>
       <td>{{ $r['nama'] }}</td>
       <td>{{ $r['nis'] }}</td>
+      <td style="text-align:center">{{ $r['jk'] }}</td>
       <td class="text-center good">{{ $r['hadir'] }}</td>
       <td class="text-center">{{ $r['sakit'] }}</td>
       <td class="text-center">{{ $r['izin'] }}</td>

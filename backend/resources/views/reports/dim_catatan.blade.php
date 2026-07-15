@@ -55,7 +55,7 @@ body { font-family:Arial,sans-serif; font-size:11pt; color:#1a1a1a; margin:{{ $m
       <td>Nama Siswa</td><td>:</td><td><strong>{{ $student->user->nama }}</strong></td>
       <td style="width:20px"></td>
       <td style="width:40px; color:#666">NIS</td><td style="width:10px">:</td>
-      <td>{{ $student->nis }}</td>
+      <td>{{ $student->nis }}{{ $student->jenis_kelamin ? " ({$student->jenis_kelamin})" : "" }}</td>
     </tr>
     <tr><td>Kelas</td><td>:</td><td colspan="5">{{ $kelas }}</td></tr>
     <tr><td>Tanggal Cetak</td><td>:</td><td colspan="5">{{ $generated }} WIB</td></tr>

@@ -75,7 +75,7 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
       <td><strong>{{ $student->user->nama }}</strong></td>
       <td style="width:20px"></td>
       <td style="width:80px; color:#666">NIS</td><td style="width:10px">:</td>
-      <td>{{ $student->nis }}</td>
+      <td>{{ $student->nis }}{{ $student->jenis_kelamin ? " ({$student->jenis_kelamin})" : "" }}</td>
     </tr>
     <tr>
       <td>Kelas</td><td>:</td>

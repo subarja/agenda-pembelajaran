@@ -47,6 +47,7 @@ class StudentController extends Controller
                     'id'         => $s->uuid,
                     'nis'        => $s->nis,
                     'nama'       => $s->user->nama,
+                    'jenis_kelamin' => $s->jenis_kelamin,
                     'kelas'      => null,
                     'nomor_absen'=> $i + 1,
                     'foto_url'   => $s->foto ? Storage::disk('public')->url($s->foto) : null,
@@ -72,6 +73,7 @@ class StudentController extends Controller
                 'id'    => $s->uuid,
                 'nis'   => $s->nis,
                 'nama'  => $s->user->nama,
+                'jenis_kelamin' => $s->jenis_kelamin,
                 'kelas' => $s->schoolClass
                     ? "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}"
                     : null,

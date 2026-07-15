@@ -58,7 +58,7 @@ table.data tr:nth-child(even) td { background:#f8fafc; }
       <td>Nama Siswa</td><td>:</td><td><strong>{{ $student->user->nama }}</strong></td>
       <td style="width:20px"></td>
       <td style="width:40px; color:#666">NIS</td><td style="width:10px">:</td>
-      <td>{{ $student->nis }}</td>
+      <td>{{ $student->nis }}{{ $student->jenis_kelamin ? " ({$student->jenis_kelamin})" : "" }}</td>
     </tr>
     <tr>
       <td>Kelas</td><td>:</td><td colspan="5">{{ $kelas }}</td>

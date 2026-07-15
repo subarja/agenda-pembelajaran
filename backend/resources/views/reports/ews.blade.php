@@ -15,6 +15,7 @@
       <th style="width:24px">No</th>
       <th>Nama Siswa</th>
       <th>NIS</th>
+      <th>L/P</th>
       <th class="text-center">Level</th>
       <th class="text-center">Kehadiran</th>
       <th class="text-center">Karakter</th>
@@ -28,6 +29,7 @@
       <td class="text-center">{{ $i + 1 }}</td>
       <td>{{ $r['nama'] }}</td>
       <td>{{ $r['nis'] }}</td>
+      <td style="text-align:center">{{ $r['jk'] }}</td>
       <td class="text-center">
         <span class="badge badge-{{ $r['level'] }}">{{ strtoupper($r['level']) }}</span>
       </td>

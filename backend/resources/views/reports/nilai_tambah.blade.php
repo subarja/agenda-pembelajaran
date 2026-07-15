@@ -22,6 +22,7 @@
       <th style="width:24px">No</th>
       <th style="width:130px">Nama Siswa</th>
       <th style="width:62px">NIS</th>
+      <th style="width:28px">L/P</th>
       <th class="text-center" style="width:44px">Nilai</th>
       <th>Deskripsi</th>
       <th style="width:88px">Tanggal &amp; Jam</th>
@@ -35,6 +36,7 @@
       <td class="text-center">{{ $i + 1 }}</td>
       <td>{{ $r['nama'] }}</td>
       <td>{{ $r['nis'] }}</td>
+      <td style="text-align:center">{{ $r['jk'] }}</td>
       <td class="text-center {{ $r['nilai'] < 0 ? 'warn' : 'good' }}" style="font-weight:bold">
         {{ $r['nilai'] >= 0 ? '+' : '' }}{{ $r['nilai'] }}
       </td>

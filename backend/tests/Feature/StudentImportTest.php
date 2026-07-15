@@ -58,7 +58,7 @@ class StudentImportTest extends TestCase
 
     public function test_import_menyimpan_jenis_kelamin_dan_menerima_varian_penulisan(): void
     {
-        $res = $this->post('/api/v1/admin/import/students', ['file' => $this->xlsx([
+        $res = $this->post('/api/v1/admin/import/siswa', ['file' => $this->xlsx([
             ['Ani', '2026001', '', 'X Mekatronika A', '2026', '', '', 'P'],
             ['Budi', '2026002', '', 'X Mekatronika A', '2026', '', '', 'Laki-laki'],
             ['Cici', '2026003', '', 'X Mekatronika A', '2026', '', '', ''],
@@ -72,7 +72,7 @@ class StudentImportTest extends TestCase
 
     public function test_jenis_kelamin_tidak_valid_ditolak_per_baris(): void
     {
-        $res = $this->post('/api/v1/admin/import/students', ['file' => $this->xlsx([
+        $res = $this->post('/api/v1/admin/import/siswa', ['file' => $this->xlsx([
             ['Dodi', '2026004', '', 'X Mekatronika A', '2026', '', '', 'X'],
         ])])->assertOk()->json();
 
@@ -83,7 +83,7 @@ class StudentImportTest extends TestCase
     public function test_kelas_tidak_cocok_memberi_saran_nama_yang_benar(): void
     {
         // Kasus nyata: Excel menulis "Teknik Mekatronika", menu Kelas mencatat "Mekatronika".
-        $res = $this->post('/api/v1/admin/import/students', ['file' => $this->xlsx([
+        $res = $this->post('/api/v1/admin/import/siswa', ['file' => $this->xlsx([
             ['Edi', '2026005', '', 'X Teknik Mekatronika A', '2026', '', '', 'L'],
         ])])->assertOk()->json();
 
@@ -97,5 +97,23 @@ class StudentImportTest extends TestCase
         $this->get('/api/v1/admin/template/siswa')->assertOk();
         // Isi header diverifikasi lewat config; cukup pastikan endpoint tidak pecah
         // setelah kolom bertambah (jumlah headers = example = notes).
+    }
+
+    /**
+     * Regresi: slug route import HARUS sama dengan entity yang dikirim ImportModal
+     * frontend (= kunci config template). Dulu route memakai bahasa Inggris
+     * (import/students, dst.) sehingga SEMUA import lewat modal generik 404.
+     */
+    public function test_setiap_entity_modal_import_punya_route(): void
+    {
+        $entities = ['guru', 'siswa', 'kelas', 'mapel', 'jadwal', 'karakter_kategori', 'karakter_subitem', 'ambang'];
+
+        foreach ($entities as $entity) {
+            // Tanpa file → 422 validasi. Kalau route-nya tidak ada, jawabannya 404.
+            $status = $this->postJson("/api/v1/admin/import/{$entity}")->getStatusCode();
+            $this->assertSame(422, $status, "Route import/{$entity} hilang atau tidak cocok dengan slug frontend (status {$status}).");
+
+            $this->get("/api/v1/admin/template/{$entity}")->assertOk();
+        }
     }
 }

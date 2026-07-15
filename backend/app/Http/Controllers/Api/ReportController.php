@@ -92,7 +92,7 @@ class ReportController extends Controller
                 })->toArray();
 
             return compact('hadir', 'sakit', 'izin', 'alpha', 'total', 'pct', 'absences')
-                 + ['nama' => $s->user->nama, 'nis' => $s->nis];
+                 + ['nama' => $s->user->nama, 'nis' => $s->nis, 'jk' => $s->jenis_kelamin ?? '—'];
         });
 
         $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
@@ -123,7 +123,7 @@ class ReportController extends Controller
         }
 
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kelasLabel, $periode, $totalSesi, $guruNama, $guruNip, $mapelGuru) {
-            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 8, 5 => 8, 6 => 8, 7 => 8, 8 => 8, 9 => 13, 10 => 45]);
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 6, 5 => 8, 6 => 8, 7 => 8, 8 => 8, 9 => 8, 10 => 13, 11 => 45]);
 
             $w->addRow(Row::fromValuesWithStyle(["Rekap Kehadiran — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["Periode: {$periode} | Sesi: {$totalSesi}"]));
@@ -132,7 +132,7 @@ class ReportController extends Controller
             }
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                ['No','Nama Siswa','NIS','Hadir','Sakit','Izin','Alpha','Total','% Kehadiran','Tanggal Tidak Hadir'],
+                ['No','Nama Siswa','NIS','L/P','Hadir','Sakit','Izin','Alpha','Total','% Kehadiran','Tanggal Tidak Hadir'],
                 $this->xlsxHeaderStyle()
             ));
 
@@ -143,6 +143,7 @@ class ReportController extends Controller
                     new NumericCell($i + 1, $cellCenter),
                     new StringCell($r['nama'], $cellText),
                     new StringCell($r['nis'], $cellCenter),
+                    new StringCell($r['jk'], $cellCenter),
                     new NumericCell($r['hadir'], $cellCenter),
                     new NumericCell($r['sakit'], $cellCenter),
                     new NumericCell($r['izin'], $cellCenter),
@@ -191,7 +192,7 @@ class ReportController extends Controller
                 $sub = $inputs->filter(fn ($i) => $i->subitem->category->nama === $kat);
                 $perKat[$kat] = $sub->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot));
             }
-            return ['nama' => $s->user->nama, 'nis' => $s->nis, 'total' => $total, 'per_kategori' => $perKat];
+            return ['nama' => $s->user->nama, 'nis' => $s->nis, 'jk' => $s->jenis_kelamin ?? '—', 'total' => $total, 'per_kategori' => $perKat];
         });
 
         $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
@@ -216,9 +217,9 @@ class ReportController extends Controller
         }
 
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows,$kategori,$kelasLabel,$periode,$guruNama,$guruNip,$mapelGuru) {
-            $lastCol = 3 + count($kategori) + 1;
-            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12]);
-            $w->getOptions()->setColumnWidthForRange(14, 4, $lastCol);
+            $lastCol = 4 + count($kategori) + 1;
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 6]);
+            $w->getOptions()->setColumnWidthForRange(14, 5, $lastCol);
 
             $w->addRow(Row::fromValuesWithStyle(["Rekap Karakter — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["Periode: {$periode}"]));
@@ -227,7 +228,7 @@ class ReportController extends Controller
             }
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                array_merge(['No','Nama Siswa','NIS'],$kategori,['Total Poin']),
+                array_merge(['No','Nama Siswa','NIS','L/P'],$kategori,['Total Poin']),
                 $this->xlsxHeaderStyle()
             ));
 
@@ -239,6 +240,7 @@ class ReportController extends Controller
                     new NumericCell($i + 1, $cellCenter),
                     new StringCell($r['nama'], $cellText),
                     new StringCell($r['nis'], $cellCenter),
+                    new StringCell($r['jk'], $cellCenter),
                 ];
                 foreach ($kategori as $k) {
                     $cells[] = new NumericCell($r['per_kategori'][$k] ?? 0, $cellCenter);
@@ -288,6 +290,7 @@ class ReportController extends Controller
         $rows = $notes->map(fn ($n) => [
             'nama'       => $n->student->user->nama,
             'nis'        => $n->student->nis,
+            'jk'         => $n->student->jenis_kelamin ?? '—',
             'nilai'      => $n->nilai_final ?? $n->nilai,
             'catatan'    => $n->catatan ?: '—',
             'tanggal'    => $n->created_at->locale('id')->isoFormat('D MMM YYYY HH:mm'),
@@ -314,7 +317,7 @@ class ReportController extends Controller
         }
 
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kelasLabel, $periode, $guruNama, $guruNip) {
-            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 10, 5 => 40, 6 => 20, 7 => 22, 8 => 22]);
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 6, 5 => 10, 6 => 40, 7 => 20, 8 => 22, 9 => 22]);
 
             $w->addRow(Row::fromValuesWithStyle(["Laporan Nilai Tambah — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["Periode: {$periode}"]));
@@ -323,7 +326,7 @@ class ReportController extends Controller
             }
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                ['No', 'Nama Siswa', 'NIS', 'Nilai', 'Deskripsi', 'Tanggal & Jam', 'Diberikan Oleh', 'Atas Nama'],
+                ['No', 'Nama Siswa', 'NIS', 'L/P', 'Nilai', 'Deskripsi', 'Tanggal & Jam', 'Diberikan Oleh', 'Atas Nama'],
                 $this->xlsxHeaderStyle()
             ));
 
@@ -334,6 +337,7 @@ class ReportController extends Controller
                     new NumericCell($i + 1, $cellCenter),
                     new StringCell($r['nama'], $cellText),
                     new StringCell($r['nis'], $cellCenter),
+                    new StringCell($r['jk'], $cellCenter),
                     new NumericCell($r['nilai'], $cellCenter),
                     new StringCell($r['catatan'], $cellText),
                     new StringCell($r['tanggal'], $cellCenter),
@@ -368,7 +372,7 @@ class ReportController extends Controller
             $nilai     = $nilaiAvg !== null ? round($nilaiAvg, 1) : null;
             $w         = ($kehadiran<80?1:0)+($karakter<0?1:0)+($catatan>=3?1:0)+($nilai!==null&&$nilai<70?1:0);
             $level     = match(true){$w>=3=>'merah',$w===2=>'oranye',$w===1=>'kuning',default=>'hijau'};
-            return compact('level','kehadiran','karakter','catatan','nilai')+['nama'=>$s->user->nama,'nis'=>$s->nis];
+            return compact('level','kehadiran','karakter','catatan','nilai')+['nama'=>$s->user->nama,'nis'=>$s->nis,'jk'=>$s->jenis_kelamin ?? '—'];
         })->sortBy(fn($r)=>match($r['level']){'merah'=>0,'oranye'=>1,'kuning'=>2,default=>3})->values();
 
         $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
@@ -382,13 +386,13 @@ class ReportController extends Controller
         }
 
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows,$kelasLabel,$periode) {
-            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 10, 5 => 14, 6 => 15, 7 => 10, 8 => 15]);
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 6, 5 => 10, 6 => 14, 7 => 15, 8 => 10, 9 => 15]);
 
             $w->addRow(Row::fromValuesWithStyle(["Laporan EWS — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["Periode: {$periode}"]));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                ['No','Nama Siswa','NIS','Level','Kehadiran (%)','Karakter (poin)','Catatan','Nilai Rata-rata'],
+                ['No','Nama Siswa','NIS','L/P','Level','Kehadiran (%)','Karakter (poin)','Catatan','Nilai Rata-rata'],
                 $this->xlsxHeaderStyle()
             ));
 
@@ -399,6 +403,7 @@ class ReportController extends Controller
                     new NumericCell($i + 1, $cellCenter),
                     new StringCell($r['nama'], $cellText),
                     new StringCell($r['nis'], $cellCenter),
+                    new StringCell($r['jk'], $cellCenter),
                     new StringCell(strtoupper($r['level']), $cellCenter),
                     new NumericCell($r['kehadiran'], $cellCenter),
                     new NumericCell($r['karakter'], $cellCenter),
