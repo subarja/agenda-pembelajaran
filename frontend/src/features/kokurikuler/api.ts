@@ -316,6 +316,15 @@ export const kokurikulerAdminApi = {
   },
 
   dimensions: () => api.get<ApiResponse<KkMasterDimension[]>>('/admin/kokurikuler/dimensions'),
+  downloadDimensionTemplate: () =>
+    downloadBlob('/admin/kokurikuler/dimensions/template', 'template_dimensi_kokurikuler.xlsx'),
+  importDimensions: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post<KkImportResult>('/admin/kokurikuler/dimensions/import', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data)
+  },
   createDimension: (d: { nama: string; deskripsi: string | null; subdimensions: string[] }) =>
     api.post('/admin/kokurikuler/dimensions', d),
   updateDimension: (id: number, d: { nama: string; deskripsi: string | null; aktif?: boolean; subdimensions: string[] }) =>

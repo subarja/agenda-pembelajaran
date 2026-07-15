@@ -133,6 +133,84 @@ class KokurikulerAdminController extends Controller
         return response()->json(['message' => 'Dimensi dihapus.']);
     }
 
+    /** GET /admin/kokurikuler/dimensions/template — berisi master saat ini, siap diedit lalu diimpor ulang. */
+    public function dimensionsTemplate(): BinaryFileResponse
+    {
+        $tempFile = tempnam(sys_get_temp_dir(), 'kk_dim_');
+        $writer   = new Writer();
+        $writer->openToFile($tempFile);
+        $writer->getOptions()->setColumnWidthForRange(36, 1, 3);
+
+        $writer->addRow(Row::fromValuesWithStyle(
+            ['Nama Dimensi', 'Deskripsi', 'Sub-Dimensi (pisahkan dengan ;)'],
+            $this->xlsxHeaderStyle()
+        ));
+        foreach (KokurikulerDimension::with('subdimensions')->orderBy('urutan')->get() as $d) {
+            $writer->addRow(Row::fromValuesWithStyle([
+                $d->nama,
+                (string) ($d->deskripsi ?? ''),
+                $d->subdimensions->pluck('nama')->implode('; '),
+            ], $this->xlsxCellStyle()));
+        }
+        $writer->addRow(Row::fromValuesWithStyle(
+            ['jangan diubah -> hapus baris ini sebelum impor bila perlu; nama = kunci pencocokan', 'opsional', 'contoh: Berperilaku produktif; Menciptakan inovasi'],
+            (new Style())->withFontItalic(true)->withFontColor('6B7280')
+        ));
+        $writer->close();
+
+        return response()->download($tempFile, 'template_dimensi_kokurikuler.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * POST /admin/kokurikuler/dimensions/import — upsert master dimensi by nama.
+     * Sub-dimensi yang tercantum di-upsert; sub-dimensi lama yang TIDAK tercantum
+     * dibiarkan (tidak dihapus) agar projek yang sudah memakainya tidak rusak.
+     */
+    public function dimensionsImport(Request $request): JsonResponse
+    {
+        $request->validate(['file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120']]);
+
+        $success = 0;
+        $errors  = [];
+        foreach ($this->readXlsx($request->file('file')->getRealPath()) as $i => $row) {
+            $rowNum    = $i + 2;
+            $nama      = trim((string) ($row[0] ?? ''));
+            $deskripsi = trim((string) ($row[1] ?? '')) ?: null;
+            $subRaw    = trim((string) ($row[2] ?? ''));
+
+            if ($nama === '') continue;
+            if (str_starts_with($nama, 'jangan diubah')) continue; // baris catatan template
+            if (mb_strlen($nama) > 160) { $errors[] = "Baris $rowNum: nama dimensi terlalu panjang (maks. 160)."; continue; }
+
+            $dim = KokurikulerDimension::whereRaw('LOWER(nama) = ?', [mb_strtolower($nama)])->first();
+            if (! $dim) {
+                $kode = Str::slug($nama, '_');
+                if (KokurikulerDimension::where('kode', $kode)->exists()) {
+                    $kode .= '_' . Str::lower(Str::random(4));
+                }
+                $dim = KokurikulerDimension::create([
+                    'kode'   => $kode,
+                    'nama'   => $nama,
+                    'urutan' => (int) KokurikulerDimension::max('urutan') + 1,
+                ]);
+            }
+            $dim->update(['deskripsi' => $deskripsi ?? $dim->deskripsi]);
+
+            $subs = collect(preg_split('/[;\n]/', $subRaw))->map(fn ($s) => trim($s))->filter()->values();
+            $subs->each(fn ($namaSub, $j) => $dim->subdimensions()->updateOrCreate(['nama' => $namaSub], ['urutan' => $j + 1]));
+
+            $success++;
+        }
+
+        return response()->json([
+            'success_count' => $success,
+            'error_count'   => count($errors),
+            'errors'        => $errors,
+        ]);
+    }
+
     // ── Projek ─────────────────────────────────────────────────────────────────
 
     /** GET /admin/kokurikuler/projects */
@@ -438,10 +516,10 @@ class KokurikulerAdminController extends Controller
 
     private function validated(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'judul'           => ['required', 'string', 'max:200'],
             'tema'            => ['nullable', 'string', 'max:200'],
-            'tingkat'         => ['nullable', 'in:X,XI,XII'],
+            'tingkat'         => ['nullable', 'string', 'max:10'],
             'tujuan'          => ['nullable', 'string', 'max:2000'],
             'deskripsi'       => ['nullable', 'string', 'max:2000'],
             'tanggal_mulai'   => ['required', 'date'],
@@ -456,6 +534,23 @@ class KokurikulerAdminController extends Controller
             'dimensi.*.subdimension_ids'    => ['array'],
             'dimensi.*.subdimension_ids.*'  => ['integer'],
         ]);
+
+        // Tingkat boleh lebih dari satu ('XI,XII'). Dinormalkan: urut X→XI→XII,
+        // duplikat/nilai asing dibuang; ketiganya terpilih ≡ semua tingkat (null).
+        if (! empty($data['tingkat'])) {
+            $urutan  = ['X', 'XI', 'XII'];
+            $tingkat = collect(explode(',', $data['tingkat']))
+                ->map(fn ($t) => strtoupper(trim($t)))
+                ->filter(fn ($t) => in_array($t, $urutan, true))
+                ->unique()
+                ->sortBy(fn ($t) => array_search($t, $urutan, true))
+                ->values();
+            $data['tingkat'] = ($tingkat->isEmpty() || $tingkat->count() === 3)
+                ? null
+                : $tingkat->implode(',');
+        }
+
+        return $data;
     }
 
     /**

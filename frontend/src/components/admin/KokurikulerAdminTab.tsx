@@ -32,7 +32,7 @@ interface FormState {
   id: string | null
   judul: string
   tema: string
-  tingkat: string        // '' = semua tingkat
+  tingkat: string[]      // kosong = semua tingkat; bisa lebih dari satu, mis. ['XI','XII']
   tujuan: string
   deskripsi: string
   tanggal_mulai: string
@@ -43,7 +43,7 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = {
-  id: null, judul: '', tema: '', tingkat: '', tujuan: '', deskripsi: '',
+  id: null, judul: '', tema: '', tingkat: [], tujuan: '', deskripsi: '',
   tanggal_mulai: '', tanggal_selesai: '', status: 'draft', classes: [], dimensi: [],
 }
 
@@ -67,7 +67,8 @@ export default function KokurikulerAdminTab() {
 
   function startEdit(p: KkAdminProject) {
     setForm({
-      id: p.id, judul: p.judul, tema: p.tema ?? '', tingkat: p.tingkat ?? '',
+      id: p.id, judul: p.judul, tema: p.tema ?? '',
+      tingkat: p.tingkat ? p.tingkat.split(',') : [],
       tujuan: p.tujuan ?? '', deskripsi: p.deskripsi ?? '',
       tanggal_mulai: p.tanggal_mulai, tanggal_selesai: p.tanggal_selesai, status: p.status,
       classes: p.classes.map((c) => ({
@@ -115,7 +116,7 @@ export default function KokurikulerAdminTab() {
                   <span className={cn('ml-2 rounded-full px-2 py-0.5 text-[11px] font-medium', STATUS_LABEL[p.status].cls)}>
                     {STATUS_LABEL[p.status].label}
                   </span>
-                  <Badge variant="outline" className="ml-1 text-[11px]">Tingkat {p.tingkat ?? 'Semua'}</Badge>
+                  <Badge variant="outline" className="ml-1 text-[11px]">Tingkat {p.tingkat ? p.tingkat.split(',').join(' & ') : 'Semua'}</Badge>
                 </p>
                 {p.tema && <p className="text-xs text-muted-foreground mt-0.5">Tema: {p.tema}</p>}
                 {p.tujuan && <p className="text-xs text-muted-foreground mt-0.5">Tujuan: {p.tujuan}</p>}
@@ -201,16 +202,18 @@ function ProjectForm({ form, setForm }: { form: FormState; setForm: (f: FormStat
   const masterDims     = (dimRes?.data.data ?? []).filter((d) => d.aktif)
 
   // Kelas difilter sesuai tingkat projek (label kelas diawali tingkatnya).
+  // Tanpa centang tingkat = semua kelas.
   const classOptions = useMemo(() => {
     const all = classesRes?.data.data ?? []
-    if (!form.tingkat) return all
-    return all.filter((c) => c.label.startsWith(`${form.tingkat} `))
+    if (form.tingkat.length === 0) return all
+    return all.filter((c) => form.tingkat.some((t) => c.label.startsWith(`${t} `)))
   }, [classesRes, form.tingkat])
 
   const save = useMutation({
     mutationFn: () => {
       const payload: KkAdminProjectPayload = {
-        judul: form.judul, tema: form.tema || null, tingkat: form.tingkat || null,
+        judul: form.judul, tema: form.tema || null,
+        tingkat: form.tingkat.length > 0 ? form.tingkat.join(',') : null,
         tujuan: form.tujuan || null, deskripsi: form.deskripsi || null,
         tanggal_mulai: form.tanggal_mulai, tanggal_selesai: form.tanggal_selesai,
         status: form.status,
@@ -312,23 +315,33 @@ function ProjectForm({ form, setForm }: { form: FormState; setForm: (f: FormStat
             value={form.deskripsi} onChange={(e) => set({ deskripsi: e.target.value })} maxLength={2000} />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Tingkat</label>
-          <select className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm"
-            value={form.tingkat} onChange={(e) => set({ tingkat: e.target.value })}>
-            <option value="">Semua tingkat</option>
-            <option value="X">X</option>
-            <option value="XI">XI</option>
-            <option value="XII">XII</option>
-          </select>
+          <label className="text-xs text-muted-foreground">Tingkat sasaran (boleh lebih dari satu; tanpa centang = semua tingkat)</label>
+          <div className="flex gap-4 rounded-md border border-input bg-background px-3 py-2">
+            {(['X', 'XI', 'XII'] as const).map((t) => (
+              <label key={t} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input type="checkbox" checked={form.tingkat.includes(t)}
+                  onChange={() => set({
+                    tingkat: form.tingkat.includes(t)
+                      ? form.tingkat.filter((x) => x !== t)
+                      : [...form.tingkat, t],
+                  })} />
+                {t}
+              </label>
+            ))}
+          </div>
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Status</label>
+          <label className="text-xs text-muted-foreground">Status projek</label>
           <select className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm"
             value={form.status} onChange={(e) => set({ status: e.target.value as FormState['status'] })}>
-            <option value="draft">Draft — belum terlihat peserta</option>
+            <option value="draft">Draft — masih disiapkan</option>
             <option value="aktif">Aktif — berjalan</option>
-            <option value="selesai">Selesai — read-only</option>
+            <option value="selesai">Selesai — dikunci baca-saja</option>
           </select>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Draft: belum terlihat guru/siswa. Aktif: menu Kokurikuler muncul dan bisa diisi.
+            Selesai: data terkunci, hanya bisa dilihat/diunduh.
+          </p>
         </div>
         <div>
           <label className="text-xs text-muted-foreground">Periode mulai *</label>
@@ -540,12 +553,15 @@ function RekapSection({ projectId }: { projectId: string }) {
 // ── Master Dimensi Profil Lulusan ─────────────────────────────────────────────
 function MasterDimensiSection() {
   const qc = useQueryClient()
+  const fileRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<KkMasterDimension | null>(null)
   const [nama, setNama] = useState('')
   const [deskripsi, setDeskripsi] = useState('')
   const [subText, setSubText] = useState('')  // satu sub-dimensi per baris
   const [err, setErr] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<KkImportResult | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['kokurikuler-admin-dimensions'],
@@ -577,6 +593,22 @@ function MasterDimensiSection() {
     setSubText(d.subdimensions.map((s) => s.nama).join('\n')); setErr(null)
   }
 
+  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true); setImportResult(null); setErr(null)
+    try {
+      const res = await kokurikulerAdminApi.importDimensions(file)
+      setImportResult(res)
+      qc.invalidateQueries({ queryKey: ['kokurikuler-admin-dimensions'] })
+    } catch (error: any) {
+      setImportResult({ success_count: 0, error_count: 1, errors: [error?.response?.data?.message ?? 'Import gagal.'] })
+    } finally {
+      setImporting(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
   return (
     <Card><CardContent className="p-4 space-y-3">
       <button className="flex w-full items-center justify-between text-left" onClick={() => setOpen(!open)}>
@@ -589,6 +621,31 @@ function MasterDimensiSection() {
 
       {open && (
         <>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => kokurikulerAdminApi.downloadDimensionTemplate()}>
+              <Download className="h-3.5 w-3.5 mr-1" /> Unduh Template
+            </Button>
+            <Button size="sm" variant="outline" disabled={importing} onClick={() => fileRef.current?.click()}>
+              {importing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1" />} Impor Excel
+            </Button>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onImportFile} />
+            <span className="text-[11px] text-muted-foreground self-center">
+              Template berisi master saat ini — edit lalu impor ulang (pencocokan by nama; sub-dimensi lama tidak dihapus).
+            </span>
+          </div>
+
+          {importResult && (
+            <div className="rounded-lg border p-2 text-sm space-y-1">
+              <p className="flex items-center gap-1 text-emerald-600"><Check className="h-4 w-4" /> {importResult.success_count} dimensi diperbarui/ditambahkan.</p>
+              {importResult.error_count > 0 && (
+                <div className="text-red-600">
+                  <p className="flex items-center gap-1"><AlertCircle className="h-4 w-4" /> {importResult.error_count} baris gagal:</p>
+                  <ul className="list-disc ml-6 text-xs">{importResult.errors.map((er, i) => <li key={i}>{er}</li>)}</ul>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid gap-2 sm:grid-cols-2">
             <div>
               <Input placeholder="Nama dimensi…" value={nama} onChange={(e) => setNama(e.target.value)} />

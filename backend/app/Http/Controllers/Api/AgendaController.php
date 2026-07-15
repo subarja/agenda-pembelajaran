@@ -132,6 +132,14 @@ class AgendaController extends Controller
             ));
         }
 
+        // Kokurikuler: kelas peserta projek pada tanggal dalam periode projek dibebaskan
+        // dari kewajiban agenda reguler — tidak muncul sebagai tagihan dan tidak pernah
+        // menjadi hutang (projek selesai tetap membebaskan tanggal lamanya).
+        $sesi = array_values(array_filter(
+            $sesi,
+            fn ($s) => ! \App\Support\KokurikulerMode::isAgendaExempt($s['schedule']->class_id, $s['tanggal']),
+        ));
+
         if (empty($sesi)) {
             return response()->json(['data' => []]);
         }

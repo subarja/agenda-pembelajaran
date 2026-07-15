@@ -344,6 +344,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('pkl/placements/{uuid}',     [PklPlacementController::class, 'destroy']);
 
         // ── Kokurikuler (projek, kelas+fasilitator, dimensi, rekap) ───────────────
+        Route::get('kokurikuler/dimensions/template',          [KokurikulerAdminController::class, 'dimensionsTemplate']);
+        Route::post('kokurikuler/dimensions/import',           [KokurikulerAdminController::class, 'dimensionsImport']);
         Route::get('kokurikuler/dimensions',                   [KokurikulerAdminController::class, 'dimensions']);
         Route::post('kokurikuler/dimensions',                  [KokurikulerAdminController::class, 'storeDimension']);
         Route::put('kokurikuler/dimensions/{id}',              [KokurikulerAdminController::class, 'updateDimension']);

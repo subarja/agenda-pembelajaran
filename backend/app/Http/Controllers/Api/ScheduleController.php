@@ -72,7 +72,11 @@ class ScheduleController extends Controller
                 'agendas' => fn ($q) => $q->whereDate('tanggal', $todayDate),
             ])
             ->orderBy('jam_mulai')
-            ->get();
+            ->get()
+            // Kokurikuler: kelas peserta projek hari ini tidak menjalani KBM reguler —
+            // sesinya disembunyikan dari "hari ini" (tagihan agendanya juga dibebaskan).
+            ->reject(fn ($s) => \App\Support\KokurikulerMode::isAgendaExempt($s->class_id, $todayDate))
+            ->values();
 
         return response()->json([
             'data' => ScheduleResource::collection($schedules),

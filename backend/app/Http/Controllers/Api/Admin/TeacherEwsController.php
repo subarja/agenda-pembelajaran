@@ -20,6 +20,10 @@ use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Writer;
+use App\Enums\Tingkat;
+use App\Models\SchoolClass;
+use App\Support\KokurikulerMode;
+use App\Support\PklMode;
 use App\Support\SessionTeacher;
 
 class TeacherEwsController extends Controller
@@ -567,7 +571,8 @@ class TeacherEwsController extends Controller
             $current = $mulai->copy()->startOfWeek(Carbon::MONDAY);
             while ($current->lte($akhir)) {
                 $tglHari = $current->copy()->addDays($hariNum - Carbon::MONDAY);
-                if ($tglHari->between($mulai, $akhir)) {
+                if ($tglHari->between($mulai, $akhir)
+                    && ! $this->sesiDibebaskan($schedule->class_id, $tglHari->toDateString())) {
                     $sesi[] = ['tanggal' => $tglHari->toDateString(), 'schedule' => $schedule];
                 }
                 $current->addWeek();
@@ -575,6 +580,39 @@ class TeacherEwsController extends Controller
         }
 
         return $sesi;
+    }
+
+    /** Cache id kelas XII TA aktif — untuk pengecualian Mode PKL tanpa N+1. */
+    private ?array $kelasXiiIds = null;
+
+    /**
+     * Sesi yang TIDAK menuntut agenda reguler (tidak ikut penyebut EWS Guru):
+     *  - kelas XII saat Mode PKL — kewajibannya pindah ke agenda PKL mingguan
+     *    (aturan yang sama dengan /agendas/perlu-diisi; dulu EWS Guru lupa
+     *    mengecualikan ini sehingga guru XII tampak menunggak padahal tidak),
+     *  - kelas peserta kokurikuler pada tanggal dalam periode projek — dibebaskan
+     *    dan tidak pernah menjadi hutang tagihan.
+     */
+    private function sesiDibebaskan(?int $classId, string $tanggal): bool
+    {
+        if ($classId === null) {
+            return false;
+        }
+
+        if (KokurikulerMode::isAgendaExempt($classId, $tanggal)) {
+            return true;
+        }
+
+        if (! PklMode::isActive()) {
+            return false;
+        }
+
+        $this->kelasXiiIds ??= SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+            ->where('tingkat', Tingkat::XII->value)
+            ->pluck('id')
+            ->all();
+
+        return in_array($classId, $this->kelasXiiIds, true);
     }
 
     /**
