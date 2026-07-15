@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo, useEffect, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing, GraduationCap, CopyPlus, Lock, LockOpen } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing, GraduationCap, CopyPlus, Lock, LockOpen, Database, Star, Settings, BookOpen, CalendarClock, CalendarRange, UserCog, Gauge, ClipboardEdit, DatabaseBackup, Timer, Cloud, UserPlus, Wrench, Briefcase, Sparkles, School, FolderUp, type LucideIcon } from 'lucide-react'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
 import { fcmAdminApi } from '@/features/notifikasi/api'
@@ -22,12 +22,53 @@ import { NaikKelasWizard, SalinJadwalModal } from '@/components/GantiTahunAjaran
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
+// PENTING: urutan array ini = indeks activeTab yang dipakai blok render di bawah.
+// Jangan menyisipkan di tengah — tambah tab baru selalu di ekor.
 const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance', 'PKL', 'Kokurikuler']
 
-// GK26: notifikasi nilai manual (ManualNoteSubmittedNotification) mengirim
-// `?tab=nilai-manual` — dulu AdminPage sama sekali tidak baca query param ini jadi klik
-// notif selalu mendarat di tab default (Guru), bukan tab Nilai Manual yang dimaksud.
-const TAB_SLUG_TO_LABEL: Record<string, string> = { 'nilai-manual': 'Nilai Manual', 'pkl': 'PKL', 'kokurikuler': 'Kokurikuler' }
+// Metadata tiap tab: slug (URL ?tab=), ikon, dan deskripsi satu kalimat.
+// Slug lama (nilai-manual, pkl, kokurikuler) TIDAK boleh berubah — dipakai deep-link
+// notifikasi (GK26).
+const TAB_META: Record<string, { slug: string; icon: LucideIcon; desc: string }> = {
+  'Guru':               { slug: 'guru',             icon: Users,          desc: 'Data guru: biodata, akun, gelar, dan status.' },
+  'Siswa':              { slug: 'siswa',            icon: GraduationCap,  desc: 'Data siswa per kelas: biodata, akun, dan status.' },
+  'Kelas':              { slug: 'kelas',            icon: School,         desc: 'Rombongan belajar per tahun ajaran beserta wali kelasnya.' },
+  'Mapel':              { slug: 'mapel',            icon: BookOpen,       desc: 'Daftar mata pelajaran.' },
+  'Jadwal':             { slug: 'jadwal',           icon: CalendarClock,  desc: 'Jadwal pelajaran per kelas, per hari, per guru.' },
+  'Karakter':           { slug: 'karakter',         icon: Star,           desc: 'Induk & sub-karakter beserta bobot poin plus/minusnya.' },
+  'Ambang':             { slug: 'ambang',           icon: Gauge,          desc: 'Ambang poin pemicu rekomendasi tindakan & EWS siswa.' },
+  'Pengguna':           { slug: 'pengguna',         icon: UserCog,        desc: 'Akun login: peran, reset password, aktif/nonaktif.' },
+  'Tahun Ajaran':       { slug: 'tahun-ajaran',     icon: CalendarRange,  desc: 'Ganti semester/TA, wizard naik kelas, salin jadwal, kunci arsip.' },
+  'Import Data':        { slug: 'import-data',      icon: FileCode2,      desc: 'Impor massal: Excel guru, XML jadwal, lalu siswa (urutannya penting).' },
+  'Nilai Manual':       { slug: 'nilai-manual',     icon: ClipboardEdit,  desc: 'Tinjau & setujui usulan nilai karakter manual dari guru.' },
+  'Kalender':           { slug: 'kalender',         icon: Calendar,       desc: 'Kalender pendidikan, sinkronisasi Google, hari tidak efektif.' },
+  'Backup & Restore':   { slug: 'backup-restore',   icon: DatabaseBackup, desc: 'Cadangkan dan pulihkan seluruh database.' },
+  'Pengaturan Agenda':  { slug: 'pengaturan-agenda', icon: Timer,         desc: 'Batas waktu (hari + jam) pengisian agenda setelah jadwal.' },
+  'Foto Siswa & Guru':  { slug: 'foto',             icon: ImageIcon,      desc: 'Unggah foto profil massal (ZIP) maupun satuan.' },
+  'Jadwal PDF':         { slug: 'jadwal-pdf',       icon: FileText,       desc: 'Unggah berkas jadwal PDF untuk halaman "Jadwal Saya".' },
+  'Penyimpanan':        { slug: 'penyimpanan',      icon: Cloud,          desc: 'Penyimpanan objek Cloudflare R2 untuk foto & dokumen (opsional).' },
+  'Notifikasi Push':    { slug: 'notifikasi-push',  icon: BellRing,       desc: 'Firebase Cloud Messaging untuk notifikasi ke HP.' },
+  'Guru Inval':         { slug: 'guru-inval',       icon: UserPlus,       desc: 'Pantau permintaan & persetujuan guru pengganti.' },
+  'Deploy & Maintenance': { slug: 'deploy',         icon: Wrench,         desc: 'Alat rilis, cache, dan pemeliharaan aplikasi.' },
+  'PKL':                { slug: 'pkl',              icon: Briefcase,      desc: 'Mode PKL kelas XII: saklar, TP khusus, impor penempatan.' },
+  'Kokurikuler':        { slug: 'kokurikuler',      icon: Sparkles,       desc: 'Projek kokurikuler: periode, tingkat, dimensi, fasilitator, rekap.' },
+}
+
+// Pengelompokan navigasi — 22 tab datar terlalu membingungkan; dua tingkat
+// (kategori → menu) membuat semuanya terlihat tanpa scroll horizontal.
+const TAB_GROUPS: { label: string; icon: LucideIcon; tabs: string[] }[] = [
+  { label: 'Data Master',     icon: Database,      tabs: ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Pengguna'] },
+  { label: 'Akademik',        icon: GraduationCap, tabs: ['Tahun Ajaran', 'Kalender', 'Pengaturan Agenda', 'Guru Inval', 'PKL', 'Kokurikuler'] },
+  { label: 'Karakter & Nilai', icon: Star,         tabs: ['Karakter', 'Ambang', 'Nilai Manual'] },
+  { label: 'Import & Berkas', icon: FolderUp,      tabs: ['Import Data', 'Foto Siswa & Guru', 'Jadwal PDF'] },
+  { label: 'Sistem',          icon: Settings,      tabs: ['Backup & Restore', 'Penyimpanan', 'Notifikasi Push', 'Deploy & Maintenance'] },
+]
+
+const TAB_SLUG_TO_LABEL: Record<string, string> =
+  Object.fromEntries(Object.entries(TAB_META).map(([label, m]) => [m.slug, label]))
+
+const groupIndexOfTab = (label: string) =>
+  Math.max(0, TAB_GROUPS.findIndex((g) => g.tabs.includes(label)))
 
 // ── Simple modal ──────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -2927,20 +2968,31 @@ function CatatanManualTab() {
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     const slug  = searchParams.get('tab')
     const label = slug ? TAB_SLUG_TO_LABEL[slug] : null
     const idx   = label ? TABS.indexOf(label) : -1
     return idx >= 0 ? idx : 0
   })
+  // Kategori yang sedang DILIHAT (boleh beda dari kategori tab aktif — user bisa
+  // mengintip kategori lain tanpa kehilangan tab yang sedang terbuka).
+  const [activeGroup, setActiveGroup] = useState(() => groupIndexOfTab(TABS[activeTab] ?? 'Guru'))
   const qc = useQueryClient()
 
   // Ganti tab kembali ke atas — kalau tab sebelumnya panjang (scroll turun) dan tab
   // baru masih memuat/kosong, tanpa ini area yang terlihat jadi kosong sampai user
   // sadar harus scroll naik sendiri (terkesan blank/freeze).
+  // Sekaligus: URL selalu menyimpan tab aktif (?tab=slug) supaya refresh, tombol
+  // back, dan share link mendarat di tab yang sama — dulu cuma 3 tab yang bisa.
   useEffect(() => {
     window.scrollTo(0, 0)
+    setActiveGroup(groupIndexOfTab(TABS[activeTab] ?? 'Guru'))
+    const slug = TAB_META[TABS[activeTab]]?.slug
+    if (slug && searchParams.get('tab') !== slug) {
+      setSearchParams({ tab: slug }, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 
   // Prefetch data ringan yang dipakai banyak tab — mount langsung
@@ -2987,28 +3039,82 @@ export default function AdminPage() {
     }
   }
 
+  const activeLabel = TABS[activeTab]
+  const activeMeta  = TAB_META[activeLabel]
+  const group       = TAB_GROUPS[activeGroup]
+
   return (
     <div>
       <h1 className="mb-1 text-xl font-bold">Panel Admin</h1>
       <p className="mb-4 text-sm text-muted-foreground">Kelola data master aplikasi</p>
 
-      {/* Tabs */}
-      <div className="mb-6 flex overflow-x-auto gap-1 border-b">
-        {TABS.map((tab, i) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(i)}
-            onMouseEnter={() => prefetchTab(i)}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              activeTab === i
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      {/* ── Navigasi HP: dropdown bergrup — 22 tab tidak muat sebagai baris ── */}
+      <div className="mb-4 md:hidden">
+        <select
+          className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm font-medium"
+          value={activeTab}
+          onChange={(e) => setActiveTab(Number(e.target.value))}
+        >
+          {TAB_GROUPS.map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.tabs.map((t) => (
+                <option key={t} value={TABS.indexOf(t)}>{t}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
       </div>
+
+      {/* ── Navigasi desktop dua tingkat: kategori → menu ── */}
+      <div className="hidden md:block mb-2">
+        <div className="flex flex-wrap gap-1.5">
+          {TAB_GROUPS.map((g, gi) => (
+            <button
+              key={g.label}
+              onClick={() => setActiveGroup(gi)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                gi === activeGroup
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : g.tabs.includes(activeLabel)
+                    ? 'border-primary/40 text-primary hover:bg-primary/5'
+                    : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent',
+              )}
+            >
+              <g.icon className="h-3.5 w-3.5" /> {g.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1 border-b">
+          {group.tabs.map((t) => {
+            const i    = TABS.indexOf(t)
+            const Icon = TAB_META[t].icon
+            return (
+              <button
+                key={t}
+                onClick={() => setActiveTab(i)}
+                onMouseEnter={() => prefetchTab(i)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors',
+                  activeTab === i
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Icon className="h-4 w-4" /> {t}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Judul + deskripsi tab aktif — menjawab "tab ini buat apa?" tanpa menebak */}
+      {activeMeta && (
+        <p className="mb-4 text-xs text-muted-foreground flex items-center gap-1.5">
+          <activeMeta.icon className="h-3.5 w-3.5 shrink-0" />
+          <span><strong className="text-foreground">{activeLabel}</strong> — {activeMeta.desc}</span>
+        </p>
+      )}
 
       <div>
         {activeTab === 0 && <GuruTab />}
