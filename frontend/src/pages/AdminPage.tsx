@@ -4531,7 +4531,7 @@ function BackupRestoreTab() {
 // Dipakai utk update kode di cPanel tanpa Terminal/SSH: ganti vendor/dist dari zip
 // yang sudah ada di repo (lihat backend/vendor.zip, frontend/dist.zip), migrate,
 // dan jalankan seeder — semua lewat tombol, bukan URL manual seperti cpanel-deploy.php.
-const ALLOWED_SEEDERS = ['AdminOnlySeeder', 'CharacterSeeder']
+const ALLOWED_SEEDERS = ['AdminOnlySeeder', 'CharacterSeeder', 'KokurikulerDimensionSeeder']
 
 function DeployToolsTab() {
   const [log, setLog] = useState<string[]>([])

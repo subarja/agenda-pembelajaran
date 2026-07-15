@@ -14,7 +14,7 @@ class DeployToolController extends Controller
     // Seeder yang boleh dijalankan lewat panel ini — sengaja TIDAK termasuk
     // DatabaseSeeder/FullDemoSeeder (isinya data fiktif ratusan siswa/guru), supaya
     // admin tidak bisa tidak sengaja menimpa/menambah data sekolah asli dengan data demo.
-    private const ALLOWED_SEEDERS = ['AdminOnlySeeder', 'CharacterSeeder'];
+    private const ALLOWED_SEEDERS = ['AdminOnlySeeder', 'CharacterSeeder', 'KokurikulerDimensionSeeder'];
 
     // GET /admin/deploy-tools/status — info file zip & folder saat ini, buat ditampilkan di UI
     public function status(Request $request): JsonResponse
@@ -83,6 +83,11 @@ class DeployToolController extends Controller
         $this->ensureAdmin($request);
 
         $log = $this->runArtisan('migrate', ['--force' => true]);
+        // Seeder master yang idempoten ikut dijalankan otomatis — updateOrCreate by kode,
+        // aman diulang di produksi, dan memastikan 8 Dimensi Profil Lulusan selalu terisi.
+        $log = array_merge($log, $this->runArtisan('db:seed', [
+            '--class' => 'KokurikulerDimensionSeeder', '--force' => true,
+        ]));
         $this->swapDirectoryFromZip($this->distDirPath(), $this->distZipPath(), $log);
         $log = array_merge($log, $this->runArtisan('optimize:clear'));
 
