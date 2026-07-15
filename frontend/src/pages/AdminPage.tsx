@@ -22,9 +22,9 @@ import { NaikKelasWizard, SalinJadwalModal } from '@/components/GantiTahunAjaran
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
-// PENTING: urutan array ini = indeks activeTab yang dipakai blok render di bawah.
-// Jangan menyisipkan di tengah — tambah tab baru selalu di ekor.
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance', 'PKL', 'Kokurikuler']
+// Blok render & prefetch memetakan tab lewat LABEL, jadi urutan array ini bebas
+// diubah — tapi label harus konsisten dengan TAB_META, TAB_GROUPS, dan blok render.
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance', 'PKL', 'Kokurikuler']
 
 // Metadata tiap tab: slug (URL ?tab=), ikon, dan deskripsi satu kalimat.
 // Slug lama (nilai-manual, pkl, kokurikuler) TIDAK boleh berubah — dipakai deep-link
@@ -39,7 +39,6 @@ const TAB_META: Record<string, { slug: string; icon: LucideIcon; desc: string }>
   'Ambang':             { slug: 'ambang',           icon: Gauge,          desc: 'Ambang poin pemicu rekomendasi tindakan & EWS siswa.' },
   'Pengguna':           { slug: 'pengguna',         icon: UserCog,        desc: 'Akun login: peran, reset password, aktif/nonaktif.' },
   'Tahun Ajaran':       { slug: 'tahun-ajaran',     icon: CalendarRange,  desc: 'Ganti semester/TA, wizard naik kelas, salin jadwal, kunci arsip.' },
-  'Import Data':        { slug: 'import-data',      icon: FileCode2,      desc: 'Impor massal: Excel guru, XML jadwal, lalu siswa (urutannya penting).' },
   'Nilai Manual':       { slug: 'nilai-manual',     icon: ClipboardEdit,  desc: 'Tinjau & setujui usulan nilai karakter manual dari guru.' },
   'Kalender':           { slug: 'kalender',         icon: Calendar,       desc: 'Kalender pendidikan, sinkronisasi Google, hari tidak efektif.' },
   'Backup & Restore':   { slug: 'backup-restore',   icon: DatabaseBackup, desc: 'Cadangkan dan pulihkan seluruh database.' },
@@ -60,7 +59,7 @@ const TAB_GROUPS: { label: string; icon: LucideIcon; tabs: string[] }[] = [
   { label: 'Data Master',     icon: Database,      tabs: ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Pengguna'] },
   { label: 'Akademik',        icon: GraduationCap, tabs: ['Tahun Ajaran', 'Kalender', 'Pengaturan Agenda', 'Guru Inval', 'PKL', 'Kokurikuler'] },
   { label: 'Karakter & Nilai', icon: Star,         tabs: ['Karakter', 'Ambang', 'Nilai Manual'] },
-  { label: 'Import & Berkas', icon: FolderUp,      tabs: ['Import Data', 'Foto Siswa & Guru', 'Jadwal PDF'] },
+  { label: 'Import & Berkas', icon: FolderUp,      tabs: ['Foto Siswa & Guru', 'Jadwal PDF'] },
   { label: 'Sistem',          icon: Settings,      tabs: ['Backup & Restore', 'Penyimpanan', 'Notifikasi Push', 'Deploy & Maintenance'] },
 ]
 
@@ -71,16 +70,16 @@ const groupIndexOfTab = (label: string) =>
   Math.max(0, TAB_GROUPS.findIndex((g) => g.tabs.includes(label)))
 
 // ── Simple modal ──────────────────────────────────────────────────────────────
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
     // z-[60]: di atas BottomNav mobile (z-50) supaya isi/footer modal tidak tertutup nav
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b px-4 py-3">
+      <div className={`w-full ${wide ? 'max-w-2xl' : 'max-w-md'} rounded-lg bg-white shadow-xl max-h-[90vh] flex flex-col`}>
+        <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
           <h3 className="font-semibold">{title}</h3>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
         </div>
-        <div className="p-4">{children}</div>
+        <div className="p-4 overflow-y-auto">{children}</div>
       </div>
     </div>
   )
@@ -209,6 +208,7 @@ function ImportModal({
           <div className={`rounded-lg p-3 text-sm ${result.error_count === 0 ? 'border border-green-200 bg-green-50' : 'border border-yellow-200 bg-yellow-50'}`}>
             <p className="font-medium">
               {result.success_count} baris berhasil diimpor
+              {(result.completed_count ?? 0) > 0 && `, ${result.completed_count} data lama dilengkapi`}
               {result.error_count > 0 && `, ${result.error_count} baris gagal`}.
             </p>
             {result.errors.length > 0 && (
@@ -405,7 +405,7 @@ function GuruTab() {
         <SearchBar value={q} onChange={setQ} placeholder="Cari nama / NIP / mapel..." />
         <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-            <Upload className="mr-1 h-4 w-4" />Import Excel
+            <Upload className="mr-1 h-4 w-4" />Import Guru
           </Button>
           <Button size="sm" onClick={openAdd}><Plus className="mr-1 h-4 w-4" />Tambah Guru</Button>
         </div>
@@ -490,13 +490,13 @@ function GuruTab() {
         </Modal>
       )}
 
+      {/* Import guru memakai "Format Import Data Guru" (3 sheet, upsert lewat NIP/NUPTK/
+          nama) — pindahan dari tab Import Data. Import Excel generik yang lama dihapus
+          karena formatnya lebih miskin dan tidak upsert. */}
       {importOpen && (
-        <ImportModal
-          entity="guru"
-          label="Guru"
-          onClose={() => setImportOpen(false)}
-          onSuccess={() => qc.invalidateQueries({ queryKey: ['admin-teachers'] })}
-        />
+        <Modal wide title="Import Guru" onClose={() => setImportOpen(false)}>
+          <GuruLengkapImportCard />
+        </Modal>
       )}
     </div>
   )
@@ -509,6 +509,7 @@ function SiswaTab() {
   const qc = useQueryClient()
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [importDapodikOpen, setImportDapodikOpen] = useState(false)
   const [selected, setSelected] = useState<AdminStudent | null>(null)
   const [form, setForm] = useState({ nama: '', email: '', nis: '', nisn: '', jenis_kelamin: '', class_id: '', angkatan: '', wali_nama: '', wali_kontak: '', password: '' })
   const [err, setErr] = useState('')
@@ -598,6 +599,9 @@ function SiswaTab() {
           <option value="semua">Semua Status</option>
         </select>
         <div className="ml-auto flex flex-wrap justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setImportDapodikOpen(true)}>
+            <FileCode2 className="mr-1 h-4 w-4" />Import Dapodik
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
           </Button>
@@ -705,6 +709,14 @@ function SiswaTab() {
           onClose={() => setImportOpen(false)}
           onSuccess={() => qc.invalidateQueries({ queryKey: ['admin-students'] })}
         />
+      )}
+
+      {/* Import Dapodik — pindahan dari tab Import Data; saling melengkapi dgn Import
+          Excel: cocokkan NISN/NIS, siswa yang sudah ada dilengkapi bukan digandakan. */}
+      {importDapodikOpen && (
+        <Modal wide title="Import Siswa dari Dapodik" onClose={() => setImportDapodikOpen(false)}>
+          <DapodikSiswaImportCard />
+        </Modal>
       )}
     </div>
   )
@@ -1200,6 +1212,7 @@ function MapelTab() {
 // ─────────────────────────────────────────────────────────────────────────────
 function JadwalTab() {
   const qc = useQueryClient()
+  const [importXmlOpen, setImportXmlOpen] = useState(false)
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [salinOpen, setSalinOpen] = useState(false)
@@ -1267,6 +1280,9 @@ function JadwalTab() {
         <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setSalinOpen(true)}>
             <CopyPlus className="mr-1 h-4 w-4" />Salin dari Semester
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportXmlOpen(true)}>
+            <FileCode2 className="mr-1 h-4 w-4" />Import XML
           </Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
@@ -1363,6 +1379,14 @@ function JadwalTab() {
           onClose={() => setImportOpen(false)}
           onSuccess={() => qc.invalidateQueries({ queryKey: ['admin-schedules'] })}
         />
+      )}
+
+      {/* Import XML aSc — pindahan dari tab Import Data; melengkapi Import Excel:
+          XML utk jadwal masal hasil ekspor aSc, Excel utk koreksi/penambahan kecil. */}
+      {importXmlOpen && (
+        <Modal wide title="Import Jadwal dari XML (aSc Timetables)" onClose={() => setImportXmlOpen(false)}>
+          <JadwalXmlImportCard />
+        </Modal>
       )}
     </div>
   )
@@ -3014,37 +3038,38 @@ export default function AdminPage() {
 
   // Prefetch on hover — data diambil saat user bergerak ke arah tab sebelum klik
   function prefetchTab(index: number) {
-    switch (index) {
-      case 0: // Guru
+    // Switch berbasis LABEL — indeks bergeser tiap TABS berubah.
+    switch (TABS[index]) {
+      case 'Guru':
         qc.prefetchQuery({ queryKey: ['admin-teachers', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getTeachers({ page: 1, per_page: 25 }) })
         break
-      case 1: // Siswa
+      case 'Siswa':
         qc.prefetchQuery({ queryKey: ['admin-students', '', '', 'aktif', 1, 25 as PerPageOpt], queryFn: () => adminApi.getStudents({ status_siswa: 'aktif', page: 1, per_page: 25 }) })
         break
-      case 2: // Kelas
+      case 'Kelas':
         qc.prefetchQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
         qc.prefetchQuery({ queryKey: ['admin-teachers', 'all'], queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
         break
-      case 3: // Mapel
+      case 'Mapel':
         qc.prefetchQuery({ queryKey: ['admin-subjects'], queryFn: adminApi.getSubjects })
         break
-      case 4: // Jadwal
+      case 'Jadwal':
         qc.prefetchQuery({ queryKey: ['admin-classes'],             queryFn: adminApi.getClasses })
         qc.prefetchQuery({ queryKey: ['admin-subjects'],            queryFn: adminApi.getSubjects })
         qc.prefetchQuery({ queryKey: ['admin-teachers', 'all'],    queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
         qc.prefetchQuery({ queryKey: ['admin-schedules', '', '', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getSchedules({ page: 1, per_page: 25 }) })
         break
-      case 5: // Karakter
+      case 'Karakter':
         qc.prefetchQuery({ queryKey: ['admin-char-cats'], queryFn: adminApi.getCharacterCategories })
         qc.prefetchQuery({ queryKey: ['admin-char-subs'], queryFn: () => adminApi.getCharacterSubitems() })
         break
-      case 6: // Ambang
+      case 'Ambang':
         qc.prefetchQuery({ queryKey: ['admin-thresholds'], queryFn: adminApi.getThresholds })
         break
-      case 7: // Pengguna
+      case 'Pengguna':
         qc.prefetchQuery({ queryKey: ['admin-users'], queryFn: () => adminApi.getAdminUsers() })
         break
-      case 10: // Nilai Manual
+      case 'Nilai Manual':
         qc.prefetchQuery({ queryKey: ['admin-manual-notes', 'all', 1], queryFn: () => adminApi.getManualNotes({ page: 1 }) })
         break
     }
@@ -3127,29 +3152,30 @@ export default function AdminPage() {
         </p>
       )}
 
+      {/* Render berbasis LABEL (bukan indeks) — supaya menambah/menghapus tab di TABS
+          tidak menggeser pemetaan komponen secara diam-diam. */}
       <div>
-        {activeTab === 0 && <GuruTab />}
-        {activeTab === 1 && <SiswaTab />}
-        {activeTab === 2 && <KelasTab />}
-        {activeTab === 3 && <MapelTab />}
-        {activeTab === 4 && <JadwalTab />}
-        {activeTab === 5 && <KarakterAdminTab />}
-        {activeTab === 6 && <AmbangTab />}
-        {activeTab === 7 && <PenggunaTab />}
-        {activeTab === 8 && <TahunAjaranTab />}
-        {activeTab === 9 && <AscXmlImportTab onGoToTahunAjaran={() => setActiveTab(8)} />}
-        {activeTab === 10 && <CatatanManualTab />}
-        {activeTab === 11 && <KalenderAdminTab />}
-        {activeTab === 12 && <BackupRestoreTab />}
-        {activeTab === 13 && <PengaturanAgendaTab />}
-        {activeTab === 14 && <FotoBulkUploadTab />}
-        {activeTab === 15 && <JadwalPdfBulkUploadTab />}
-        {activeTab === 16 && <R2StorageAdminTab />}
-        {activeTab === 17 && <FcmPushAdminTab />}
-        {activeTab === 18 && <InvalAdminTab />}
-        {activeTab === 19 && <DeployToolsTab />}
-        {activeTab === 20 && <PklAdminTab />}
-        {activeTab === 21 && <KokurikulerAdminTab />}
+        {activeLabel === 'Guru' && <GuruTab />}
+        {activeLabel === 'Siswa' && <SiswaTab />}
+        {activeLabel === 'Kelas' && <KelasTab />}
+        {activeLabel === 'Mapel' && <MapelTab />}
+        {activeLabel === 'Jadwal' && <JadwalTab />}
+        {activeLabel === 'Karakter' && <KarakterAdminTab />}
+        {activeLabel === 'Ambang' && <AmbangTab />}
+        {activeLabel === 'Pengguna' && <PenggunaTab />}
+        {activeLabel === 'Tahun Ajaran' && <TahunAjaranTab />}
+        {activeLabel === 'Nilai Manual' && <CatatanManualTab />}
+        {activeLabel === 'Kalender' && <KalenderAdminTab />}
+        {activeLabel === 'Backup & Restore' && <BackupRestoreTab />}
+        {activeLabel === 'Pengaturan Agenda' && <PengaturanAgendaTab />}
+        {activeLabel === 'Foto Siswa & Guru' && <FotoBulkUploadTab />}
+        {activeLabel === 'Jadwal PDF' && <JadwalPdfBulkUploadTab />}
+        {activeLabel === 'Penyimpanan' && <R2StorageAdminTab />}
+        {activeLabel === 'Notifikasi Push' && <FcmPushAdminTab />}
+        {activeLabel === 'Guru Inval' && <InvalAdminTab />}
+        {activeLabel === 'Deploy & Maintenance' && <DeployToolsTab />}
+        {activeLabel === 'PKL' && <PklAdminTab />}
+        {activeLabel === 'Kokurikuler' && <KokurikulerAdminTab />}
       </div>
     </div>
   )
@@ -3378,50 +3404,44 @@ function ImportCard({
   )
 }
 
-function AscXmlImportTab({ onGoToTahunAjaran }: { onGoToTahunAjaran: () => void }) {
-  const qc = useQueryClient()
+// Guard bersama: import XML & Dapodik siswa butuh Tahun Ajaran aktif (jadwal, kelas,
+// dan siswa terikat ke sana). Dulu guard ini milik tab "Import Data"; sekarang tiap
+// kartu berdiri sendiri di tab Guru/Jadwal/Siswa.
+function TanpaTahunAjaranAktif() {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+      <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+      <div>
+        <h2 className="text-sm font-semibold text-amber-900">Belum ada Tahun Ajaran aktif</h2>
+        <p className="text-sm text-amber-800 mt-1">
+          Import ini butuh Tahun Ajaran aktif. Buat atau aktifkan dulu lewat Panel Admin →
+          kategori Akademik → tab <strong>Tahun Ajaran</strong>.
+        </p>
+      </div>
+    </div>
+  )
+}
 
-  const { data: years, isLoading: yearsLoading } = useQuery({
+function useHasActiveYear() {
+  const { data: years, isLoading } = useQuery({
     queryKey: ['admin-academic-years'],
     queryFn: () => adminApi.getAcademicYears(),
   })
-  const hasActiveYear = !!years?.some((y) => y.aktif)
 
-  if (!yearsLoading && !hasActiveYear) {
-    return (
-      <div className="max-w-2xl">
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-5 space-y-3">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <h2 className="text-sm font-semibold text-amber-900">Belum ada Tahun Ajaran aktif</h2>
-              <p className="text-sm text-amber-800 mt-1">
-                Semua import di halaman ini butuh Tahun Ajaran aktif (jadwal, kelas, dan siswa terikat ke tahun
-                ajaran tersebut). Buat atau aktifkan salah satu tahun ajaran dulu sebelum mulai import.
-              </p>
-            </div>
-          </div>
-          <Button size="sm" onClick={onGoToTahunAjaran}>Buka Tahun Ajaran</Button>
-        </div>
-      </div>
-    )
-  }
+  return { hasActiveYear: !!years?.some((y) => y.aktif), yearsLoading: isLoading }
+}
+
+// Kartu "Format Import Data Guru" (3 sheet: Daftar Guru, Wali Kelas, Program Keahlian)
+// — satu-satunya jalur import guru; menggantikan import Excel guru generik yang lama.
+function GuruLengkapImportCard() {
+  const qc = useQueryClient()
 
   return (
-    <div className="max-w-2xl space-y-4">
-      <div>
-        <h2 className="text-base font-semibold mb-1">Import Data</h2>
-        <p className="text-sm text-muted-foreground">
-          Tiga sumber import yang saling melengkapi. Urutan disarankan: <strong>1 → 2 → 3</strong>.
-        </p>
-      </div>
-
-      {/* Langkah 1: Format Import Data Guru — sumber utama identitas guru */}
       <ImportCard
-        title="1. Daftar Guru (Format Import Data Guru)"
+        title="Daftar Guru (Format Import Data Guru)"
         badge="Data Guru Utama"
         badgeColor="bg-blue-100 text-blue-700"
-        description="Langkah pertama. Sumber utama identitas guru — NIP, NUPTK, dan data pribadi Dapodik. Satu file Excel berisi 3 sheet: Daftar Guru, Wali Kelas, dan Data Program Keahlian."
+        description="Sumber utama identitas guru — NIP, NUPTK, dan data pribadi Dapodik. Satu file Excel berisi 3 sheet: Daftar Guru, Wali Kelas, dan Data Program Keahlian. Upload ulang aman: guru yang sudah ada diperbarui/dilengkapi, bukan digandakan."
         bullets={[
           'Sheet "Daftar Guru" — cocokkan guru yang sudah ada lewat NIP → NUPTK → nama; sisanya dibuat baru',
           'Kolom "Jenis PTK" = Guru BK otomatis mengaktifkan menu khusus BK',
@@ -3429,7 +3449,7 @@ function AscXmlImportTab({ onGoToTahunAjaran }: { onGoToTahunAjaran: () => void 
           'Sheet "Data Program Keahlian" — disimpan sebagai data referensi program keahlian',
           'Baris yang gagal dicocokkan dilaporkan satu per satu, baris lain tetap diproses',
         ]}
-        warning={`Format file: "Format Import Data Guru.xlsx" — header baris 3 (Daftar Guru & Wali Kelas) / baris 2 (Data Program Keahlian). Sheet "Wali Kelas" butuh data Kelas yang baru dibuat di langkah 2 (XML) — kalau baris wali kelas gagal karena kelas belum ada, upload ulang file ini setelah langkah 2 selesai.`}
+        warning={`Format file: "Format Import Data Guru.xlsx" — header baris 3 (Daftar Guru & Wali Kelas) / baris 2 (Data Program Keahlian). Sheet "Wali Kelas" butuh data Kelas (dari Import XML di tab Jadwal) — kalau baris wali kelas gagal karena kelas belum ada, upload ulang file ini setelah import XML selesai.`}
         accept=".xlsx,.xls"
         endpoint="/admin/import/dapodik-guru"
         resultLabels={['Program Keahlian', 'Guru', 'Wali Kelas']}
@@ -3448,20 +3468,29 @@ function AscXmlImportTab({ onGoToTahunAjaran }: { onGoToTahunAjaran: () => void 
           qc.invalidateQueries({ queryKey: ['admin-classes'] })
         }}
       />
+  )
+}
 
-      {/* Langkah 2: aSc XML — melengkapi jadwal, gelar, dan mapel yang diampu */}
+// Kartu import XML aSc Timetables — dipakai tombol "Import XML" di tab Jadwal.
+function JadwalXmlImportCard() {
+  const qc = useQueryClient()
+  const { hasActiveYear, yearsLoading } = useHasActiveYear()
+
+  if (!yearsLoading && !hasActiveYear) return <TanpaTahunAjaranAktif />
+
+  return (
       <ImportCard
-        title="2. aSc Timetables XML"
+        title="aSc Timetables XML"
         badge="Lengkapi Jadwal & Gelar"
         badgeColor="bg-purple-100 text-purple-700"
-        description="Melengkapi data guru dari langkah 1 dengan jadwal mengajar, gelar, dan mata pelajaran yang diampu. Juga membuat data kelas & mata pelajaran dari file ekspor aSc."
+        description="Melengkapi data guru (dari import di tab Guru) dengan jadwal mengajar, gelar, dan mata pelajaran yang diampu. Juga membuat data kelas & mata pelajaran dari file ekspor aSc. Urutan disarankan: import guru dulu, baru XML ini."
         bullets={[
           'Mata pelajaran — nama, kode, kelompok',
-          'Guru — dicocokkan ke akun dari langkah 1 lewat nama (fallback: ejaan mirip); dilengkapi gelar & mapel utama kalau belum ada',
+          'Guru — dicocokkan ke akun yang sudah ada lewat nama (fallback: ejaan mirip); dilengkapi gelar & mapel utama kalau belum ada',
           'Kelas — tingkat, jurusan, rombel untuk tahun ajaran aktif',
-          'Jadwal — hari, jam, guru, kelas, mapel (750+ jadwal sekaligus)',
+          'Jadwal — hari, jam, guru, kelas, mapel (750+ jadwal sekaligus); upload ulang memperbarui jadwal yang sama, bel yang sudah dikustom tidak ditimpa',
         ]}
-        warning="Pastikan sudah ada Tahun Ajaran aktif sebelum import. Guru yang belum ada di langkah 1 akan tetap dibuat otomatis (tanpa NIP)."
+        warning="Guru yang belum pernah diimport akan tetap dibuat otomatis (tanpa NIP) — sebaiknya import guru dulu di tab Guru."
         accept=".xml,application/xml,text/xml"
         endpoint="/admin/import/asc-xml"
         resultLabels={['Mata Pelajaran', 'Guru', 'Kelas', 'Jadwal']}
@@ -3473,20 +3502,30 @@ function AscXmlImportTab({ onGoToTahunAjaran }: { onGoToTahunAjaran: () => void 
           qc.invalidateQueries({ queryKey: ['admin-schedules'] })
         }}
       />
+  )
+}
 
-      {/* Langkah 3: Dapodik Siswa */}
+// Kartu import Dapodik siswa — dipakai tombol "Import Dapodik" di tab Siswa.
+function DapodikSiswaImportCard() {
+  const qc = useQueryClient()
+  const { hasActiveYear, yearsLoading } = useHasActiveYear()
+
+  if (!yearsLoading && !hasActiveYear) return <TanpaTahunAjaranAktif />
+
+  return (
       <ImportCard
-        title="3. Daftar Peserta Didik (Dapodik Excel)"
+        title="Daftar Peserta Didik (Dapodik Excel)"
         badge="Import Semua Siswa"
         badgeColor="bg-green-100 text-green-700"
-        description="Import seluruh siswa aktif dari Dapodik. Assign otomatis ke kelas berdasarkan kolom Rombel. Mendukung 1.700+ siswa sekaligus."
+        description="Import seluruh siswa aktif dari Dapodik. Assign otomatis ke kelas berdasarkan kolom Rombel. Mendukung 1.700+ siswa sekaligus. Saling melengkapi dengan Import Excel: siswa yang sudah ada hanya dilengkapi datanya, tidak diduplikasi."
         bullets={[
-          'Nama, NISN (ID nasional), NIPD (nomor induk lokal/NIS)',
+          'Nama, NISN (ID nasional), NIPD (nomor induk lokal/NIS), jenis kelamin',
           'Assign ke kelas berdasarkan "Rombel Saat Ini" (contoh: XI RPL A)',
           'Angkatan otomatis dihitung dari tingkat kelas',
           'Nama ayah & ibu (untuk kebutuhan BK dan data orang tua)',
           'HP siswa — kontak langsung',
           'Email (jika tersedia); default: NISN@siswa.smkn2cimahi.sch.id',
+          'Upload ulang aman — siswa dicocokkan lewat NISN/NIS lalu diperbarui, bukan digandakan',
         ]}
         accept=".xlsx,.xls"
         endpoint="/admin/import/dapodik-siswa"
@@ -3497,7 +3536,6 @@ function AscXmlImportTab({ onGoToTahunAjaran }: { onGoToTahunAjaran: () => void 
           qc.invalidateQueries({ queryKey: ['admin-classes'] }) // kelas baru bisa terbuat otomatis
         }}
       />
-    </div>
   )
 }
 

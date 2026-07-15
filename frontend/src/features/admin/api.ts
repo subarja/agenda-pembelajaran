@@ -9,6 +9,8 @@ export interface AdminUser {
 
 export interface ImportResult {
   success_count: number; error_count: number; errors: string[]
+  // Import siswa: baris yang NIS-nya sudah ada dan hanya dilengkapi field kosongnya.
+  completed_count?: number
 }
 
 export interface AdminTeacher {

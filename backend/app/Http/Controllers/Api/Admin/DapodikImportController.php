@@ -450,6 +450,10 @@ class DapodikImportController extends Controller
                 // 19=HP, 20=Email, 24=NamaAyah, 30=NamaIbu, 42=Rombel
                 $nama = $this->strVal($row, 1);
                 $nipd = $this->strVal($row, 2); // NIS lokal (NIPD)
+                $jk = strtoupper(substr($this->strVal($row, 3), 0, 1)) ?: null; // 'L'/'P'
+                if (! in_array($jk, ['L', 'P'], true)) {
+                    $jk = null;
+                }
                 $nisn = $this->nisnVal($row, 4);
                 $hp = $this->strVal($row, 19);
                 $email = $this->strVal($row, 20);
@@ -497,6 +501,10 @@ class DapodikImportController extends Controller
                     if ($namaIbu) {
                         $stuUpdate['nama_ibu'] = $namaIbu;
                     }
+                    // Melengkapi saja — jenis kelamin yang sudah diisi manual tidak ditimpa.
+                    if ($jk && ! $student->jenis_kelamin) {
+                        $stuUpdate['jenis_kelamin'] = $jk;
+                    }
                     $stuUpdate['updated_by'] = $actor->id;
                     $student->update($stuUpdate);
 
@@ -533,6 +541,7 @@ class DapodikImportController extends Controller
                         'user_id' => $newUser->id,
                         'nis' => $nipd ?: null,
                         'nisn' => $nisn ?: null,
+                        'jenis_kelamin' => $jk,
                         'class_id' => $kelas?->id,
                         'angkatan' => $angkatan,
                         'nama_ayah' => $namaAyah ?: null,

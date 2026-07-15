@@ -70,6 +70,34 @@ class StudentImportTest extends TestCase
         $this->assertNull(Student::where('nis', '2026003')->first()->jenis_kelamin);
     }
 
+    public function test_upload_ulang_melengkapi_field_kosong_tanpa_menimpa(): void
+    {
+        // Upload pertama: minim — tanpa NISN, tanpa JK, tanpa wali.
+        $this->post('/api/v1/admin/import/siswa', ['file' => $this->xlsx([
+            ['Ani', '2026001', '', 'X Mekatronika A', '2026', '', '', ''],
+        ])])->assertOk();
+
+        // Admin mengoreksi manual salah satu field.
+        $ani = Student::where('nis', '2026001')->first();
+        $ani->update(['wali_nama' => 'Ibu Koreksi Manual']);
+
+        // Upload ulang file yang lebih lengkap: NISN + JK + wali beda.
+        $res = $this->post('/api/v1/admin/import/siswa', ['file' => $this->xlsx([
+            ['Ani', '2026001', '0091234567', 'X Mekatronika A', '2026', 'Bapak Dari File', '0811111', 'P'],
+        ])])->assertOk()->json();
+
+        $this->assertSame(0, $res['success_count']);
+        $this->assertSame(1, $res['completed_count']);
+        $this->assertSame(0, $res['error_count']);
+
+        $ani->refresh();
+        $this->assertSame('0091234567', $ani->nisn);          // kosong → dilengkapi
+        $this->assertSame('P', $ani->jenis_kelamin);           // kosong → dilengkapi
+        $this->assertSame('0811111', $ani->wali_kontak);       // kosong → dilengkapi
+        $this->assertSame('Ibu Koreksi Manual', $ani->wali_nama); // sudah ada → TIDAK ditimpa
+        $this->assertSame(1, Student::where('nis', '2026001')->count()); // tidak duplikat
+    }
+
     public function test_jenis_kelamin_tidak_valid_ditolak_per_baris(): void
     {
         $res = $this->post('/api/v1/admin/import/siswa', ['file' => $this->xlsx([

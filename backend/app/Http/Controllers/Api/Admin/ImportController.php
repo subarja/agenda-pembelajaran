@@ -181,10 +181,11 @@ class ImportController extends Controller
     {
         $request->validate(['file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120']]);
 
-        $rows    = $this->readXlsx($request->file('file')->getRealPath());
-        $ay      = AcademicYear::where('aktif', true)->first();
-        $success = 0;
-        $errors  = [];
+        $rows      = $this->readXlsx($request->file('file')->getRealPath());
+        $ay        = AcademicYear::where('aktif', true)->first();
+        $success   = 0;
+        $completed = 0; // siswa yang sudah ada dan dilengkapi field kosongnya
+        $errors    = [];
 
         foreach ($rows as $i => $row) {
             $rowNum     = $i + 2;
@@ -211,6 +212,35 @@ class ImportController extends Controller
                     $errors[] = "Baris $rowNum: $classErr";
                     continue;
                 }
+            }
+
+            // Upload ulang = MELENGKAPI, bukan error. Siswa dengan NIS yang sama hanya
+            // diisi field-nya yang masih kosong (NISN, jenis kelamin, angkatan, data wali,
+            // kelas kalau belum punya) — nilai yang sudah ada TIDAK ditimpa, supaya
+            // koreksi manual admin/wali kelas tidak hilang karena file lama diunggah lagi.
+            $existing = $nis !== '' ? Student::where('nis', $nis)->first() : null;
+            if ($existing) {
+                if ($jenisKelamin !== null && ! in_array($jenisKelamin, ['L', 'P'], true)) {
+                    $errors[] = "Baris $rowNum: Jenis kelamin harus L atau P.";
+                    continue;
+                }
+
+                $fill = [];
+                if ($nisn && ! $existing->nisn && ! Student::where('nisn', $nisn)->where('id', '!=', $existing->id)->exists()) {
+                    $fill['nisn'] = $nisn;
+                }
+                if ($jenisKelamin && ! $existing->jenis_kelamin) $fill['jenis_kelamin'] = $jenisKelamin;
+                if ($angkatan && ! $existing->angkatan)          $fill['angkatan'] = $angkatan;
+                if ($waliNama && ! $existing->wali_nama)         $fill['wali_nama'] = $waliNama;
+                if ($waliKontak && ! $existing->wali_kontak)     $fill['wali_kontak'] = $waliKontak;
+                if ($class && ! $existing->class_id)             $fill['class_id'] = $class->id;
+
+                if (! empty($fill)) {
+                    $existing->update($fill);
+                }
+                $completed++;
+
+                continue;
             }
 
             $resolvedEmail = $nis . '@smkn2cimahi.sch.id';
@@ -263,7 +293,12 @@ class ImportController extends Controller
             }
         }
 
-        return response()->json(['success_count' => $success, 'error_count' => count($errors), 'errors' => $errors]);
+        return response()->json([
+            'success_count'   => $success,
+            'completed_count' => $completed,
+            'error_count'     => count($errors),
+            'errors'          => $errors,
+        ]);
     }
 
     // ── Import Kelas ───────────────────────────────────────────────────────────
