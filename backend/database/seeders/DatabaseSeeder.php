@@ -159,6 +159,7 @@ class DatabaseSeeder extends Seeder
         // ── Data karakter, kelas tambahan, siswa, agenda, EWS ─────────────────
         $this->call([
             CharacterSeeder::class,
+            KokurikulerDimensionSeeder::class,
             FullDemoSeeder::class,
         ]);
 

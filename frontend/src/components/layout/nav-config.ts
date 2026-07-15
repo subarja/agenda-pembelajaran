@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
-  FolderOpen, BellRing, UserPlus, Briefcase,
+  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -37,6 +37,7 @@ const allNav: Record<string, NavItem> = {
   jadwalSaya:    { label: 'Jadwal Saya',     path: '/jadwal-saya',     icon: FileText },
   inval:         { label: 'Guru Inval',      path: '/inval',           icon: UserPlus },
   pkl:           { label: 'PKL',             path: '/pkl',             icon: Briefcase },
+  kokurikuler:   { label: 'Kokurikuler',     path: '/kokurikuler',     icon: Sparkles },
   refleksi:      { label: 'Refleksi Mingguan', path: '/refleksi-mingguan', icon: BookOpenCheck },
   riwayatDokumen: { label: 'Riwayat Dokumen Penanganan', path: '/riwayat-dokumen-penanganan', icon: FolderOpen },
 }
@@ -59,6 +60,11 @@ export function getNavForUser(user: UserType): NavItem[] {
     // Menu PKL hanya saat Mode PKL aktif DAN guru ini benar-benar seorang pembimbing.
     if (user.pkl?.mode_aktif && user.pkl?.is_pembimbing) {
       items.push(allNav.pkl)
+    }
+
+    // Menu Kokurikuler hanya saat ada projek aktif yang ia fasilitasi (fasilitator = wali kelas).
+    if (user.kokurikuler?.is_fasilitator) {
+      items.push(allNav.kokurikuler)
     }
 
     if (kap?.is_wali_kelas && kap?.is_bk) {
@@ -89,6 +95,7 @@ export function getNavForUser(user: UserType): NavItem[] {
   } else if (role === 'wali_kelas') {
     // Legacy role — backward compat
     items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan)
+    if (user.kokurikuler?.is_fasilitator) items.push(allNav.kokurikuler)
     items.push(
       withSection(allNav.presensiHarian, 'Menu Wali Kelas'),
       allNav.ews, allNav.siswa, allNav.refleksi, allNav.riwayatDokumen,
@@ -104,6 +111,8 @@ export function getNavForUser(user: UserType): NavItem[] {
     items.push(allNav.ews, allNav.ewsGuru, allNav.laporan, allNav.rekapPerkembangan, allNav.kalender, allNav.hariEfektif, allNav.riwayatDokumen, allNav.admin)
   } else if (role === 'siswa') {
     items.push(allNav.jadwalSaya)
+    // Menu Kokurikuler hanya saat kelas siswa jadi peserta projek aktif.
+    if (user.kokurikuler?.is_peserta) items.push(allNav.kokurikuler)
   } else if (role === 'orang_tua') {
     // minimal — hanya dashboard + profil
   }

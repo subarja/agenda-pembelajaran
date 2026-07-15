@@ -17,16 +17,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { PasswordInput } from '@/components/ui/password-input'
 import PhotoEditWidget from '@/components/PhotoEditWidget'
 import PklAdminTab from '@/components/admin/PklAdminTab'
+import KokurikulerAdminTab from '@/components/admin/KokurikulerAdminTab'
 import { NaikKelasWizard, SalinJadwalModal } from '@/components/GantiTahunAjaran'
 import { cn } from '@/lib/utils'
 
 // ── Tab labels ────────────────────────────────────────────────────────────────
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance', 'PKL']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Import Data', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance', 'PKL', 'Kokurikuler']
 
 // GK26: notifikasi nilai manual (ManualNoteSubmittedNotification) mengirim
 // `?tab=nilai-manual` — dulu AdminPage sama sekali tidak baca query param ini jadi klik
 // notif selalu mendarat di tab default (Guru), bukan tab Nilai Manual yang dimaksud.
-const TAB_SLUG_TO_LABEL: Record<string, string> = { 'nilai-manual': 'Nilai Manual', 'pkl': 'PKL' }
+const TAB_SLUG_TO_LABEL: Record<string, string> = { 'nilai-manual': 'Nilai Manual', 'pkl': 'PKL', 'kokurikuler': 'Kokurikuler' }
 
 // ── Simple modal ──────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -3031,6 +3032,7 @@ export default function AdminPage() {
         {activeTab === 18 && <InvalAdminTab />}
         {activeTab === 19 && <DeployToolsTab />}
         {activeTab === 20 && <PklAdminTab />}
+        {activeTab === 21 && <KokurikulerAdminTab />}
       </div>
     </div>
   )

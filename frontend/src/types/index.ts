@@ -23,11 +23,18 @@ export interface User {
   kapabilitas?: Kapabilitas | null
   current_academic_year?: AcademicYearOption | null
   pkl?: PklStatus | null
+  kokurikuler?: KokurikulerStatus | null
 }
 
 export interface PklStatus {
   mode_aktif: boolean
   is_pembimbing: boolean
+}
+
+export interface KokurikulerStatus {
+  aktif: boolean
+  is_fasilitator: boolean
+  is_peserta: boolean
 }
 
 export interface AcademicYearOption {

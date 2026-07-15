@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\SchoolClass;
+use App\Support\KokurikulerMode;
 use App\Support\PklMode;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -50,6 +51,10 @@ class UserResource extends JsonResource
                     && $this->relationLoaded('teacher') && $this->teacher
                     && PklMode::isPembimbing($this->resource),
             ],
+
+            // Status modul Kokurikuler — menu muncul selama ada projek aktif di TA aktif
+            // yang melibatkan user ini (fasilitator kelas peserta / siswa kelas peserta).
+            'kokurikuler' => KokurikulerMode::statusFor($this->resource),
 
             'student' => $this->whenLoaded('student', fn () => [
                 'id'    => $this->student->uuid,

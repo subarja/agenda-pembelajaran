@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\Admin\PklObjectiveController;
 use App\Http\Controllers\Api\Admin\PklPlacementController;
 use App\Http\Controllers\Api\Admin\PklSettingController;
 use App\Http\Controllers\Api\PklController;
+use App\Http\Controllers\Api\Admin\KokurikulerAdminController;
+use App\Http\Controllers\Api\KokurikulerController;
 use App\Http\Controllers\Api\Admin\PrintSettingController;
 use App\Http\Controllers\Api\AcademicYearSelectionController;
 use App\Http\Controllers\Api\Admin\AscXmlImportController;
@@ -170,6 +172,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('pkl/students/export',       [PklController::class, 'exportStudents']);
     Route::get('pkl/rekap-absen/export',    [PklController::class, 'exportRekapAbsen']);
 
+    // ── Kokurikuler (fasilitator = wali kelas; siswa: refleksi + dokumen tim) ──
+    Route::get('kokurikuler/overview',        [KokurikulerController::class, 'overview']);
+    Route::get('kokurikuler/absen',           [KokurikulerController::class, 'absenShow']);
+    Route::post('kokurikuler/absen',          [KokurikulerController::class, 'absenStore']);
+    Route::get('kokurikuler/laporan',         [KokurikulerController::class, 'laporanIndex']);
+    Route::post('kokurikuler/laporan',        [KokurikulerController::class, 'laporanStore']);
+    Route::get('kokurikuler/refleksi',        [KokurikulerController::class, 'refleksiIndex']);
+    Route::post('kokurikuler/refleksi',       [KokurikulerController::class, 'refleksiStore']);
+    Route::get('kokurikuler/tim',             [KokurikulerController::class, 'timShow']);
+    Route::post('kokurikuler/tim',            [KokurikulerController::class, 'timStore']);
+    Route::get('kokurikuler/nilai',           [KokurikulerController::class, 'nilaiShow']);
+    Route::post('kokurikuler/nilai',          [KokurikulerController::class, 'nilaiStore']);
+    Route::get('kokurikuler/nilai/export',    [KokurikulerController::class, 'nilaiExport']);
+    Route::get('kokurikuler/saya',            [KokurikulerController::class, 'saya']);
+    Route::post('kokurikuler/dokumen',        [KokurikulerController::class, 'dokumenStore']);
+    Route::delete('kokurikuler/dokumen/{uuid}', [KokurikulerController::class, 'dokumenDestroy']);
+
     // ── Catatan Kasus Siswa (BK & Wali Kelas) ─────────────────────────────────
     Route::get('student-case-notes',                 [StudentCaseNoteController::class, 'index']);
     Route::post('student-case-notes',                [StudentCaseNoteController::class, 'store']);
@@ -323,6 +342,22 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('pkl/placements/import',       [PklPlacementController::class, 'import']);
         Route::get('pkl/placements',               [PklPlacementController::class, 'index']);
         Route::delete('pkl/placements/{uuid}',     [PklPlacementController::class, 'destroy']);
+
+        // ── Kokurikuler (projek, kelas+fasilitator, dimensi, rekap) ───────────────
+        Route::get('kokurikuler/dimensions',                   [KokurikulerAdminController::class, 'dimensions']);
+        Route::post('kokurikuler/dimensions',                  [KokurikulerAdminController::class, 'storeDimension']);
+        Route::put('kokurikuler/dimensions/{id}',              [KokurikulerAdminController::class, 'updateDimension']);
+        Route::delete('kokurikuler/dimensions/{id}',           [KokurikulerAdminController::class, 'destroyDimension']);
+        Route::get('kokurikuler/teacher-options',              [KokurikulerAdminController::class, 'teacherOptions']);
+        Route::get('kokurikuler/projects',                     [KokurikulerAdminController::class, 'index']);
+        Route::post('kokurikuler/projects',                    [KokurikulerAdminController::class, 'store']);
+        Route::put('kokurikuler/projects/{uuid}',              [KokurikulerAdminController::class, 'update']);
+        Route::delete('kokurikuler/projects/{uuid}',           [KokurikulerAdminController::class, 'destroy']);
+        Route::post('kokurikuler/projects/{uuid}/fasilitator-reset',  [KokurikulerAdminController::class, 'fasilitatorReset']);
+        Route::get('kokurikuler/projects/{uuid}/fasilitator-template', [KokurikulerAdminController::class, 'fasilitatorTemplate']);
+        Route::post('kokurikuler/projects/{uuid}/fasilitator-import', [KokurikulerAdminController::class, 'fasilitatorImport']);
+        Route::get('kokurikuler/projects/{uuid}/rekap',        [KokurikulerAdminController::class, 'rekap']);
+        Route::get('kokurikuler/projects/{uuid}/export-absen', [KokurikulerAdminController::class, 'exportAbsen']);
 
         // Sinkronisasi rekomendasi untuk semua siswa (jalankan sekali untuk data lama)
         Route::post('sync-recommendations',        function () {

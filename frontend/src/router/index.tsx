@@ -37,6 +37,7 @@ import PengaturanNotifikasiPage from '@/pages/PengaturanNotifikasiPage'
 import InvalPage from '@/pages/InvalPage'
 import PklPage from '@/pages/PklPage'
 import PklAgendaFormPage from '@/pages/PklAgendaFormPage'
+import KokurikulerPage from '@/pages/KokurikulerPage'
 
 // Spinner penuh-layar — dipakai SELAMA `hasHydrated` masih false, supaya tidak pernah
 // ada window blank putih ataupun sempat "kelihatan" redirect ke /login yang salah
@@ -123,6 +124,7 @@ export default function AppRouter() {
         <Route path="inval"                     element={<InvalPage />} />
         <Route path="pkl"                       element={<PklPage />} />
         <Route path="pkl/agenda"                element={<PklAgendaFormPage />} />
+        <Route path="kokurikuler"               element={<KokurikulerPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

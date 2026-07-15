@@ -498,15 +498,51 @@ class ReportController extends Controller
                 'tp_kode'             => $los->pluck('kode')->join(', '),
                 'kegiatan_pembelajaran' => $a->resume_kbm ?? '',
                 'keterangan'          => '',
+                '_tanggal'            => (string) $a->tanggal,
             ];
         });
+
+        // ── Kegiatan kokurikuler yang difasilitasi guru ini ikut masuk jurnal:
+        // laporan harian fasilitator adalah bukti kegiatan pembelajarannya hari itu.
+        // Tidak memengaruhi ringkasan mingguan (itu dihitung dari jadwal reguler saja). ──
+        $kkRows = \App\Models\KokurikulerReport::query()
+            ->join('kokurikuler_project_classes as kk_pc', function ($j) {
+                $j->on('kk_pc.project_id', '=', 'kokurikuler_reports.project_id')
+                  ->on('kk_pc.class_id', '=', 'kokurikuler_reports.class_id');
+            })
+            ->where('kk_pc.fasilitator_user_id', $teacher->user_id)
+            ->whereBetween('kokurikuler_reports.tanggal', [$request->tanggal_mulai, $request->tanggal_akhir])
+            ->with(['project', 'schoolClass'])
+            ->select('kokurikuler_reports.*')
+            ->get()
+            ->map(fn ($r) => [
+                'hari_tanggal'        => ucfirst(\Carbon\Carbon::parse($r->tanggal)->locale('id')->isoFormat('dddd, D MMMM YYYY')),
+                'jam'                 => '—',
+                'kelas'               => $r->schoolClass
+                    ? $r->schoolClass->tingkat->value . ' ' . $r->schoolClass->jurusan . ' - ' . $r->schoolClass->rombel
+                    : '—',
+                'mapel'               => 'Kokurikuler',
+                'tujuan_pembelajaran' => trim(($r->project?->judul ?? 'Projek Kokurikuler') .
+                    ($r->project?->tujuan ? ' — ' . $r->project->tujuan : '')),
+                'tp_kode'             => '',
+                'kegiatan_pembelajaran' => $r->isi,
+                'keterangan'          => 'Kokurikuler (fasilitator)',
+                '_tanggal'            => $r->tanggal->toDateString(),
+            ]);
+
+        $rows = $rows->concat($kkRows)
+            ->sortBy('_tanggal')
+            ->values()
+            ->map(fn ($r) => collect($r)->except('_tanggal')->all());
 
         // ── GK31: ringkasan mingguan (rata-rata pertemuan & JP terlaksana per
         // minggu vs seharusnya) — ditaruh di kotak sebelah TTD, dulu ruang itu kosong. ──
         $jumlahMingguPeriode  = max(1, (int) ceil($tglMulai->diffInDays($tglAkhir) / 7) + 1);
         $pertemuanPerMinggu   = $teacherSchedules->count(); // jumlah slot jadwal aktif/minggu
         $pertemuanSeharusnya  = $pertemuanPerMinggu * $jumlahMingguPeriode;
-        $pertemuanTerlaksana  = $rows->count();
+        // Dihitung dari agenda jadwal reguler saja — baris kokurikuler tidak ikut,
+        // karena pembandingnya (seharusnya) juga hanya dari slot jadwal reguler.
+        $pertemuanTerlaksana  = $agendas->count();
         $pctPertemuan         = $pertemuanSeharusnya > 0 ? round($pertemuanTerlaksana / $pertemuanSeharusnya * 100, 1) : 0;
 
         $jpPerPertemuan = 2; // asumsi 2 JP per pertemuan (konvensi baku aplikasi ini)
