@@ -7,11 +7,13 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
+use App\Models\BellPeriod;
 use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Support\BellSchedule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -498,6 +500,19 @@ class AscXmlImportController extends Controller
             ];
         }
 
+        // Semai tabel bel (jam-ke → pukul) per hari dari slot XML. firstOrCreate supaya
+        // re-import TIDAK menimpa bel yang sudah dikustom admin — mis. Jumat yang
+        // durasinya beda dan memang tidak pernah ada di XML aSc.
+        foreach (array_values(self::DAY_MAP) as $hari) {
+            foreach ($periods as $num => $waktu) {
+                BellPeriod::firstOrCreate(
+                    ['hari' => $hari, 'jam_ke' => $num],
+                    ['jam_mulai' => $waktu['start'], 'jam_selesai' => $waktu['end']],
+                );
+            }
+        }
+        BellSchedule::flush();
+
         // Build XML ID → DB ID maps
         $subjectMap = Subject::withTrashed()->get()->keyBy(fn ($s) => $s->nama);
         $xmlSubjectMap = [];
@@ -583,8 +598,10 @@ class AscXmlImportController extends Controller
                         }
 
                         sort($periodNums);
-                        $jamMulai = $periods[min($periodNums)]['start'] ?? null;
-                        $jamSelesai = $periods[max($periodNums)]['end'] ?? null;
+                        $jamKeMulai = min($periodNums);
+                        $jamKeSelesai = max($periodNums);
+                        $jamMulai = $periods[$jamKeMulai]['start'] ?? null;
+                        $jamSelesai = $periods[$jamKeSelesai]['end'] ?? null;
                         if (! $jamMulai || ! $jamSelesai) {
                             $skipped++;
 
@@ -605,6 +622,8 @@ class AscXmlImportController extends Controller
                             $existing->update([
                                 'subject_id' => $dbSubjectId,
                                 'teacher_id' => $dbTeacherId,
+                                'jam_ke_mulai' => $jamKeMulai,
+                                'jam_ke_selesai' => $jamKeSelesai,
                                 'jam_selesai' => $jamSelesai,
                                 'aktif' => true,
                                 'updated_by' => $actor->id,
@@ -616,6 +635,8 @@ class AscXmlImportController extends Controller
                                 'subject_id' => $dbSubjectId,
                                 'teacher_id' => $dbTeacherId,
                                 'hari' => $hari,
+                                'jam_ke_mulai' => $jamKeMulai,
+                                'jam_ke_selesai' => $jamKeSelesai,
                                 'jam_mulai' => $jamMulai,
                                 'jam_selesai' => $jamSelesai,
                                 'aktif' => true,

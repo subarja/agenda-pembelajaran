@@ -15,6 +15,7 @@ use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\TeacherAttendance;
 use App\Enums\Tingkat;
+use App\Support\BellSchedule;
 use App\Support\PklMode;
 use App\Support\SessionTeacher;
 use Illuminate\Http\JsonResponse;
@@ -157,7 +158,8 @@ class AgendaController extends Controller
             ->filter(fn ($s) => ! $agendaExists->has($s['schedule']->id . '|' . $s['tanggal']))
             ->map(function ($s) use ($setting) {
                 $schedule      = $s['schedule'];
-                $jadwalSelesai = Carbon::parse("{$s['tanggal']} {$schedule->jam_selesai}", 'Asia/Jakarta');
+                $jam           = BellSchedule::resolve($schedule, $s['tanggal']);
+                $jadwalSelesai = Carbon::parse("{$s['tanggal']} {$jam['jam_selesai']}", 'Asia/Jakarta');
                 $deadline      = $setting->batasWaktu($jadwalSelesai);
                 $now           = Carbon::now('Asia/Jakarta');
 
@@ -165,8 +167,8 @@ class AgendaController extends Controller
                     'schedule_id'  => $schedule->uuid,
                     'tanggal'      => $s['tanggal'],
                     'hari'         => ucfirst($schedule->hari->value),
-                    'jam_mulai'    => substr($schedule->jam_mulai ?? '', 0, 5),
-                    'jam_selesai'  => substr($schedule->jam_selesai ?? '', 0, 5),
+                    'jam_mulai'    => substr($jam['jam_mulai'] ?? '', 0, 5),
+                    'jam_selesai'  => substr($jam['jam_selesai'] ?? '', 0, 5),
                     'class_id'     => $schedule->schoolClass?->uuid,
                     'kelas'        => $schedule->schoolClass
                         ? "{$schedule->schoolClass->tingkat->value} {$schedule->schoolClass->jurusan} - {$schedule->schoolClass->rombel}"
@@ -377,7 +379,8 @@ class AgendaController extends Controller
     {
         $setting = AgendaFillSetting::instance();
 
-        $jadwalSelesai = Carbon::parse("{$tanggal} {$schedule->jam_selesai}");
+        $jam           = BellSchedule::resolve($schedule, $tanggal);
+        $jadwalSelesai = Carbon::parse("{$tanggal} {$jam['jam_selesai']}");
         $deadline      = $setting->batasWaktu($jadwalSelesai);
 
         abort_if(

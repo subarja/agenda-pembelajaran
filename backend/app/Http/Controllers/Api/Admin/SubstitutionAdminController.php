@@ -75,13 +75,17 @@ class SubstitutionAdminController extends Controller
                 'diajukan_pada'    => $r->created_at->timezone(config('app.school_timezone'))->format('d/m/Y H:i'),
                 'dijawab_pada'     => $r->responded_at?->timezone(config('app.school_timezone'))->format('d/m/Y H:i'),
                 'jumlah_sesi'      => $r->sessions->count(),
-                'sesi'             => $r->sessions->map(fn (SubstitutionSession $s) => [
-                    'tanggal'     => $s->tanggal->toDateString(),
-                    'jam_mulai'   => substr($s->schedule?->jam_mulai ?? '', 0, 5),
-                    'jam_selesai' => substr($s->schedule?->jam_selesai ?? '', 0, 5),
-                    'kelas'       => $s->schedule ? $this->service->labelKelas($s->schedule) : '—',
-                    'mapel'       => $s->schedule?->subject?->nama,
-                ])->values(),
+                'sesi'             => $r->sessions->map(function (SubstitutionSession $s) {
+                    $jam = $s->schedule ? \App\Support\BellSchedule::resolve($s->schedule, $s->tanggal->toDateString()) : null;
+
+                    return [
+                        'tanggal'     => $s->tanggal->toDateString(),
+                        'jam_mulai'   => substr($jam['jam_mulai'] ?? '', 0, 5),
+                        'jam_selesai' => substr($jam['jam_selesai'] ?? '', 0, 5),
+                        'kelas'       => $s->schedule ? $this->service->labelKelas($s->schedule) : '—',
+                        'mapel'       => $s->schedule?->subject?->nama,
+                    ];
+                })->values(),
             ]),
             'meta' => [
                 'total'        => $page->total(),

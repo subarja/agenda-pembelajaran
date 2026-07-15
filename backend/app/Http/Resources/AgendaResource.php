@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\BellSchedule;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -20,8 +21,7 @@ class AgendaResource extends JsonResource
             'schedule' => $this->whenLoaded('schedule', fn () => [
                 'id'          => $this->schedule->uuid,
                 'hari'        => $this->schedule->hari->value,
-                'jam_mulai'   => $this->schedule->jam_mulai,
-                'jam_selesai' => $this->schedule->jam_selesai,
+                ...BellSchedule::resolve($this->schedule, $this->tanggal->format('Y-m-d')),
                 'subject'     => [
                     'id'   => $this->schedule->subject->uuid,
                     'kode' => $this->schedule->subject->kode,

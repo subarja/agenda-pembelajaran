@@ -33,7 +33,8 @@ trait DescribesSubstitution
     protected function baris(SubstitutionSession $s): string
     {
         $tanggal = $s->tanggal->locale('id')->isoFormat('ddd, D MMM');
-        $jam     = substr($s->schedule?->jam_mulai ?? '', 0, 5).'–'.substr($s->schedule?->jam_selesai ?? '', 0, 5);
+        $waktu   = $s->schedule ? \App\Support\BellSchedule::resolve($s->schedule, $s->tanggal->toDateString()) : null;
+        $jam     = substr($waktu['jam_mulai'] ?? '', 0, 5).'–'.substr($waktu['jam_selesai'] ?? '', 0, 5);
         $kelas   = $s->schedule?->schoolClass;
         $label   = $kelas ? "{$kelas->tingkat->value} {$kelas->jurusan} {$kelas->rombel}" : '—';
         $mapel   = $s->schedule?->subject?->nama;

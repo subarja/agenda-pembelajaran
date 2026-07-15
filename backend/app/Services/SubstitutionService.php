@@ -7,6 +7,7 @@ use App\Models\AgendaFillSetting;
 use App\Models\Schedule;
 use App\Models\SubstitutionSession;
 use App\Models\Teacher;
+use App\Support\BellSchedule;
 use App\Support\PklMode;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -105,13 +106,14 @@ class SubstitutionService
 
                 $tanggal = $d->toDateString();
                 $alasan  = $this->alasanTidakBolehDiajukan($schedule, $tanggal);
+                $jam     = BellSchedule::resolve($schedule, $tanggal);
 
                 $hasil->push([
                     'schedule_id'  => $schedule->uuid,
                     'tanggal'      => $tanggal,
                     'hari'         => $schedule->hari->value,
-                    'jam_mulai'    => substr($schedule->jam_mulai, 0, 5),
-                    'jam_selesai'  => substr($schedule->jam_selesai, 0, 5),
+                    'jam_mulai'    => substr($jam['jam_mulai'], 0, 5),
+                    'jam_selesai'  => substr($jam['jam_selesai'], 0, 5),
                     'kelas'        => $this->labelKelas($schedule),
                     'mapel'        => $schedule->subject?->nama,
                     'bisa_diajukan'=> $alasan === null,
@@ -204,7 +206,9 @@ class SubstitutionService
 
     public function sesiSelesaiPada(Schedule $schedule, string $tanggal): Carbon
     {
-        return Carbon::parse($tanggal.' '.$schedule->jam_selesai, config('app.school_timezone'));
+        $jam = BellSchedule::resolve($schedule, $tanggal);
+
+        return Carbon::parse($tanggal.' '.$jam['jam_selesai'], config('app.school_timezone'));
     }
 
     public function agendaSudahDiisi(int $scheduleId, string $tanggal): bool

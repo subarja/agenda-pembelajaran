@@ -483,8 +483,9 @@ class ReportController extends Controller
             $los = $a->learningObjectives;
             $tglCarbon = \Carbon\Carbon::parse($a->tanggal)->locale('id');
 
-            $jamMulai  = substr($a->schedule->jam_mulai ?? '', 0, 5);
-            $jamSelesai = substr($a->schedule->jam_selesai ?? '', 0, 5);
+            $jamEfektif = \App\Support\BellSchedule::resolve($a->schedule, $tglCarbon->toDateString());
+            $jamMulai  = substr($jamEfektif['jam_mulai'] ?? '', 0, 5);
+            $jamSelesai = substr($jamEfektif['jam_selesai'] ?? '', 0, 5);
             $jam = $jamMulai && $jamSelesai ? "{$jamMulai} s.d {$jamSelesai}" : '—';
 
             return [

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ScheduleResource;
 use App\Models\Schedule;
+use App\Support\BellSchedule;
 use App\Support\PklMode;
 use App\Traits\ServesStoredPdf;
 use Illuminate\Http\JsonResponse;
@@ -106,13 +107,14 @@ class ScheduleController extends Controller
             ->values()
             ->map(function ($s) use ($startOfWeek, $hariOrder) {
                 $tanggal = $startOfWeek->copy()->addDays($hariOrder[$s->hari->value] ?? 0);
+                $jam     = BellSchedule::resolve($s, $tanggal->toDateString());
 
                 return [
                     'id'          => $s->uuid,
                     'hari'        => $s->hari->value,
                     'tanggal'     => $tanggal->toDateString(),
-                    'jam_mulai'   => $s->jam_mulai,
-                    'jam_selesai' => $s->jam_selesai,
+                    'jam_mulai'   => $jam['jam_mulai'],
+                    'jam_selesai' => $jam['jam_selesai'],
                     'subject'     => ['id' => $s->subject->uuid, 'kode' => $s->subject->kode, 'nama' => PklMode::subjectLabelFor($s)],
                     'class'       => [
                         'id'    => $s->schoolClass->uuid,
@@ -155,8 +157,7 @@ class ScheduleController extends Controller
             ->map(fn ($s) => [
                 'id'          => $s->uuid,
                 'hari'        => $s->hari->value,
-                'jam_mulai'   => $s->jam_mulai,
-                'jam_selesai' => $s->jam_selesai,
+                ...BellSchedule::resolve($s, $todayDate),
                 'subject'     => ['nama' => PklMode::subjectLabelFor($s), 'kode' => $s->subject->kode],
                 'guru'        => $s->teacher?->user?->nama ?? '—',
                 'agenda_hari_ini' => $s->agendas->first() ? [

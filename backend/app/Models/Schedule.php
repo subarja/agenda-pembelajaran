@@ -17,15 +17,17 @@ class Schedule extends Model
 
     protected $fillable = [
         'class_id', 'subject_id', 'teacher_id',
-        'hari', 'jam_mulai', 'jam_selesai', 'aktif',
+        'hari', 'jam_ke_mulai', 'jam_ke_selesai', 'jam_mulai', 'jam_selesai', 'aktif',
         'created_by', 'updated_by',
     ];
 
     protected function casts(): array
     {
         return [
-            'hari'  => Hari::class,
-            'aktif' => 'boolean',
+            'hari'           => Hari::class,
+            'jam_ke_mulai'   => 'integer',
+            'jam_ke_selesai' => 'integer',
+            'aktif'          => 'boolean',
         ];
     }
 
