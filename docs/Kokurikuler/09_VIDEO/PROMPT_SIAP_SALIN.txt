@@ -1,0 +1,78 @@
+AUDIENS: 16 wali kelas SMK. Banyak yang guru senior, tidak terbiasa dengan komputer
+dan HP, dan tidak suka membaca dokumen panjang. Mereka menonton video ini karena
+tidak mau membaca panduan. Video ini mungkin satu-satunya yang mereka lihat.
+
+TUJUAN: setelah menonton, guru harus (1) paham KENAPA kegiatan ini ada, (2) tahu
+APA targetnya tiap hari, (3) tahu PERSIS apa yang harus dia lakukan di kelas,
+(4) tidak takut, dan (5) tahu berkas mana yang harus dibuka.
+
+GAYA BAHASA — INI PALING PENTING:
+- Bahasa Indonesia yang SANGAT SEDERHANA. Seperti seorang rekan guru yang sedang
+  menjelaskan santai di ruang guru sambil ngopi. Bukan bahasa pejabat, bukan
+  bahasa buku.
+- Kalimat PENDEK. Satu kalimat satu gagasan. Hindari anak kalimat berlapis.
+- Sapa penonton dengan "Bapak/Ibu".
+- DILARANG memakai istilah teknis Inggris (framework, output, assessment, prototype,
+  brainstorming, stakeholder). Pakai padanan Indonesia: purwarupa, penilaian, badai ide.
+- Setiap kali muncul istilah asing atau singkatan, LANGSUNG jelaskan artinya di
+  kalimat itu juga. Jangan menunda.
+- Nada: menenangkan dan menyemangati, bukan menggurui. Banyak guru merasa cemas
+  dan merasa tidak mampu. Video ini harus membuat mereka merasa "oh, ternyata
+  cuma segini".
+- Pakai analogi sehari-hari. Contoh yang sudah ada di sumber: guru sebagai pelatih
+  sepak bola yang tidak ikut lari di lapangan; pohon berbuah busuk yang percuma
+  dipetik buahnya kalau akarnya tidak diurus. Pakai analogi seperti itu.
+
+STRUKTUR VIDEO (ikuti urutan ini, jangan diacak):
+1. Pembuka: kenapa kegiatan ini ada — sebutkan angka rapor yang nyata (7 kebiasaan
+   6,57; kreativitas 54,31 terendah; gotong royong 54,70 satu-satunya yang turun).
+2. Aturan utama: GURU TIDAK MENGAJAR, GURU MEMFASILITASI. Pakai analogi pelatih.
+3. Target 5 hari: DIRI, DATA, MANUSIA, KARYA, AKSI.
+4. Yang dinilai hanya TIGA dimensi: kreativitas, kolaborasi, kesehatan. Jelaskan
+   kenapa hanya tiga. Tegaskan hanya 3 kolom nilai per murid.
+5. "Saya sendirian?" — jelaskan enam peran murid yang menggantikan guru kedua.
+6. PAPAN KARTU: cara murid keluar kelas. Tegaskan GURU TIDAK TANDA TANGAN APA PUN,
+   dan jelaskan kenapa (melindungi guru dari tanggung jawab hukum).
+7. KAMUS ISTILAH — bagian ini WAJIB PANJANG DAN PELAN. Jelaskan satu per satu,
+   dengan contoh: Barometer Kebiasaan, Radar Kebiasaan, DISKUSI 4-2-1, Suara Waluya,
+   Voting Kaki, TEKNIK 5x KENAPA, Pohon Akar Masalah, Galeri Data, NGAJUGJUG,
+   Peta Empati, Matriks Prioritas, BADAI IDE 6-3-5, Silih Asah, Gelar Karya,
+   Sektor, Gelombang, Zona Merah, Marshal.
+   - Untuk 4-2-1: tegaskan artinya EMPAT ORANG, DUA PILIHAN, SATU KESEPAKATAN.
+   - Untuk 6-3-5: tegaskan artinya ENAM ORANG, TIGA IDE, LIMA MENIT, dan bahwa
+     kegiatan ini dilakukan SENYAP tanpa bicara.
+   - Untuk 5x KENAPA: BACAKAN LENGKAP contoh dialog toilet bau yang ada di sumber
+     ("Toiletnya bau" -> kenapa -> "airnya nggak jalan" -> kenapa -> dst sampai
+     "tidak ada tempat lapor"). Ini bagian paling penting di seluruh video.
+     Tegaskan kaidahnya: berhenti bertanya kalau akarnya SUDAH BISA DIKERJAKAN;
+     akar yang buruk cuma menyalahkan orang.
+8. BAGIAN KHUSUS UNTUK GURU YANG MERASA GAPTEK. Bagian ini WAJIB ADA dan harus
+   terdengar menenangkan. Tegaskan: guru TIDAK perlu menyentuh Google Sheet sama
+   sekali (itu tugas murid); pekerjaan guru dengan komputer cuma DUA: menekan
+   tombol panah untuk memajukan slide, dan mengisi SB/B/C/K di satu berkas Excel;
+   kalau Excel tetap sulit, boleh dicetak dan diisi dengan pulpen; kalau bingung
+   soal HP, tanya murid Tim Dokumentasi. Tutup bagian ini dengan: kemampuan yang
+   paling dibutuhkan BUKAN kemampuan teknologi, melainkan kemampuan mengamati anak
+   dan bertanya "kenapa" dengan sabar - dan itu justru keahlian guru senior.
+9. Persiapan: apa yang dikerjakan koordinator, dan apa yang dikerjakan wali kelas
+   (cuma 4 hal, sangat ringan).
+10. Jalannya HARI 1 sampai HARI 5, jam demi jam. Untuk tiap hari, tutup dengan
+    kalimat "Tugas Bapak/Ibu hari ini cuma: ..." supaya jelas dan tidak menakutkan.
+11. Berkas mana yang harus dibuka. Sebutkan nama berkasnya dengan JELAS dan PELAN:
+    KARTU SAKU GURU titik docx, dan INSTRUMEN ASESMEN titik xlsx. Tegaskan bahwa
+    yang WAJIB dibaca cuma SATU berkas: Kartu Saku, tujuh halaman.
+12. TANYA JAWAB. Bacakan pertanyaan-pertanyaan keberatan yang ada di sumber beserta
+    jawabannya, terutama: "saya sendirian, kalau ada yang celaka bagaimana",
+    "murid saya pasti kabur", "saya tidak bisa Excel", "saya bukan guru jurusan itu",
+    "ini menambah beban administrasi saya".
+13. Penutup: lima kalimat ringkasan, lalu kalimat "Saya tidak sedang malas. Saya
+    sedang mempercayai kalian."
+
+ATURAN TAMBAHAN:
+- Sebut ANGKA rapor apa adanya. Jangan dikira-kira, jangan dibulatkan.
+- ULANGI tiga hal ini beberapa kali sepanjang video, karena inilah yang paling
+  sering disalahpahami: (a) guru hanya perlu membaca SATU berkas, (b) guru TIDAK
+  menandatangani apa pun, (c) hanya TIGA dimensi yang dinilai.
+- Bicara PELAN. Beri jeda setelah gagasan penting.
+- JANGAN mengarang apa pun yang tidak ada di sumber. Kalau tidak ada di sumber,
+  jangan disebut.

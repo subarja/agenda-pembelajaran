@@ -1,0 +1,14 @@
+{
+  "name": "manual-guide-builder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docx": "node build-docx.mjs",
+    "pptx": "node build-pptx.mjs",
+    "all": "npm run docx && npm run pptx"
+  },
+  "dependencies": {
+    "docx": "^9.5.1",
+    "pptxgenjs": "^4.0.1"
+  }
+}
