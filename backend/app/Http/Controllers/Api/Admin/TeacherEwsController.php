@@ -397,10 +397,12 @@ class TeacherEwsController extends Controller
                 }
             }
 
+            $jamEfektif = \App\Support\BellSchedule::resolve($schedule, $s['tanggal']);
+
             $rows[] = [
                 'tanggal' => $s['tanggal'],
                 'hari'    => ucfirst($schedule->hari->value),
-                'jam'     => substr($schedule->jam_mulai ?? '', 0, 5) . ' - ' . substr($schedule->jam_selesai ?? '', 0, 5),
+                'jam'     => substr($jamEfektif['jam_mulai'] ?? '', 0, 5) . ' - ' . substr($jamEfektif['jam_selesai'] ?? '', 0, 5),
                 'kelas'   => $schedule->schoolClass
                     ? "{$schedule->schoolClass->tingkat->value} {$schedule->schoolClass->jurusan} - {$schedule->schoolClass->rombel}"
                     : '—',

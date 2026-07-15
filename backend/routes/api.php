@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\AcademicYearController;
 use App\Http\Controllers\Api\Admin\AgendaFillSettingController;
+use App\Http\Controllers\Api\Admin\BellScheduleController;
 use App\Http\Controllers\Api\Admin\PromotionController;
 use App\Http\Controllers\Api\Admin\ScheduleCopyController;
 use App\Http\Controllers\Api\Admin\PklObjectiveController;
@@ -330,6 +331,16 @@ Route::middleware('auth:sanctum')->group(function () {
         // ── Pengaturan Waktu Pengisian Agenda (batas hari/jam pasca jadwal) ────────
         Route::get('agenda-fill-settings',                      [AgendaFillSettingController::class, 'show']);
         Route::put('agenda-fill-settings',                      [AgendaFillSettingController::class, 'update']);
+
+        // ── Jam & Bel (bel per hari, mode Apel/Tanpa Apel, pengecualian tanggal) ───
+        Route::get('bell-schedule',                             [BellScheduleController::class, 'show']);
+        Route::put('bell-schedule/periods',                     [BellScheduleController::class, 'updatePeriods']);
+        Route::post('bell-schedule/modes',                      [BellScheduleController::class, 'storeMode']);
+        Route::put('bell-schedule/modes/{mode}',                [BellScheduleController::class, 'updateMode']);
+        Route::delete('bell-schedule/modes/{mode}',             [BellScheduleController::class, 'destroyMode']);
+        Route::put('bell-schedule/day-defaults',                [BellScheduleController::class, 'updateDayDefaults']);
+        Route::post('bell-schedule/overrides',                  [BellScheduleController::class, 'storeOverrides']);
+        Route::delete('bell-schedule/overrides/{override}',     [BellScheduleController::class, 'destroyOverride']);
 
         // ── Mode PKL (saklar, TP khusus, penempatan) ──────────────────────────────
         Route::get('pkl/setting',                  [PklSettingController::class, 'show']);

@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo, useEffect, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing, GraduationCap, CopyPlus, Lock, LockOpen, Database, Star, Settings, BookOpen, CalendarClock, CalendarRange, UserCog, Gauge, ClipboardEdit, DatabaseBackup, Timer, Cloud, UserPlus, Wrench, Briefcase, Sparkles, School, FolderUp, type LucideIcon } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing, GraduationCap, CopyPlus, Lock, LockOpen, Database, Star, Settings, BookOpen, CalendarClock, CalendarRange, UserCog, Gauge, ClipboardEdit, DatabaseBackup, Timer, Cloud, UserPlus, Wrench, Briefcase, Sparkles, School, FolderUp, AlarmClock, type LucideIcon } from 'lucide-react'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
 import { fcmAdminApi } from '@/features/notifikasi/api'
@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { PasswordInput } from '@/components/ui/password-input'
 import PhotoEditWidget from '@/components/PhotoEditWidget'
 import PklAdminTab from '@/components/admin/PklAdminTab'
+import BelAdminTab from '@/components/admin/BelAdminTab'
 import KokurikulerAdminTab from '@/components/admin/KokurikulerAdminTab'
 import { NaikKelasWizard, SalinJadwalModal } from '@/components/GantiTahunAjaran'
 import { cn } from '@/lib/utils'
@@ -24,7 +25,7 @@ import { cn } from '@/lib/utils'
 // ── Tab labels ────────────────────────────────────────────────────────────────
 // Blok render & prefetch memetakan tab lewat LABEL, jadi urutan array ini bebas
 // diubah — tapi label harus konsisten dengan TAB_META, TAB_GROUPS, dan blok render.
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance', 'PKL', 'Kokurikuler']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance', 'PKL', 'Kokurikuler', 'Jam & Bel']
 
 // Metadata tiap tab: slug (URL ?tab=), ikon, dan deskripsi satu kalimat.
 // Slug lama (nilai-manual, pkl, kokurikuler) TIDAK boleh berubah — dipakai deep-link
@@ -51,13 +52,14 @@ const TAB_META: Record<string, { slug: string; icon: LucideIcon; desc: string }>
   'Deploy & Maintenance': { slug: 'deploy',         icon: Wrench,         desc: 'Alat rilis, cache, dan pemeliharaan aplikasi.' },
   'PKL':                { slug: 'pkl',              icon: Briefcase,      desc: 'Mode PKL kelas XII: saklar, TP khusus, impor penempatan.' },
   'Kokurikuler':        { slug: 'kokurikuler',      icon: Sparkles,       desc: 'Projek kokurikuler: periode, tingkat, dimensi, fasilitator, rekap.' },
+  'Jam & Bel':          { slug: 'jam-bel',          icon: AlarmClock,     desc: 'Bel per hari (jam ke-), mode Apel/Tanpa Apel, pengecualian tanggal.' },
 }
 
 // Pengelompokan navigasi — 22 tab datar terlalu membingungkan; dua tingkat
 // (kategori → menu) membuat semuanya terlihat tanpa scroll horizontal.
 const TAB_GROUPS: { label: string; icon: LucideIcon; tabs: string[] }[] = [
   { label: 'Data Master',     icon: Database,      tabs: ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Pengguna'] },
-  { label: 'Akademik',        icon: GraduationCap, tabs: ['Tahun Ajaran', 'Kalender', 'Pengaturan Agenda', 'Guru Inval', 'PKL', 'Kokurikuler'] },
+  { label: 'Akademik',        icon: GraduationCap, tabs: ['Tahun Ajaran', 'Kalender', 'Jam & Bel', 'Pengaturan Agenda', 'Guru Inval', 'PKL', 'Kokurikuler'] },
   { label: 'Karakter & Nilai', icon: Star,         tabs: ['Karakter', 'Ambang', 'Nilai Manual'] },
   { label: 'Import & Berkas', icon: FolderUp,      tabs: ['Foto Siswa & Guru', 'Jadwal PDF'] },
   { label: 'Sistem',          icon: Settings,      tabs: ['Backup & Restore', 'Penyimpanan', 'Notifikasi Push', 'Deploy & Maintenance'] },
@@ -3176,6 +3178,7 @@ export default function AdminPage() {
         {activeLabel === 'Deploy & Maintenance' && <DeployToolsTab />}
         {activeLabel === 'PKL' && <PklAdminTab />}
         {activeLabel === 'Kokurikuler' && <KokurikulerAdminTab />}
+        {activeLabel === 'Jam & Bel' && <BelAdminTab />}
       </div>
     </div>
   )

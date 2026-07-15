@@ -256,14 +256,18 @@ class SubstitutionController extends Controller
             'alasan_penolakan' => $r->alasan_penolakan,
             'responded_at'     => $r->responded_at?->timezone(config('app.school_timezone'))->format('d/m/Y H:i'),
             'created_at'       => $r->created_at->timezone(config('app.school_timezone'))->format('d/m/Y H:i'),
-            'sesi'             => $r->sessions->map(fn (SubstitutionSession $s) => [
-                'tanggal'     => $s->tanggal->toDateString(),
-                'hari'        => $s->schedule?->hari->value,
-                'jam_mulai'   => substr($s->schedule?->jam_mulai ?? '', 0, 5),
-                'jam_selesai' => substr($s->schedule?->jam_selesai ?? '', 0, 5),
-                'kelas'       => $s->schedule ? $this->service->labelKelas($s->schedule) : '—',
-                'mapel'       => $s->schedule ? PklMode::subjectLabelFor($s->schedule) : null,
-            ])->values(),
+            'sesi'             => $r->sessions->map(function (SubstitutionSession $s) {
+                $jam = $s->schedule ? \App\Support\BellSchedule::resolve($s->schedule, $s->tanggal->toDateString()) : null;
+
+                return [
+                    'tanggal'     => $s->tanggal->toDateString(),
+                    'hari'        => $s->schedule?->hari->value,
+                    'jam_mulai'   => substr($jam['jam_mulai'] ?? '', 0, 5),
+                    'jam_selesai' => substr($jam['jam_selesai'] ?? '', 0, 5),
+                    'kelas'       => $s->schedule ? $this->service->labelKelas($s->schedule) : '—',
+                    'mapel'       => $s->schedule ? PklMode::subjectLabelFor($s->schedule) : null,
+                ];
+            })->values(),
         ];
     }
 }

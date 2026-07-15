@@ -37,15 +37,17 @@ class SubstitutionSession extends Model
         return $this->schedule_id.'|'.$this->tanggal->toDateString();
     }
 
-    /** Waktu sesi ini benar-benar berakhir (tanggal + jam_selesai jadwal), zona sekolah. */
+    /** Waktu sesi ini benar-benar berakhir (tanggal + jam selesai efektif), zona sekolah. */
     public function selesaiPada(): ?Carbon
     {
         if (! $this->schedule) {
             return null;
         }
 
+        $jam = \App\Support\BellSchedule::resolve($this->schedule, $this->tanggal->toDateString());
+
         return Carbon::parse(
-            $this->tanggal->toDateString().' '.$this->schedule->jam_selesai,
+            $this->tanggal->toDateString().' '.$jam['jam_selesai'],
             config('app.school_timezone'),
         );
     }
