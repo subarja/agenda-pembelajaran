@@ -243,6 +243,7 @@ class KokurikulerAdminController extends Controller
 
         $ayId = KokurikulerMode::activeAcademicYearId();
         abort_if(! $ayId, 422, 'Belum ada tahun ajaran aktif.');
+        $this->assertPeriodeDalamTahunAjaran($ayId, $data['tanggal_mulai'], $data['tanggal_selesai']);
 
         $project = DB::transaction(function () use ($data, $ayId) {
             $project = KokurikulerProject::create([
@@ -266,11 +267,21 @@ class KokurikulerAdminController extends Controller
     {
         $project = KokurikulerProject::where('uuid', $uuid)->firstOrFail();
         $data    = $this->validated($request);
+        $this->assertPeriodeDalamTahunAjaran($project->academic_year_id, $data['tanggal_mulai'], $data['tanggal_selesai']);
 
-        DB::transaction(function () use ($project, $data) {
+        DB::transaction(function () use ($request, $project, $data) {
             $project->update(collect($data)->except(['classes', 'dimensi'])->all());
-            $this->syncClasses($project, $data['classes'] ?? []);
-            $this->syncDimensions($project, $data['dimensi'] ?? []);
+
+            // Sinkronkan HANYA bila key-nya benar-benar dikirim. Dulu `?? []`
+            // membuat PUT tanpa key classes/dimensi (mis. klien lama yang cuma
+            // mengubah status) MENGHAPUS seluruh kelas peserta secara diam-diam —
+            // fasilitator lenyap tanpa jejak (kasus nyata projek "Sakola Waluya").
+            if ($request->has('classes')) {
+                $this->syncClasses($project, $data['classes'] ?? []);
+            }
+            if ($request->has('dimensi')) {
+                $this->syncDimensions($project, $data['dimensi'] ?? []);
+            }
         });
 
         return response()->json([
@@ -503,6 +514,29 @@ class KokurikulerAdminController extends Controller
 
     // ── Helper internal ────────────────────────────────────────────────────────
 
+    /**
+     * Tolak periode projek yang SELURUHNYA di luar rentang tahun ajaran — projek akan
+     * terikat ke TA yang salah dan tak pernah dianggap "berjalan" setelah TA berganti.
+     * Kasus nyata: "Sakola Waluya" (15–21 Jul) dibuat saat TA 2025/2026 genap masih
+     * aktif (berakhir 19 Jun) — fasilitator & tagihannya mati senyap.
+     */
+    private function assertPeriodeDalamTahunAjaran(int $ayId, string $mulai, string $selesai): void
+    {
+        $ay = \App\Models\AcademicYear::find($ayId);
+        if (! $ay) {
+            return;
+        }
+
+        $luar = $selesai < $ay->tanggal_mulai->toDateString()
+            || $mulai > $ay->tanggal_selesai->toDateString();
+
+        abort_if($luar, 422,
+            "Periode projek ($mulai s.d. $selesai) berada di luar rentang tahun ajaran "
+            ."{$ay->tahun} ".ucfirst($ay->semester->value)
+            ." ({$ay->tanggal_mulai->toDateString()} s.d. {$ay->tanggal_selesai->toDateString()}). "
+            .'Aktifkan tahun ajaran yang sesuai dulu, atau sesuaikan tanggal projek.');
+    }
+
     private function projectRelations(): array
     {
         return [
@@ -581,7 +615,9 @@ class KokurikulerAdminController extends Controller
 
         foreach ($rows as $row) {
             $class = $classes->get($row['id']);
-            if (! $class) continue;
+            // Dulu id tak dikenal di-skip diam-diam — kelas yang admin kira tersimpan
+            // bisa hilang tanpa error. Sekarang ditolak terang-terangan.
+            abort_if(! $class, 422, 'Ada kelas pada daftar peserta yang tidak dikenal — muat ulang halaman lalu coba lagi.');
 
             $override = $row['fasilitator_user_id'] ?? null;
             KokurikulerProjectClass::updateOrCreate(

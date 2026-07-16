@@ -156,6 +156,66 @@ class KokurikulerBillingTest extends TestCase
         $this->assertSame(['2026-03-10', '2026-03-11'], $kk->pluck('tanggal')->all());
     }
 
+    // ── Anti-footgun: update projek tidak boleh diam-diam menghapus kelas ────
+
+    public function test_put_tanpa_key_classes_tidak_menghapus_kelas_terdaftar(): void
+    {
+        KokurikulerProjectClass::create([
+            'project_id' => $this->project->id, 'class_id' => $this->kelasXiA->id,
+            'fasilitator_user_id' => $this->waliXi->id,
+        ]);
+
+        $admin = User::create(['nama' => 'Admin', 'email' => 'admin@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Admin]);
+        Sanctum::actingAs($admin);
+
+        // Simulasi klien yang hanya mengubah status — tanpa key classes/dimensi.
+        $this->putJson("/api/v1/admin/kokurikuler/projects/{$this->project->uuid}", [
+            'judul' => $this->project->judul, 'status' => 'aktif',
+            'tanggal_mulai' => '2026-03-09', 'tanggal_selesai' => '2026-03-13',
+        ])->assertOk();
+
+        $this->assertDatabaseCount('kokurikuler_project_classes', 1); // TIDAK terhapus
+
+        // Kirim classes eksplisit kosong = memang melepas semua (perilaku sengaja).
+        $this->putJson("/api/v1/admin/kokurikuler/projects/{$this->project->uuid}", [
+            'judul' => $this->project->judul, 'status' => 'aktif',
+            'tanggal_mulai' => '2026-03-09', 'tanggal_selesai' => '2026-03-13',
+            'classes' => [],
+        ])->assertOk();
+
+        $this->assertDatabaseCount('kokurikuler_project_classes', 0);
+    }
+
+    public function test_periode_di_luar_tahun_ajaran_aktif_ditolak(): void
+    {
+        $admin = User::create(['nama' => 'Admin Tiga', 'email' => 'admin3@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Admin]);
+        Sanctum::actingAs($admin);
+
+        // TA aktif 2026-01-05..2026-06-19; projek Juli SELURUHNYA di luar → tolak.
+        $this->postJson('/api/v1/admin/kokurikuler/projects', [
+            'judul' => 'Projek Salah TA', 'status' => 'draft',
+            'tanggal_mulai' => '2026-07-15', 'tanggal_selesai' => '2026-07-21',
+        ])->assertStatus(422);
+
+        // Menyentuh rentang TA (walau melewati batas akhir) tetap boleh.
+        $this->postJson('/api/v1/admin/kokurikuler/projects', [
+            'judul' => 'Projek Ujung Semester', 'status' => 'draft',
+            'tanggal_mulai' => '2026-06-15', 'tanggal_selesai' => '2026-06-22',
+        ])->assertCreated();
+    }
+
+    public function test_kelas_tak_dikenal_ditolak_bukan_diskip_diam_diam(): void
+    {
+        $admin = User::create(['nama' => 'Admin Dua', 'email' => 'admin2@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Admin]);
+        Sanctum::actingAs($admin);
+
+        $this->putJson("/api/v1/admin/kokurikuler/projects/{$this->project->uuid}", [
+            'judul' => $this->project->judul, 'status' => 'aktif',
+            'tanggal_mulai' => '2026-03-09', 'tanggal_selesai' => '2026-03-13',
+            'classes' => [['id' => 'uuid-tidak-ada', 'fasilitator_user_id' => null]],
+        ])->assertStatus(422);
+    }
+
     public function test_guru_non_fasilitator_tidak_dapat_tagihan_kokurikuler(): void
     {
         KokurikulerProjectClass::create([
