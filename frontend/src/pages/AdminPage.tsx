@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo, useEffect, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing, GraduationCap, CopyPlus, Lock, LockOpen, Database, Star, Settings, BookOpen, CalendarClock, CalendarRange, UserCog, Gauge, ClipboardEdit, DatabaseBackup, Timer, Cloud, UserPlus, Wrench, Briefcase, Sparkles, School, FolderUp, AlarmClock, type LucideIcon } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, Check, AlertCircle, Upload, Download, FileCode2, CheckCircle2, XCircle, Key, Users, Search, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, Calendar, ImageIcon, FolderOpen, FileText, BellRing, GraduationCap, CopyPlus, Copy, Lock, LockOpen, Database, Star, Settings, BookOpen, CalendarClock, CalendarRange, UserCog, Gauge, ClipboardEdit, DatabaseBackup, Timer, Cloud, UserPlus, Wrench, Briefcase, Sparkles, School, FolderUp, AlarmClock, type LucideIcon } from 'lucide-react'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
 import { fcmAdminApi } from '@/features/notifikasi/api'
@@ -2309,8 +2309,10 @@ function PenggunaTab() {
   const [resetPw, setResetPw] = useState('')
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
-  const [genMsg, setGenMsg] = useState('')
   const [genLoading, setGenLoading] = useState(false)
+  // Popup hasil generate/reset — blocking sampai admin klik OK, memberitahu
+  // untuk siapa, nama pengguna apa, dan passwordnya apa.
+  const [pwResult, setPwResult] = useState<{ mode: 'generate' | 'reset'; target: string; username: string; password: string; isDefault?: boolean } | null>(null)
   const debouncedQ = useDebounce(q, 350)
 
   // ── Admin/BK/OrangTua query ────────────────────────────────────────────────
@@ -2359,9 +2361,12 @@ function PenggunaTab() {
     onSuccess: () => { refetchGuru(); refetchSiswa() },
   })
   const doResetPw = useMutation({
-    mutationFn: ({ uuid, password }: { uuid: string; password: string }) =>
-      api.put(`/admin/users/${uuid}/reset-password`, { password }),
-    onSuccess: () => { setModal(null); setResetPw(''); setErr('') },
+    mutationFn: ({ uuid, password }: { uuid: string; password?: string }) =>
+      api.put(`/admin/users/${uuid}/reset-password`, password ? { password } : {}).then(r => r.data),
+    onSuccess: (data: any) => {
+      setModal(null); setResetPw(''); setErr('')
+      setPwResult({ mode: 'reset', target: data.target, username: data.username, password: data.password, isDefault: data.is_default })
+    },
     onError: (e: any) => setErr(e.response?.data?.message || 'Gagal'),
   })
 
@@ -2386,13 +2391,15 @@ function PenggunaTab() {
 
   async function generateAccounts(type: 'guru' | 'siswa') {
     if (!window.confirm(`Set password default untuk semua ${type === 'guru' ? 'guru' : 'siswa'}? Tindakan ini tidak dapat diurungkan.`)) return
-    setGenLoading(true); setGenMsg('')
+    setGenLoading(true)
     try {
       const r = await api.post('/admin/generate-accounts', null, { params: { type } })
-      setGenMsg(r.data.message)
+      const d = r.data
+      setPwResult({ mode: 'generate', target: d.target, username: d.username, password: d.password })
       if (type === 'guru') refetchGuru(); else refetchSiswa()
-    } catch { setGenMsg('Gagal generate akun.') }
-    finally { setGenLoading(false) }
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Gagal generate akun.')
+    } finally { setGenLoading(false) }
   }
 
   const roleColor: Record<string, string> = {
@@ -2435,8 +2442,6 @@ function PenggunaTab() {
           </Button>
         )}
       </div>
-      {genMsg && <div className="rounded bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">{genMsg}</div>}
-
       {/* ── Admin/BK/OrangTua sub-tab ────────────────────────────────────────── */}
       {subTab === 'admin' && (
         <>
@@ -2490,7 +2495,7 @@ function PenggunaTab() {
                   <tr>
                     <Th label="#" />
                     <Th label="Nama" />
-                    {subTab === 'guru' ? <Th label="NIP" /> : <Th label="NISN" />}
+                    <Th label="Nama Pengguna" />
                     {subTab === 'guru' ? <Th label="Mapel" /> : <Th label="Kelas" />}
                     <Th label="Peran" />
                     <Th label="Status" />
@@ -2509,7 +2514,7 @@ function PenggunaTab() {
                           {u.nama}
                         </div>
                       </td>
-                      <td className="px-3 py-2 font-mono">{subTab === 'guru' ? (u.nip || '—') : (u.nisn || '—')}</td>
+                      <td className="px-3 py-2 font-mono">{u.username || '—'}</td>
                       <td className="px-3 py-2 text-muted-foreground">{subTab === 'guru' ? (u.mapel_utama || '—') : (u.kelas || '—')}</td>
                       <td className="px-3 py-2"><Badge className={roleColor[u.role] || 'bg-gray-100 text-gray-700'}>{u.role.replace(/_/g, ' ')}</Badge></td>
                       <td className="px-3 py-2">
@@ -2583,17 +2588,53 @@ function PenggunaTab() {
             <PasswordInput className={inputCls} placeholder="Min. 8 karakter" value={resetPw}
               onChange={e => setResetPw(e.target.value)} />
           </Field>
+          <p className="-mt-1 text-xs text-muted-foreground">Kosongkan untuk memakai <strong>password default</strong> (sesuai peran).</p>
           {err && <ErrMsg msg={err} />}
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setModal(null)}>Batal</Button>
-            <Button size="sm" disabled={doResetPw.isPending || resetPw.length < 8}
-              onClick={() => selected && doResetPw.mutate({ uuid: selected.id, password: resetPw })}>
+            <Button size="sm" disabled={doResetPw.isPending || (resetPw.length > 0 && resetPw.length < 8)}
+              onClick={() => selected && doResetPw.mutate({ uuid: selected.id, password: resetPw || undefined })}>
               {doResetPw.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Key className="h-4 w-4" />}
-              Reset Password
+              {resetPw ? 'Reset Password' : 'Pakai Default'}
             </Button>
           </div>
         </Modal>
       ) : null}
+
+      {/* ── Popup hasil generate / reset — blocking, tutup dengan OK ──────────── */}
+      {pwResult && (
+        <Modal
+          title={pwResult.mode === 'generate' ? 'Akun Berhasil Digenerate' : (pwResult.isDefault ? 'Password Direset ke Default' : 'Password Berhasil Direset')}
+          onClose={() => setPwResult(null)}>
+          <div className="space-y-3 text-sm">
+            <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 p-3 text-green-800">
+              <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
+              <p>Catat informasi berikut dan sampaikan kepada pengguna. Password ini <strong>wajib diganti</strong> saat login pertama.</p>
+            </div>
+            <dl className="rounded-lg border divide-y">
+              <div className="flex gap-3 px-3 py-2">
+                <dt className="w-28 shrink-0 text-muted-foreground">Untuk</dt>
+                <dd className="font-medium break-words">{pwResult.target}</dd>
+              </div>
+              <div className="flex gap-3 px-3 py-2">
+                <dt className="w-28 shrink-0 text-muted-foreground">Nama Pengguna</dt>
+                <dd className="font-mono break-all">{pwResult.username}</dd>
+              </div>
+              <div className="flex items-center gap-3 px-3 py-2">
+                <dt className="w-28 shrink-0 text-muted-foreground">Password</dt>
+                <dd className="font-mono font-semibold break-all">{pwResult.password}</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button variant="outline" size="sm"
+              onClick={() => navigator.clipboard?.writeText(`Nama Pengguna: ${pwResult.username}\nPassword: ${pwResult.password}`)}>
+              <Copy className="h-4 w-4 mr-1" /> Salin Username &amp; Password
+            </Button>
+            <Button size="sm" onClick={() => setPwResult(null)}><Check className="h-4 w-4 mr-1" /> OK, Sudah Dicatat</Button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
