@@ -208,6 +208,19 @@ class PklModeTest extends TestCase
         ]);
     }
 
+    public function test_normalisasi_telpon_semua_varian_format(): void
+    {
+        // Semua bentuk penulisan nomor HP harus berakhir 62… siap tautan wa.me.
+        $this->assertSame('6281234567890', PklPlacement::normalizeTelpon('081234567890'));
+        $this->assertSame('6281234567890', PklPlacement::normalizeTelpon('81234567890'));      // Excel menelan 0
+        $this->assertSame('6281234567890', PklPlacement::normalizeTelpon('+6281234567890'));
+        $this->assertSame('6281234567890', PklPlacement::normalizeTelpon('6281234567890'));
+        $this->assertSame('6281234567890', PklPlacement::normalizeTelpon('+62 0812-3456-7890')); // 62 + nol sisipan
+        $this->assertSame('6281234567890', PklPlacement::normalizeTelpon('(0812) 3456 7890'));
+        $this->assertNull(PklPlacement::normalizeTelpon(''));
+        $this->assertNull(PklPlacement::normalizeTelpon('  -  '));
+    }
+
     public function test_import_penempatan_fallback_nis_saat_nisn_kosong(): void
     {
         $this->siswa->update(['nis' => '232400123']);

@@ -59,6 +59,10 @@ class PklPlacement extends Model
         if ($digits === '') {
             return null;
         }
+        if (str_starts_with($digits, '620')) {
+            // "+62 0812…" — nol sisipan setelah kode negara dibuang.
+            return '62'.substr($digits, 3);
+        }
         if (str_starts_with($digits, '0')) {
             return '62'.substr($digits, 1);
         }
