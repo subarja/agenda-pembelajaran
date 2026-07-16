@@ -70,32 +70,15 @@ class PklMode
             ->exists();
     }
 
-    /** id kelas XII (TA aktif) yang diajar guru ini lewat ploting jadwal aktif. */
-    public static function taughtXiiClassIds(int $teacherId): array
-    {
-        return Schedule::tahunAjaran()
-            ->where('teacher_id', $teacherId)
-            ->where('aktif', true)
-            ->whereHas('schoolClass', fn ($q) => $q->where('tingkat', Tingkat::XII->value))
-            ->pluck('class_id')
-            ->unique()
-            ->values()
-            ->all();
-    }
-
     /**
-     * Guru berhak masuk alur agenda PKL bila ia pembimbing (penugasan, walau tanpa
-     * ploting) ATAU ber-ploting jadwal di kelas XII (walau tanpa penugasan bimbingan).
-     * Keduanya setara: agenda PKL mingguan lepas dari jadwal harian.
+     * Guru berhak masuk alur agenda PKL HANYA bila ia pembimbing (punya penugasan
+     * placement). Ploting jadwal XII saja tidak cukup — keputusan 2026-07-17: guru
+     * ploting tanpa penugasan sempat melihat seluruh siswa kelas (mis. 32 siswa
+     * XII MEKA C), padahal tanggung jawab agenda/presensi PKL melekat ke pembimbing.
      */
     public static function canFillAgenda(User $user): bool
     {
-        $teacher = $user->teacher;
-        if (! $teacher) {
-            return false;
-        }
-
-        return self::isPembimbing($user) || self::taughtXiiClassIds($teacher->id) !== [];
+        return self::isPembimbing($user);
     }
 
     /** @var array<int, array{0:string,1:string}>|null cache periode PKL per kelas (TA aktif) */
@@ -135,6 +118,90 @@ class PklMode
     public static function flush(): void
     {
         self::$placementRanges = null;
+    }
+
+    /**
+     * Tagihan agenda PKL mingguan seorang pembimbing untuk daftar "perlu diisi"
+     * di dashboard — bentuk barisnya sama dengan sesi reguler/kokurikuler.
+     *
+     * Yang ditagih: minggu yang SUDAH berjalan, di DALAM rentang semester aktif
+     * (minggu Sen–Jum yang beririsan), dalam rentang penempatan siswa bimbingannya
+     * di kelas itu, dan belum ada agenda-nya. Minggu yang belum mulai tidak pernah
+     * muncul; minggu lewat deadline tetap muncul sebagai "lewat batas" (pola sama
+     * dengan sesi reguler).
+     */
+    public static function tagihanPembimbing(User $user, \App\Models\AgendaFillSetting $setting): array
+    {
+        $teacher = $user->teacher;
+        if (! $teacher) {
+            return [];
+        }
+
+        $ayId = self::activeAcademicYearId();
+        $placements = PklPlacement::where('pembimbing_teacher_id', $teacher->id)
+            ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
+            ->with('schoolClass')
+            ->get();
+        if ($placements->isEmpty()) {
+            return [];
+        }
+
+        $ay         = \App\Support\TahunAjaran::current();
+        $semMulai   = $ay?->tanggal_mulai->toDateString();
+        $semSelesai = $ay?->tanggal_selesai->toDateString();
+
+        $now  = Carbon::now(config('app.school_timezone'));
+        $rows = [];
+
+        foreach ($placements->groupBy('class_id') as $classId => $group) {
+            $class = $group->first()->schoolClass;
+            if (! $class) {
+                continue;
+            }
+
+            $terisi = \App\Models\PklAgenda::where('pembimbing_teacher_id', $teacher->id)
+                ->where('class_id', $classId)
+                ->pluck('minggu_mulai')
+                ->map(fn ($t) => substr((string) $t, 0, 10))
+                ->flip();
+
+            $senin = Carbon::parse($group->min('tanggal_mulai'))->startOfWeek(Carbon::MONDAY);
+            $akhir = Carbon::parse($group->max('tanggal_selesai'));
+
+            for (; $senin->lte($akhir); $senin->addWeek()) {
+                if ($now->lt($senin)) {
+                    break;                                          // minggu belum berjalan
+                }
+                $key   = $senin->toDateString();
+                $jumat = $senin->copy()->addDays(4)->toDateString();
+                if ($terisi->has($key)) {
+                    continue;
+                }
+                if ($semMulai && ($key > $semSelesai || $jumat < $semMulai)) {
+                    continue;                                       // di luar periode semester
+                }
+
+                $deadline = self::fillDeadline($senin->copy());
+                $rows[] = [
+                    'jenis'        => 'pkl',
+                    // Kunci unik utk daftar FE — bukan uuid jadwal sungguhan.
+                    'schedule_id'  => "pkl|{$class->uuid}|{$key}",
+                    'tanggal'      => $key,
+                    'hari'         => 'Senin',
+                    'jam_mulai'    => '',
+                    'jam_selesai'  => '',
+                    'class_id'     => $class->uuid,
+                    'kelas'        => $class->label(),
+                    'mapel'        => 'Agenda PKL Mingguan',
+                    'minggu'       => $key,
+                    'deadline'     => $deadline->format('Y-m-d H:i'),
+                    'bisa_diisi'   => $now->lte($deadline),
+                    'jam_tersisa'  => $now->lte($deadline) ? $now->diffInHours($deadline) : null,
+                ];
+            }
+        }
+
+        return $rows;
     }
 
     /**

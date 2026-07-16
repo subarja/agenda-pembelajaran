@@ -38,15 +38,20 @@ export function AgendaPerluDiisiList({
           : new Date(s.tanggal + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })
         const active = key === selectedKey
 
-        // Tagihan kokurikuler diisi di halaman Kokurikuler, bukan form agenda reguler —
-        // ditangani di sini supaya keempat pemanggil (Dashboard/Agenda/Form) tidak
-        // perlu tahu bedanya.
+        // Tagihan kokurikuler diisi di halaman Kokurikuler, tagihan PKL di form agenda
+        // PKL mingguan — ditangani di sini supaya semua pemanggil (Dashboard/Agenda/
+        // Form) tidak perlu tahu bedanya.
         const isKokurikuler = s.jenis === 'kokurikuler'
+        const isPkl = s.jenis === 'pkl'
 
         return (
           <button
             key={key} type="button"
-            onClick={() => isKokurikuler ? navigate('/kokurikuler') : onSelect(s)}
+            onClick={() => isKokurikuler
+              ? navigate('/kokurikuler')
+              : isPkl
+                ? navigate(`/pkl/agenda?class_id=${s.class_id}&minggu=${s.minggu ?? s.tanggal}`)
+                : onSelect(s)}
             className={cn(
               'w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
               active ? 'border-primary-600 bg-primary-50'
@@ -67,7 +72,7 @@ export function AgendaPerluDiisiList({
             </div>
             {s.bisa_diisi ? (
               <span className="shrink-0 rounded-md bg-primary-600 px-3 py-1 text-xs font-medium text-white">
-                {isKokurikuler ? 'Isi Laporan' : 'Isi Agenda'}
+                {isKokurikuler ? 'Isi Laporan' : isPkl ? 'Isi Agenda PKL' : 'Isi Agenda'}
               </span>
             ) : (
               <Badge className="shrink-0 bg-red-100 text-red-700">Lewat batas</Badge>

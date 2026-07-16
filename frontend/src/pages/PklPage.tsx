@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Briefcase, Download, FileText, CheckCircle2, Circle, Loader2, ChevronRight, Pencil, Plus } from 'lucide-react'
-import { pklApi, type PklStudentRow } from '@/features/pkl/api'
+import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
+import { Briefcase, Download, FileText, CheckCircle2, Circle, Loader2, ChevronRight, ChevronDown, Pencil, Plus, X } from 'lucide-react'
+import { pklApi, type PklStudentRow, type PklWeek } from '@/features/pkl/api'
 import { usePdfPreview } from '@/hooks/usePdfPreview'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,10 +10,11 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { WhatsAppLink } from '@/components/ui/whatsapp-link'
 
+type WeekRow = PklWeek & { classId: string; classLabel: string }
+
 export default function PklPage() {
   const navigate = useNavigate()
   const pdf = usePdfPreview()
-  const [classId, setClassId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [unduhErr, setUnduhErr] = useState<string | null>(null)
 
@@ -23,26 +24,61 @@ export default function PklPage() {
   })
   const classes = overviewRes?.data.data.classes ?? []
 
-  // Auto-pilih bila hanya satu kelas.
-  useEffect(() => {
-    if (!classId && classes.length > 0) setClassId(classes[0].id)
-  }, [classes, classId])
-
-  const selected = classes.find((c) => c.id === classId) ?? null
-
+  // Seluruh siswa bimbingan lintas kelas — tanpa harus memilih kelas dulu.
   const { data: studentsRes } = useQuery({
-    queryKey: ['pkl-students', classId],
-    queryFn: () => pklApi.myStudents(classId!),
-    enabled: !!classId,
+    queryKey: ['pkl-students', 'semua'],
+    queryFn: () => pklApi.myStudents(),
   })
   const students = studentsRes?.data.data ?? []
 
-  const { data: weeksRes, isFetching: loadingWeeks } = useQuery({
-    queryKey: ['pkl-weeks', classId],
-    queryFn: () => pklApi.weeks(classId!),
-    enabled: !!classId,
+  // Minggu agenda per kelas bimbingan, digabung jadi satu daftar prioritas.
+  const weekQueries = useQueries({
+    queries: classes.map((c) => ({
+      queryKey: ['pkl-weeks', c.id],
+      queryFn: () => pklApi.weeks(c.id),
+    })),
   })
-  const weeks = weeksRes?.data.data.weeks ?? []
+  const loadingWeeks = weekQueries.some((q) => q.isLoading)
+  const allWeeks: WeekRow[] = useMemo(() =>
+    weekQueries.flatMap((q, i) => {
+      const cls = classes[i]
+      const weeks = q.data?.data.data.weeks ?? []
+      return cls ? weeks.map((w) => ({ ...w, classId: cls.id, classLabel: cls.label })) : []
+    }),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [classes, ...weekQueries.map((q) => q.data)])
+
+  // Prioritas: (1) minggu berjalan yang harus segera diisi, (2) yang telat (lewat batas,
+  // belum diisi), lalu riwayat terisi di balik toggle. Minggu yang belum mulai
+  // disembunyikan total — tidak ada gunanya memenuhi layar.
+  const perluIsi = allWeeks.filter((w) => w.sudah_mulai && !w.terisi && !w.lewat_batas)
+    .sort((a, b) => a.minggu_mulai.localeCompare(b.minggu_mulai))
+  const telat = allWeeks.filter((w) => w.sudah_mulai && !w.terisi && w.lewat_batas)
+    .sort((a, b) => b.minggu_mulai.localeCompare(a.minggu_mulai))
+  const riwayat = allWeeks.filter((w) => w.terisi)
+    .sort((a, b) => b.minggu_mulai.localeCompare(a.minggu_mulai))
+
+  const [showAllTelat, setShowAllTelat] = useState(false)
+  const [showRiwayat, setShowRiwayat] = useState(false)
+  const telatShown = showAllTelat ? telat : telat.slice(0, 4)
+
+  // ── Filter daftar siswa bimbingan (kelas & industri, saling mempersempit) ──
+  const [fKelas, setFKelas] = useState('')
+  const [fIndustri, setFIndustri] = useState('')
+
+  const kelasOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const s of students) if ((!fIndustri || s.tempat_pkl === fIndustri) && s.class_id && s.kelas) map.set(s.class_id, s.kelas)
+    return [...map.entries()].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label, 'id'))
+  }, [students, fIndustri])
+
+  const industriOptions = useMemo(() =>
+    [...new Set(students.filter((s) => !fKelas || s.class_id === fKelas).map((s) => s.tempat_pkl).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'id')),
+  [students, fKelas])
+
+  const filteredStudents = students.filter((s) =>
+    (!fKelas || s.class_id === fKelas) && (!fIndustri || s.tempat_pkl === fIndustri))
 
   // ── Edit / tambah tempat PKL oleh pembimbing ────────────────────────────────
   const qc = useQueryClient()
@@ -98,18 +134,21 @@ export default function PklPage() {
 
   const inputCls = 'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
 
+  // Unduhan mengikuti filter kelas: tanpa filter = seluruh bimbingan.
   async function unduh(kind: 'siswa' | 'rekap', format: 'excel' | 'pdf') {
-    if (!selected) return
-    const slug = selected.label.replace(/\s+/g, '_')
+    const classParam = fKelas || null
+    const slug = classParam ? (kelasOptions.find((c) => c.id === classParam)?.label ?? 'kelas').replace(/\s+/g, '_') : 'bimbingan'
     setBusy(`${kind}-${format}`)
     setUnduhErr(null)
     try {
       if (format === 'excel') {
-        if (kind === 'siswa') await pklApi.downloadStudents(selected.id, `data_pkl_${slug}.xlsx`)
-        else await pklApi.downloadRekap(selected.id, `rekap_absen_pkl_${slug}.xlsx`)
+        if (kind === 'siswa') await pklApi.downloadStudents(classParam, `data_pkl_${slug}.xlsx`)
+        else await pklApi.downloadRekap(classParam ?? 'semua', `rekap_absen_pkl_${slug}.xlsx`)
       } else {
-        const ep = kind === 'siswa' ? 'students' : 'rekap-absen'
-        await pdf.openPreview(`/pkl/${ep === 'students' ? 'students' : 'rekap-absen'}/export?class_id=${selected.id}&format=pdf`,
+        const qs = kind === 'siswa'
+          ? `${classParam ? `class_id=${classParam}&` : ''}format=pdf`
+          : `class_id=${classParam ?? 'semua'}&format=pdf`
+        await pdf.openPreview(`/pkl/${kind === 'siswa' ? 'students' : 'rekap-absen'}/export?${qs}`,
           `${kind === 'siswa' ? 'data_pkl' : 'rekap_absen_pkl'}_${slug}.pdf`)
       }
     } catch (e) {
@@ -135,88 +174,70 @@ export default function PklPage() {
 
       {classes.length === 0 ? (
         <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">
-          Anda belum ditetapkan sebagai pembimbing PKL dan tidak punya ploting jadwal di kelas XII
-          yang siswanya sudah ditempatkan. Data penempatan PKL diimpor oleh admin.
+          Anda belum ditetapkan sebagai pembimbing PKL. Data penempatan PKL diimpor
+          atau ditambahkan oleh admin.
         </CardContent></Card>
       ) : (
         <>
-          {/* Pilih kelas bila lebih dari satu */}
-          {classes.length > 1 && (
-            <div className="flex flex-wrap gap-2">
-              {classes.map((c) => (
-                <button key={c.id} onClick={() => setClassId(c.id)}
-                  className={cn('rounded-lg border px-3 py-1.5 text-sm transition-colors',
-                    c.id === classId ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-border hover:bg-accent')}>
-                  {c.label} <span className="text-muted-foreground">({c.jumlah_siswa}{c.sebagai === 'pengajar' ? ' · pengajar' : ''})</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Tombol unduh — grid 2 kolom di HP agar rapi, baris fleksibel di desktop */}
-          <Card><CardContent className="p-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-            <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'excel')}>
-              <Download className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (Excel)
-            </Button>
-            <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'pdf')}>
-              <FileText className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (PDF)
-            </Button>
-            <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'excel')}>
-              <Download className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (Excel)
-            </Button>
-            <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'pdf')}>
-              <FileText className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (PDF)
-            </Button>
-          </CardContent></Card>
-          {unduhErr && <p className="text-sm text-red-600">{unduhErr}</p>}
-
-          {/* Daftar minggu → isi agenda */}
+          {/* ── Agenda PKL mingguan — daftar prioritas ── */}
           <div>
             <h2 className="text-sm font-semibold mb-2">Agenda PKL Mingguan</h2>
             {loadingWeeks ? (
               <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Memuat minggu…</div>
-            ) : weeks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Belum ada rentang minggu PKL untuk kelas ini.</p>
+            ) : allWeeks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada rentang minggu PKL dalam semester ini.</p>
             ) : (
               <div className="space-y-1.5">
-                {weeks.map((w) => (
-                  <button key={w.minggu_mulai}
-                    disabled={!w.sudah_mulai}
-                    onClick={() => navigate(`/pkl/agenda?class_id=${classId}&minggu=${w.minggu_mulai}`)}
-                    className={cn('w-full flex items-center justify-between gap-2 rounded-lg border px-3 sm:px-4 py-2.5 text-left text-sm transition-colors',
-                      w.sudah_mulai ? 'hover:bg-accent' : 'opacity-50 cursor-not-allowed', 'border-border')}>
-                    <span className="flex items-center gap-2 min-w-0">
-                      {w.terisi
-                        ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                        : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                      <span className="truncate">{w.label}</span>
-                    </span>
-                    <span className="flex items-center gap-2 shrink-0">
-                      {w.terisi
-                        ? <Badge variant="secondary" className="text-emerald-700">Terisi</Badge>
-                        : w.lewat_batas
-                          ? <Badge variant="destructive">Lewat batas</Badge>
-                          : !w.sudah_mulai
-                            ? <Badge variant="outline">Belum mulai</Badge>
-                            : <Badge variant="outline">Belum diisi</Badge>}
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </span>
+                {perluIsi.length === 0 && telat.length === 0 && (
+                  <p className="flex items-center gap-1.5 text-sm text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Semua agenda PKL sampai minggu ini sudah diisi.</p>
+                )}
+
+                {perluIsi.map((w) => <WeekButton key={w.classId + w.minggu_mulai} w={w} multiClass={classes.length > 1} onClick={() => navigate(`/pkl/agenda?class_id=${w.classId}&minggu=${w.minggu_mulai}`)} />)}
+
+                {telatShown.map((w) => <WeekButton key={w.classId + w.minggu_mulai} w={w} multiClass={classes.length > 1} onClick={() => navigate(`/pkl/agenda?class_id=${w.classId}&minggu=${w.minggu_mulai}`)} />)}
+                {telat.length > telatShown.length && (
+                  <button onClick={() => setShowAllTelat(true)} className="w-full rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground hover:bg-accent">
+                    Tampilkan semua yang lewat batas ({telat.length})
                   </button>
-                ))}
+                )}
+
+                {riwayat.length > 0 && (
+                  <button onClick={() => setShowRiwayat((v) => !v)}
+                    className="flex w-full items-center gap-1 rounded-lg px-1 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+                    <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', !showRiwayat && '-rotate-90')} />
+                    Riwayat terisi ({riwayat.length})
+                  </button>
+                )}
+                {showRiwayat && riwayat.map((w) => <WeekButton key={w.classId + w.minggu_mulai} w={w} multiClass={classes.length > 1} onClick={() => navigate(`/pkl/agenda?class_id=${w.classId}&minggu=${w.minggu_mulai}`)} />)}
               </div>
             )}
           </div>
 
-          {/* Ringkasan siswa bimbingan — satu baris per TEMPAT PKL (siswa bisa >1 tempat,
-              periode berbeda); pembimbing bisa edit & menambah tempat secara manual. */}
+          {/* ── Siswa bimbingan — semua langsung tampil + filter ── */}
           <div>
-            <h2 className="text-sm font-semibold mb-2">Siswa Bimbingan {selected ? `— ${selected.label}` : ''} ({students.length})</h2>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <h2 className="text-sm font-semibold">Siswa Bimbingan ({filteredStudents.length}{filteredStudents.length !== students.length ? ` dari ${students.length}` : ''})</h2>
+              <div className="flex flex-wrap gap-2 ml-auto">
+                <select className="rounded-md border border-input bg-background px-2 py-1.5 text-xs" value={fKelas} onChange={(e) => setFKelas(e.target.value)} aria-label="Filter kelas">
+                  <option value="">Semua Kelas</option>
+                  {kelasOptions.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+                <select className="rounded-md border border-input bg-background px-2 py-1.5 text-xs max-w-[170px]" value={fIndustri} onChange={(e) => setFIndustri(e.target.value)} aria-label="Filter industri">
+                  <option value="">Semua Industri</option>
+                  {industriOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                {(fKelas || fIndustri) && (
+                  <button onClick={() => { setFKelas(''); setFIndustri('') }} aria-label="Reset filter" className="p-1.5 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+                )}
+              </div>
+            </div>
+
             <Card><CardContent className="p-0 divide-y">
-              {students.map((s) => (
+              {filteredStudents.map((s) => (
                 <div key={s.placement_id} className="px-4 py-2.5 text-sm">
                   <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
-                      <p className="font-medium">{s.nama}</p>
+                      <p className="font-medium">{s.nama} {s.kelas && <span className="text-xs font-normal text-muted-foreground">· {s.kelas}</span>}</p>
                       <p className="text-xs text-muted-foreground break-words">NIS {s.nis ?? '—'} · NISN {s.nisn ?? '—'} · {s.tempat_pkl}</p>
                       {s.telpon && <WhatsAppLink telpon={s.telpon} className="text-xs text-muted-foreground" />}
                     </div>
@@ -248,13 +269,65 @@ export default function PklPage() {
                   )}
                 </div>
               ))}
-              {students.length === 0 && <div className="px-4 py-6 text-center text-sm text-muted-foreground">Belum ada siswa bimbingan.</div>}
+              {filteredStudents.length === 0 && (
+                <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  {students.length === 0 ? 'Belum ada siswa bimbingan.' : 'Tidak ada siswa yang cocok dengan filter.'}
+                </div>
+              )}
             </CardContent></Card>
           </div>
+
+          {/* ── Unduhan (mengikuti filter kelas; tanpa filter = semua bimbingan) ── */}
+          <Card><CardContent className="p-4 space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Unduh {fKelas ? `kelas ${kelasOptions.find((c) => c.id === fKelas)?.label ?? ''}` : 'seluruh siswa bimbingan'}:
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'excel')}>
+                <Download className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (Excel)
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'pdf')}>
+                <FileText className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (PDF)
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'excel')}>
+                <Download className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (Excel)
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'pdf')}>
+                <FileText className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (PDF)
+              </Button>
+            </div>
+            {unduhErr && <p className="text-sm text-red-600">{unduhErr}</p>}
+          </CardContent></Card>
         </>
       )}
 
       {pdf.modal}
     </div>
+  )
+}
+
+/** Satu baris minggu agenda — dipakai daftar "perlu diisi", "telat", dan riwayat. */
+function WeekButton({ w, multiClass, onClick }: { w: WeekRow; multiClass: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      className={cn('w-full flex items-center justify-between gap-2 rounded-lg border px-3 sm:px-4 py-2.5 text-left text-sm transition-colors hover:bg-accent',
+        !w.terisi && w.lewat_batas ? 'border-red-200 bg-red-50/40'
+          : !w.terisi ? 'border-orange-200 bg-orange-50/40'
+          : 'border-border')}>
+      <span className="flex items-center gap-2 min-w-0">
+        {w.terisi
+          ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+          : <Circle className={cn('h-4 w-4 shrink-0', w.lewat_batas ? 'text-red-500' : 'text-orange-500')} />}
+        <span className="truncate">{w.label}{multiClass && <span className="text-muted-foreground"> · {w.classLabel}</span>}</span>
+      </span>
+      <span className="flex items-center gap-2 shrink-0">
+        {w.terisi
+          ? <Badge variant="secondary" className="text-emerald-700">Terisi</Badge>
+          : w.lewat_batas
+            ? <Badge variant="destructive">Lewat batas</Badge>
+            : <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Isi minggu ini</Badge>}
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      </span>
+    </button>
   )
 }

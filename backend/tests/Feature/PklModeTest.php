@@ -169,9 +169,14 @@ class PklModeTest extends TestCase
         $this->getJson("/api/v1/pkl/rekap-absen/export?class_id={$this->kelasXII->uuid}&format=excel")->assertForbidden();
     }
 
-    public function test_hanya_admin_boleh_rekap_semua_kelas(): void
+    public function test_rekap_semua_kelas_terbatas_sesuai_hak(): void
     {
+        // Pembimbing: 'semua' = seluruh kelas bimbingannya sendiri (bukan se-sekolah).
         Sanctum::actingAs($this->pembimbing);
+        $this->getJson('/api/v1/pkl/rekap-absen/export?class_id=semua&format=excel')->assertOk();
+
+        // Guru tanpa bimbingan & tanpa perwalian: tidak ada kelas → ditolak.
+        Sanctum::actingAs($this->guruLain);
         $this->getJson('/api/v1/pkl/rekap-absen/export?class_id=semua&format=excel')->assertForbidden();
 
         Sanctum::actingAs($this->admin);

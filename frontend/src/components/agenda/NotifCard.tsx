@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Bell, ChevronDown } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -17,10 +17,18 @@ export function NotifCard({
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  const userToggled = useRef(false)
+
+  // defaultOpen sering baru bernilai benar SETELAH data query datang (render pertama
+  // masih 0 item) — ikuti perubahannya selama user belum menyentuh toggle, supaya
+  // kartu berisi tagihan tidak tampil tertutup.
+  useEffect(() => {
+    if (!userToggled.current) setOpen(defaultOpen)
+  }, [defaultOpen])
 
   return (
     <Card>
-      <CardHeader className="pb-3 cursor-pointer select-none" onClick={() => setOpen((o) => !o)}>
+      <CardHeader className="pb-3 cursor-pointer select-none" onClick={() => { userToggled.current = true; setOpen((o) => !o) }}>
         <div className="flex items-center justify-between flex-wrap gap-1.5">
           <CardTitle className="text-base flex items-center gap-2">
             <Bell className="h-4 w-4 text-muted-foreground" />

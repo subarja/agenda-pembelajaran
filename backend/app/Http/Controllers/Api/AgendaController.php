@@ -152,7 +152,12 @@ class AgendaController extends Controller
         // reguler kelasnya hilang, tapi kewajibannya berpindah ke sini, bukan lenyap.
         $kokurikuler = \App\Support\KokurikulerMode::tagihanFasilitator($request->user(), $mulai, $today, $setting);
 
-        if (empty($sesi) && empty($kokurikuler)) {
+        // Sama halnya PEMBIMBING PKL: sesi harian kelas XII dibebaskan, gantinya agenda
+        // PKL mingguan per kelas bimbingan ditagih di sini (hanya minggu berjalan yang
+        // beririsan semester aktif).
+        $pkl = PklMode::tagihanPembimbing($request->user(), $setting);
+
+        if (empty($sesi) && empty($kokurikuler) && empty($pkl)) {
             return response()->json(['data' => []]);
         }
 
@@ -195,6 +200,7 @@ class AgendaController extends Controller
                 ];
             })
             ->concat($kokurikuler)
+            ->concat($pkl)
             ->sortBy('deadline')
             ->values();
 

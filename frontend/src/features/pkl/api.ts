@@ -21,6 +21,8 @@ export interface PklStudentRow {
   alamat_pkl: string
   mulai: string | null
   selesai: string | null
+  class_id: string | null
+  kelas: string | null
 }
 
 export interface PklWeek {
@@ -160,8 +162,8 @@ export const pklApi = {
     presensi: { student_id: string; tanggal: string; status: string }[]
   }) => api.post<ApiResponse<{ id: string }>>('/pkl/agenda', payload),
 
-  downloadStudents: (classId: string, filename: string) =>
-    downloadBlob(`/pkl/students/export?class_id=${classId}&format=excel`, filename),
+  downloadStudents: (classId: string | null, filename: string) =>
+    downloadBlob(`/pkl/students/export?${classId ? `class_id=${classId}&` : ''}format=excel`, filename),
 
   // Edit & tambah tempat PKL oleh pembimbing (siswa bimbingannya sendiri).
   updatePlacement: (placementId: string, d: PklPlacementPayload) =>

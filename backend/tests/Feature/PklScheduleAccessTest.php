@@ -24,7 +24,11 @@ use Tests\TestCase;
 
 /**
  * Invarian akses agenda PKL & pembebasan tagihan:
- *  - alur agenda PKL terbuka utk pembimbing (penugasan) DAN guru ber-ploting jadwal XII;
+ *  - alur agenda PKL HANYA utk pembimbing (penugasan placement) — ploting jadwal XII
+ *    saja tidak memberi akses (keputusan 2026-07-17);
+ *  - pembimbing melihat & mengabsen HANYA siswa bimbingannya;
+ *  - tagihan agenda PKL mingguan pembimbing muncul di perlu-diisi, dibatasi minggu
+ *    yang beririsan periode semester aktif;
  *  - sesi XII semasa periode PKL tidak pernah ditagih sebagai agenda reguler — termasuk
  *    SETELAH mode dimatikan (tidak retroaktif);
  *  - Beban Mengajar merekap ploting (JP) + penugasan PKL non-ploting.
@@ -101,31 +105,102 @@ class PklScheduleAccessTest extends TestCase
         return $u->fresh();
     }
 
-    // ── Akses lewat ploting jadwal ───────────────────────────────────────────
+    // ── Akses HANYA untuk pembimbing ─────────────────────────────────────────
 
-    public function test_guru_ploting_xii_tanpa_penugasan_bisa_mengisi_agenda_pkl(): void
+    public function test_guru_ploting_xii_tanpa_penugasan_tidak_punya_akses_pkl(): void
     {
         Sanctum::actingAs($this->guruPloting);
 
+        // Ploting jadwal XII saja tidak memberi menu/daftar apa pun.
+        $overview = $this->getJson('/api/v1/pkl/overview')->assertOk()->json('data.classes');
+        $this->assertSame([], $overview);
+
+        $this->getJson("/api/v1/pkl/weeks?class_id={$this->kelasXII->uuid}")->assertStatus(403);
+        $this->postJson('/api/v1/pkl/agenda', [
+            'class_id' => $this->kelasXII->uuid, 'minggu' => $this->minggu,
+            'catatan'  => 'Coba isi tanpa penugasan',
+        ])->assertStatus(403);
+    }
+
+    public function test_pembimbing_hanya_melihat_dan_mengabsen_siswa_bimbingannya(): void
+    {
+        Sanctum::actingAs($this->pembimbing);
+
         $overview = $this->getJson('/api/v1/pkl/overview')->assertOk()->json('data.classes');
         $this->assertCount(1, $overview);
-        $this->assertSame('pengajar', $overview[0]['sebagai']);
-        $this->assertSame(2, $overview[0]['jumlah_siswa']); // satu kelas penuh, bukan cuma bimbingan
+        $this->assertSame(1, $overview[0]['jumlah_siswa']); // hanya bimbingannya, bukan sekelas
 
-        $classUuid = $overview[0]['id'];
-        $weeks = $this->getJson("/api/v1/pkl/weeks?class_id={$classUuid}")->assertOk()->json('data.weeks');
-        $this->assertNotEmpty($weeks); // rentang minggu dari placement kelas
+        // Daftar bimbingan lintas kelas (tanpa class_id) → hanya siswa 3001.
+        $rows = $this->getJson('/api/v1/pkl/my-students')->assertOk()->json('data');
+        $this->assertCount(1, $rows);
+        $this->assertSame('3001', $rows[0]['nis']);
+        $this->assertSame('XII Animasi A', $rows[0]['kelas']);
 
+        // Presensi siswa 3002 (bimbingan guru lain) diabaikan diam-diam.
         $this->postJson('/api/v1/pkl/agenda', [
-            'class_id' => $classUuid, 'minggu' => $this->minggu,
-            'catatan'  => 'Monitoring PKL minggu ke-2',
+            'class_id' => $this->kelasXII->uuid, 'minggu' => $this->minggu,
+            'catatan'  => 'Monitoring minggu ke-2',
             'presensi' => [
                 ['student_id' => Student::where('nis', '3001')->first()->uuid, 'tanggal' => '2026-03-09', 'status' => 'hadir'],
                 ['student_id' => Student::where('nis', '3002')->first()->uuid, 'tanggal' => '2026-03-09', 'status' => 'hadir'],
             ],
         ])->assertOk();
 
-        $this->assertDatabaseCount('pkl_attendances', 2); // kedua siswa tercatat
+        $this->assertDatabaseCount('pkl_attendances', 1); // hanya siswa bimbingannya
+    }
+
+    // ── Tagihan agenda PKL mingguan di perlu-diisi ───────────────────────────
+
+    public function test_tagihan_agenda_pkl_muncul_di_perlu_diisi_pembimbing(): void
+    {
+        Sanctum::actingAs($this->pembimbing);
+
+        $rows = collect($this->getJson('/api/v1/agendas/perlu-diisi')->assertOk()->json('data'))
+            ->where('jenis', 'pkl')->values();
+
+        // Placement mulai 2 Mar; hari ini Rabu 11 Mar → 2 minggu sudah berjalan
+        // (Senin 2 Mar & Senin 9 Mar), dua-duanya belum diisi.
+        $this->assertCount(2, $rows);
+        $this->assertSame('XII Animasi A', $rows[0]['kelas']);
+        $this->assertSame('Agenda PKL Mingguan', $rows[0]['mapel']);
+        $this->assertContains('2026-03-09', $rows->pluck('minggu')->all());
+
+        // Setelah minggu berjalan diisi, tagihannya hilang.
+        $this->postJson('/api/v1/pkl/agenda', [
+            'class_id' => $this->kelasXII->uuid, 'minggu' => $this->minggu, 'catatan' => 'ok',
+        ])->assertOk();
+        $sisa = collect($this->getJson('/api/v1/agendas/perlu-diisi')->assertOk()->json('data'))
+            ->where('jenis', 'pkl')->pluck('minggu');
+        $this->assertNotContains('2026-03-09', $sisa->all());
+
+        // Guru ploting (bukan pembimbing) tidak pernah dapat tagihan PKL.
+        Sanctum::actingAs($this->guruPloting);
+        $rows = collect($this->getJson('/api/v1/agendas/perlu-diisi')->assertOk()->json('data'))
+            ->where('jenis', 'pkl');
+        $this->assertCount(0, $rows);
+    }
+
+    public function test_minggu_di_luar_periode_semester_tidak_ditagih(): void
+    {
+        // Perpanjang penempatan siswa bimbingan sampai melewati akhir semester (19 Jun).
+        PklPlacement::where('pembimbing_teacher_id', $this->pembimbing->teacher->id)
+            ->update(['tanggal_selesai' => '2026-07-31']);
+        PklMode::flush();
+
+        Sanctum::actingAs($this->pembimbing);
+
+        // Daftar minggu berhenti di minggu yang masih beririsan dgn semester.
+        $weeks = $this->getJson("/api/v1/pkl/weeks?class_id={$this->kelasXII->uuid}")->assertOk()->json('data.weeks');
+        $this->assertNotEmpty($weeks);
+        $maxSenin = collect($weeks)->pluck('minggu_mulai')->max();
+        $this->assertLessThanOrEqual('2026-06-19', $maxSenin);
+
+        // Tagihan perlu-diisi juga tak pernah menembus akhir semester — uji dgn maju
+        // ke akhir Juni: minggu-minggu Juli tidak muncul.
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00', config('app.school_timezone')));
+        $tagihan = collect($this->getJson('/api/v1/agendas/perlu-diisi')->assertOk()->json('data'))
+            ->where('jenis', 'pkl')->pluck('minggu');
+        $this->assertTrue($tagihan->every(fn ($m) => $m <= '2026-06-19'));
     }
 
     public function test_guru_tanpa_ploting_dan_tanpa_penugasan_ditolak(): void
@@ -137,7 +212,7 @@ class PklScheduleAccessTest extends TestCase
 
         $this->getJson("/api/v1/pkl/weeks?class_id={$this->kelasXII->uuid}")->assertStatus(403);
         $this->assertFalse(PklMode::canFillAgenda($luar));
-        $this->assertTrue(PklMode::canFillAgenda($this->guruPloting));
+        $this->assertFalse(PklMode::canFillAgenda($this->guruPloting)); // ploting saja ≠ akses
         $this->assertTrue(PklMode::canFillAgenda($this->pembimbing));
     }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Loader2, Save, CheckCircle2 } from 'lucide-react'
 import { pklApi, type PklAgendaForm } from '@/features/pkl/api'
 import { Card, CardContent } from '@/components/ui/card'
@@ -10,17 +10,19 @@ import { toLocalDateStr } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { WhatsAppLink } from '@/components/ui/whatsapp-link'
 
+// Absen model tap sekali sentuh (bukan dropdown — terlalu lambat utk 30+ siswa):
+// satu huruf per status, terpilih = berwarna penuh. Default semua HADIR.
 const STATUS = [
-  { v: '', label: '—' },
-  { v: 'hadir', label: 'Hadir' },
-  { v: 'izin', label: 'Izin' },
-  { v: 'sakit', label: 'Sakit' },
-  { v: 'alpha', label: 'Alpa' },
+  { v: 'hadir', huruf: 'H', label: 'Hadir', on: 'bg-emerald-600 text-white border-emerald-600', ring: 'hover:border-emerald-400' },
+  { v: 'sakit', huruf: 'S', label: 'Sakit', on: 'bg-amber-500 text-white border-amber-500', ring: 'hover:border-amber-400' },
+  { v: 'izin', huruf: 'I', label: 'Izin', on: 'bg-sky-600 text-white border-sky-600', ring: 'hover:border-sky-400' },
+  { v: 'alpha', huruf: 'A', label: 'Alpa', on: 'bg-red-600 text-white border-red-600', ring: 'hover:border-red-400' },
 ]
 
 export default function PklAgendaFormPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const classId = params.get('class_id') ?? ''
   const minggu  = params.get('minggu') ?? ''
   const today   = toLocalDateStr(new Date())
@@ -44,9 +46,14 @@ export default function PklAgendaFormPage() {
     setCatatan(form.agenda.catatan ?? '')
     setObjIds(form.agenda.objectives ?? [])
     const grid: Record<string, Record<string, string>> = {}
+    const todayStr = toLocalDateStr(new Date())
     for (const s of form.students) {
       grid[s.id] = {}
-      for (const [tgl, st] of Object.entries(s.presensi)) grid[s.id][tgl] = st ?? ''
+      for (const [tgl, st] of Object.entries(s.presensi)) {
+        // Default HADIR utk hari yang sudah berjalan dan belum tercatat — pembimbing
+        // cukup mengoreksi yang tidak hadir, bukan mengisi satu-satu.
+        grid[s.id][tgl] = st ?? (tgl <= todayStr ? 'hadir' : '')
+      }
     }
     setPresensi(grid)
   }, [form])
@@ -66,7 +73,11 @@ export default function PklAgendaFormPage() {
 
       return pklApi.saveAgenda({ class_id: classId, minggu, catatan, objective_ids: objIds, presensi: presensiArr })
     },
-    onSuccess: () => { setSaved(true); setErrMsg(null) },
+    onSuccess: () => {
+      setSaved(true); setErrMsg(null)
+      qc.invalidateQueries({ queryKey: ['pkl-weeks'] })
+      qc.invalidateQueries({ queryKey: ['agendas-perlu-diisi'] })
+    },
     onError: (e: any) => setErrMsg(e?.response?.data?.message ?? 'Gagal menyimpan agenda PKL.'),
   })
 
@@ -118,17 +129,23 @@ export default function PklAgendaFormPage() {
           value={catatan} onChange={(e) => setCatatan(e.target.value)} />
       </CardContent></Card>
 
-      {/* Presensi harian */}
+      {/* Presensi harian — tap sekali sentuh, default semua Hadir */}
       <Card><CardContent className="p-4 space-y-2">
         <Label>Presensi Harian (Senin–Jumat)</Label>
+        <p className="text-xs text-muted-foreground">
+          Semua siswa otomatis <strong className="text-emerald-700">Hadir</strong> — tap hanya yang perlu diubah:{' '}
+          {STATUS.map((st, i) => (
+            <span key={st.v}>{i > 0 && ' · '}<strong>{st.huruf}</strong> = {st.label}</span>
+          ))}
+        </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b">
                 {/* sticky: nama siswa tetap terlihat saat tabel digulir horizontal di HP */}
-                <th className="text-left py-2 pr-2 font-medium sticky left-0 bg-card min-w-[9rem] max-w-[11rem]">Nama</th>
+                <th className="text-left py-2 pr-2 font-medium sticky left-0 bg-card min-w-[8rem] max-w-[11rem]">Nama</th>
                 {form.hari.map((h) => (
-                  <th key={h.tanggal} className="px-1 py-2 font-medium text-center whitespace-nowrap">
+                  <th key={h.tanggal} className="px-1.5 py-2 font-medium text-center whitespace-nowrap">
                     {h.nama}
                     {h.tanggal > today && <span className="block text-[10px] text-muted-foreground font-normal">(nanti)</span>}
                   </th>
@@ -138,23 +155,37 @@ export default function PklAgendaFormPage() {
             <tbody>
               {form.students.map((s) => (
                 <tr key={s.id} className="border-b last:border-0">
-                  <td className="py-1.5 pr-2 sticky left-0 bg-card min-w-[9rem] max-w-[11rem]">
+                  <td className="py-1.5 pr-2 sticky left-0 bg-card min-w-[8rem] max-w-[11rem]">
                     <span className="inline-flex items-center gap-1.5">{s.nama}<WhatsAppLink telpon={s.telpon} iconOnly /></span>
                   </td>
                   {form.hari.map((h) => {
                     const future = h.tanggal > today
+                    const current = presensi[s.id]?.[h.tanggal] ?? ''
                     return (
-                      <td key={h.tanggal} className="px-1 py-1 text-center">
-                        <select
-                          disabled={future}
-                          className={cn('rounded border border-input bg-background px-1 py-1 text-xs',
-                            future && 'opacity-40 cursor-not-allowed')}
-                          value={presensi[s.id]?.[h.tanggal] ?? ''}
-                          onChange={(e) => setPresensi((prev) => ({
-                            ...prev, [s.id]: { ...prev[s.id], [h.tanggal]: e.target.value },
-                          }))}>
-                          {STATUS.map((st) => <option key={st.v} value={st.v}>{st.label}</option>)}
-                        </select>
+                      <td key={h.tanggal} className="px-1.5 py-1.5 text-center">
+                        {future ? (
+                          <span className="text-xs text-muted-foreground/50">—</span>
+                        ) : (
+                          <span className="inline-flex gap-0.5" role="radiogroup" aria-label={`${s.nama} ${h.nama}`}>
+                            {STATUS.map((st) => {
+                              const active = current === st.v
+                              return (
+                                <button
+                                  key={st.v} type="button" role="radio" aria-checked={active}
+                                  title={st.label}
+                                  onClick={() => setPresensi((prev) => ({
+                                    ...prev, [s.id]: { ...prev[s.id], [h.tanggal]: st.v },
+                                  }))}
+                                  className={cn(
+                                    'h-7 w-7 rounded-md border text-[11px] font-semibold transition-colors select-none',
+                                    active ? st.on : cn('border-input bg-background text-muted-foreground', st.ring),
+                                  )}>
+                                  {st.huruf}
+                                </button>
+                              )
+                            })}
+                          </span>
+                        )}
                       </td>
                     )
                   })}
