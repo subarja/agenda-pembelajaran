@@ -45,7 +45,7 @@ class EwsController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $ay   = AcademicYear::where('aktif', true)->first();
+        $ay   = \App\Support\TahunAjaran::current();
 
         if (! $ay) {
             return response()->json(['data' => [], 'meta' => ['total' => 0]]);
@@ -187,7 +187,7 @@ class EwsController extends Controller
             return $resp;
         }
 
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
 
         $kehadiran = $this->calcKehadiran($student->id);
         $karakter  = $this->calcKarakter($student->id);
@@ -276,7 +276,7 @@ class EwsController extends Controller
         // Riwayat penanganan sengaja TIDAK difilter TA: kasus yang belum selesai memang
         // berlanjut lintas semester. Penanda carry_over di bawah yang memberi tahu UI
         // bahwa sebuah kasus berasal dari semester sebelumnya.
-        $activeAyId  = AcademicYear::where('aktif', true)->value('id');
+        $activeAyId  = \App\Support\TahunAjaran::id();
         $rekomendasi = Recommendation::where('student_id', $student->id)
             ->with(['threshold', 'suggestedHandlers', 'handlingSessions.handler', 'verifiedBy', 'bkTeacher.user', 'academicYear'])
             ->orderByRaw("CASE status WHEN 'pending' THEN 0 WHEN 'proses' THEN 1 WHEN 'menunggu_verifikasi' THEN 2 ELSE 3 END")
@@ -486,6 +486,68 @@ class EwsController extends Controller
         return $this->pdfResponse($pdf, "{$namaFile}.pdf", $request);
     }
 
+    /**
+     * GET /ews/{uuid}/profile-pdf — Profil Siswa satu halaman (FR-106): data pribadi +
+     * ringkasan EWS 4 dimensi + riwayat poin karakter terakhir + rekomendasi aktif.
+     * Bekal wali kelas & BK untuk konseling dan pemanggilan orang tua.
+     */
+    public function profilePdf(Request $request, string $uuid)
+    {
+        $student = Student::where('uuid', $uuid)
+            ->with(['user:id,nama', 'schoolClass.waliKelas'])
+            ->firstOrFail();
+
+        if ($this->authorizeEwsStudentAccess($request->user(), $student) !== null) {
+            abort(403, 'Anda tidak memiliki akses ke profil siswa ini.');
+        }
+
+        $kehadiran = $this->calcKehadiran($student->id);
+        $karakter  = $this->calcKarakter($student->id);
+        $catatan   = $this->calcCatatan($student->id);
+        $nilai     = $this->calcNilai($student->id);
+        $level     = $this->determineLevel($kehadiran, $karakter, $catatan, $nilai);
+
+        $riwayatKarakter = CharacterInput::tahunAjaran()
+            ->where('student_id', $student->id)
+            ->with(['subitem.category', 'teacher.user'])
+            ->orderByDesc('created_at')
+            ->limit(12)
+            ->get()
+            ->map(fn ($i) => [
+                'tanggal' => $i->created_at->format('d/m/Y'),
+                'item'    => "{$i->subitem->category->nama} — {$i->subitem->deskripsi}",
+                'poin'    => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot),
+                'guru'    => $i->teacher->user->nama,
+            ]);
+
+        $rekomendasi = Recommendation::where('student_id', $student->id)
+            ->whereIn('status', ['pending', 'proses', 'menunggu_verifikasi'])
+            ->with('threshold')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($r) => [
+                'tanggal'     => $r->created_at->format('d/m/Y'),
+                'rekomendasi' => $r->threshold?->rekomendasi ?? $r->alasan_manual ?? '—',
+                'status'      => ucfirst(str_replace('_', ' ', $r->status->value)),
+            ]);
+
+        $ay        = \App\Support\TahunAjaran::current();
+        $ayLabel   = $ay ? "TP {$ay->tahun} — Semester ".ucfirst($ay->semester->value) : '—';
+        $generated = now('Asia/Jakarta')->format('d M Y H:i');
+        $kelas     = $student->schoolClass
+            ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
+            : '—';
+        $printSettings = PrintSetting::instance($request->user()->id);
+
+        $pdf = Pdf::loadView('reports.profil_siswa', compact(
+            'student', 'kelas', 'ayLabel', 'level',
+            'kehadiran', 'karakter', 'catatan', 'nilai',
+            'riwayatKarakter', 'rekomendasi', 'generated', 'printSettings',
+        ))->setPaper($printSettings->paperDimensionsPt(), 'portrait');
+
+        return $this->pdfResponse($pdf, "Profil_Siswa_{$student->user->nama}.pdf", $request);
+    }
+
     // GET /ews/export?format=excel|pdf&level=...
     public function export(Request $request)
     {
@@ -502,7 +564,7 @@ class EwsController extends Controller
             <=> [$b['kelas'] ?? '', $levelOrder[$b['level']] ?? 9, mb_strtolower($b['nama'])]);
 
         if ($request->query('format') === 'pdf') {
-            $ay = AcademicYear::where('aktif', true)->first();
+            $ay = \App\Support\TahunAjaran::current();
             // Group by jurusan
             $byJurusan = [];
             foreach ($rows as $r) {

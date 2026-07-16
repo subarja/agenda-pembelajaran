@@ -93,6 +93,14 @@ export default function EwsDetailPage() {
     )
   }
 
+  // ── Preview + simpan PDF Profil Siswa (FR-106) ─────────────────────────────
+  async function downloadProfilePdf() {
+    await pdfPreview.openPreview(
+      `/ews/${studentId}/profile-pdf`,
+      `Profil_Siswa_${d?.student.nama ?? studentId}.pdf`
+    )
+  }
+
   if (isLoading) return (
     <div className="max-w-xl space-y-4">
       {[1,2,3].map(i => <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />)}
@@ -118,7 +126,10 @@ export default function EwsDetailPage() {
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
         <h1 className="text-xl font-bold">Detail EWS</h1>
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={downloadProfilePdf} disabled={pdfPreview.loading}>
+            <FileDown className="mr-1 h-4 w-4" />Profil
+          </Button>
           <Button variant="outline" size="sm" onClick={downloadHandlingReport} disabled={pdfPreview.loading}>
             <FileDown className="mr-1 h-4 w-4" />Laporan
           </Button>
