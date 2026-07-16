@@ -140,7 +140,11 @@ class AgendaController extends Controller
             fn ($s) => ! \App\Support\KokurikulerMode::isAgendaExempt($s['schedule']->class_id, $s['tanggal']),
         ));
 
-        if (empty($sesi)) {
+        // Sebagai gantinya, FASILITATOR ditagih laporan harian kokurikuler — tagihan
+        // reguler kelasnya hilang, tapi kewajibannya berpindah ke sini, bukan lenyap.
+        $kokurikuler = \App\Support\KokurikulerMode::tagihanFasilitator($request->user(), $mulai, $today, $setting);
+
+        if (empty($sesi) && empty($kokurikuler)) {
             return response()->json(['data' => []]);
         }
 
@@ -163,6 +167,7 @@ class AgendaController extends Controller
                 $now           = Carbon::now('Asia/Jakarta');
 
                 return [
+                    'jenis'        => 'reguler',
                     'schedule_id'  => $schedule->uuid,
                     'tanggal'      => $s['tanggal'],
                     'hari'         => ucfirst($schedule->hari->value),
@@ -181,6 +186,7 @@ class AgendaController extends Controller
                     'inval_dari'   => $s['inval_dari'] ?? null,
                 ];
             })
+            ->concat($kokurikuler)
             ->sortBy('deadline')
             ->values();
 

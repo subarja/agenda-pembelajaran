@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import type { AgendaPerluDiisi } from '@/features/agenda/types'
 import { Badge } from '@/components/ui/badge'
 import { cn, toLocalDateStr } from '@/lib/utils'
@@ -19,6 +20,8 @@ export function AgendaPerluDiisiList({
   emptyText?: string
   scrollCap?: boolean
 }) {
+  const navigate = useNavigate()
+
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground py-4 text-center">{emptyText}</p>
   }
@@ -35,10 +38,15 @@ export function AgendaPerluDiisiList({
           : new Date(s.tanggal + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })
         const active = key === selectedKey
 
+        // Tagihan kokurikuler diisi di halaman Kokurikuler, bukan form agenda reguler —
+        // ditangani di sini supaya keempat pemanggil (Dashboard/Agenda/Form) tidak
+        // perlu tahu bedanya.
+        const isKokurikuler = s.jenis === 'kokurikuler'
+
         return (
           <button
             key={key} type="button"
-            onClick={() => onSelect(s)}
+            onClick={() => isKokurikuler ? navigate('/kokurikuler') : onSelect(s)}
             className={cn(
               'w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
               active ? 'border-primary-600 bg-primary-50'
@@ -50,7 +58,7 @@ export function AgendaPerluDiisiList({
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{s.mapel} · {s.kelas}</p>
               <p className="text-xs text-muted-foreground">
-                {tglLabel} · {s.jam_mulai}–{s.jam_selesai}
+                {tglLabel}{s.jam_mulai ? ` · ${s.jam_mulai}–${s.jam_selesai}` : ''}
                 {' · '}
                 {s.bisa_diisi
                   ? <span className={mendesak ? 'text-orange-600 font-medium' : ''}>Batas isi: {s.deadline}</span>
@@ -59,7 +67,7 @@ export function AgendaPerluDiisiList({
             </div>
             {s.bisa_diisi ? (
               <span className="shrink-0 rounded-md bg-primary-600 px-3 py-1 text-xs font-medium text-white">
-                Isi Agenda
+                {isKokurikuler ? 'Isi Laporan' : 'Isi Agenda'}
               </span>
             ) : (
               <Badge className="shrink-0 bg-red-100 text-red-700">Lewat batas</Badge>

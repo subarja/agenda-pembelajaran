@@ -28,16 +28,52 @@ class KokurikulerMode
      * (aktif ATAU selesai — projek yang sudah selesai tetap membebaskan tanggal
      * lamanya, supaya sesi selama kokurikuler tidak pernah menjadi hutang tagihan).
      *
+     * Dua sumber, digabung:
+     *  1. Baris kelas peserta eksplisit (kokurikuler_project_classes).
+     *  2. Field `tingkat` projek ('XI' / 'XI,XII' / null = semua tingkat): SEMUA kelas
+     *     ber-tingkat itu pada TA projek ikut bebas. Dulu hanya sumber (1) — projek
+     *     yang "diset aktif kelas XI" tapi daftar kelasnya tidak lengkap membuat guru
+     *     kelas XI yang tak terdaftar tetap ditagih agenda reguler.
+     *
      * @return Collection keyed class_id → Collection baris {tanggal_mulai, tanggal_selesai}
      */
     public static function agendaExemptPeriods(): Collection
     {
-        return static::$exemptCache ??= KokurikulerProjectClass::query()
+        if (static::$exemptCache !== null) {
+            return static::$exemptCache;
+        }
+
+        $explicit = KokurikulerProjectClass::query()
             ->join('kokurikuler_projects as p', 'p.id', '=', 'kokurikuler_project_classes.project_id')
             ->where('p.status', '!=', 'draft')
             ->whereNull('p.deleted_at')
-            ->get(['kokurikuler_project_classes.class_id', 'p.tanggal_mulai', 'p.tanggal_selesai'])
-            ->groupBy('class_id');
+            ->get(['kokurikuler_project_classes.class_id', 'p.tanggal_mulai', 'p.tanggal_selesai']);
+
+        $byTingkat = KokurikulerProject::query()
+            ->where('status', '!=', 'draft')
+            ->get(['id', 'academic_year_id', 'tingkat', 'tanggal_mulai', 'tanggal_selesai'])
+            ->flatMap(function ($p) {
+                $tingkat = $p->tingkat !== null
+                    ? array_map('trim', explode(',', $p->tingkat))
+                    : null; // null = semua tingkat
+
+                return \App\Models\SchoolClass::where('academic_year_id', $p->academic_year_id)
+                    ->when($tingkat, fn ($q) => $q->whereIn('tingkat', $tingkat))
+                    ->pluck('id')
+                    ->map(fn ($classId) => (object) [
+                        'class_id'        => $classId,
+                        'tanggal_mulai'   => $p->tanggal_mulai,
+                        'tanggal_selesai' => $p->tanggal_selesai,
+                    ]);
+            });
+
+        return static::$exemptCache = $explicit->concat($byTingkat)->groupBy('class_id');
+    }
+
+    /** Reset cache statis — dipakai test & setelah CRUD projek. */
+    public static function flush(): void
+    {
+        static::$exemptCache = null;
     }
 
     /**
@@ -56,6 +92,80 @@ class KokurikulerMode
         return $periods !== null && $periods->contains(fn ($p) =>
             $tanggal >= substr((string) $p->tanggal_mulai, 0, 10)
             && $tanggal <= substr((string) $p->tanggal_selesai, 0, 10));
+    }
+
+    /**
+     * Tagihan laporan harian kokurikuler untuk fasilitator — mitra dari tagihan agenda
+     * reguler: satu baris per (projek aktif, kelas yang ia fasilitasi, tanggal
+     * pelaksanaan Senin–Sabtu) yang laporan hariannya belum ada, dibatasi jendela yang
+     * sama dengan agenda reguler ($mulai..$today, deadline = akhir hari + batas admin).
+     * Bentuk barisnya sengaja identik dengan baris /agendas/perlu-diisi.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function tagihanFasilitator(
+        User $user,
+        \Illuminate\Support\Carbon $mulai,
+        \Illuminate\Support\Carbon $today,
+        \App\Models\AgendaFillSetting $setting,
+    ): array {
+        $slots = KokurikulerProjectClass::where('fasilitator_user_id', $user->id)
+            ->whereHas('project', fn ($q) => $q->berjalan())
+            ->with(['project', 'schoolClass'])
+            ->get();
+
+        if ($slots->isEmpty()) {
+            return [];
+        }
+
+        $now  = \Illuminate\Support\Carbon::now('Asia/Jakarta');
+        $rows = [];
+
+        foreach ($slots as $pc) {
+            $p     = $pc->project;
+            $class = $pc->schoolClass;
+            if (! $p || ! $class) {
+                continue;
+            }
+
+            $dari   = $p->tanggal_mulai->greaterThan($mulai) ? $p->tanggal_mulai->copy() : $mulai->copy();
+            $sampai = $p->tanggal_selesai->lessThan($today) ? $p->tanggal_selesai->copy() : $today->copy();
+            if ($dari->gt($sampai)) {
+                continue;
+            }
+
+            $terisi = \App\Models\KokurikulerReport::where('project_id', $p->id)
+                ->where('class_id', $class->id)
+                ->whereBetween('tanggal', [$dari->toDateString(), $sampai->toDateString()])
+                ->pluck('tanggal')
+                ->map(fn ($t) => substr((string) $t, 0, 10))
+                ->flip();
+
+            for ($d = $dari->copy(); $d->lte($sampai); $d->addDay()) {
+                if ($d->isSunday() || $terisi->has($d->toDateString())) {
+                    continue; // hari Minggu bukan hari pelaksanaan (pola projectDates())
+                }
+
+                $deadline = $setting->batasWaktu($d->copy()->endOfDay());
+                $rows[] = [
+                    'jenis'        => 'kokurikuler',
+                    // Kunci unik utk daftar FE — bukan uuid jadwal sungguhan.
+                    'schedule_id'  => "kokurikuler|{$p->uuid}|{$class->uuid}",
+                    'tanggal'      => $d->toDateString(),
+                    'hari'         => ucfirst($d->locale('id')->dayName),
+                    'jam_mulai'    => '',
+                    'jam_selesai'  => '',
+                    'class_id'     => $class->uuid,
+                    'kelas'        => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                    'mapel'        => "Kokurikuler — {$p->judul}",
+                    'deadline'     => $deadline->format('Y-m-d H:i'),
+                    'bisa_diisi'   => $now->lte($deadline),
+                    'jam_tersisa'  => $now->lte($deadline) ? $now->diffInHours($deadline) : null,
+                ];
+            }
+        }
+
+        return $rows;
     }
 
     /**

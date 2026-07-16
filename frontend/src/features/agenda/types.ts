@@ -25,6 +25,9 @@ export interface ScheduleWeek {
 // beda dari ScheduleToday (cuma hari ini) supaya jadwal yang telat diisi kemarin/H-2
 // tetap kelihatan & bisa dipilih dari form "Isi Agenda", bukan cuma hari ini.
 export interface AgendaPerluDiisi {
+  // 'kokurikuler' = tagihan laporan harian fasilitator (schedule_id bukan uuid jadwal,
+  // link-nya ke halaman Kokurikuler); default/absen = sesi agenda reguler.
+  jenis?: 'reguler' | 'kokurikuler'
   schedule_id: string
   tanggal: string
   hari: string
