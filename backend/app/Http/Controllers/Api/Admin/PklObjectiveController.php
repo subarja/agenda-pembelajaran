@@ -67,12 +67,14 @@ class PklObjectiveController extends Controller
     private function validated(Request $request): array
     {
         $data = $request->validate([
+            'kode'      => ['nullable', 'string', 'max:30'],
             'deskripsi' => ['required', 'string', 'max:500'],
             'jurusan'   => ['nullable', 'string', 'max:100'],
         ]);
 
-        // String kosong dari form → NULL (berlaku semua jurusan).
+        // String kosong dari form → NULL (berlaku semua jurusan / tanpa kode).
         $data['jurusan'] = ($data['jurusan'] ?? '') === '' ? null : $data['jurusan'];
+        $data['kode']    = trim((string) ($data['kode'] ?? '')) === '' ? null : trim($data['kode']);
 
         return $data;
     }
@@ -93,6 +95,7 @@ class PklObjectiveController extends Controller
     {
         return [
             'id'        => $o->uuid,
+            'kode'      => $o->kode,             // null = tanpa kode
             'deskripsi' => $o->deskripsi,
             'jurusan'   => $o->jurusan,          // null = semua jurusan
             'aktif'     => $o->aktif,

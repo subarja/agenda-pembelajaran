@@ -181,6 +181,7 @@ class PklController extends Controller
                     'id'   => $p->student->uuid,
                     'nis'  => $p->student->nis,
                     'nama' => $p->student->user->nama,
+                    'telpon' => $p->telpon_siswa,
                     'presensi' => collect($this->weekdays($senin))->mapWithKeys(fn ($d) =>
                         [$d['tanggal'] => $absensi->get($p->student->id.'|'.$d['tanggal'])])->all(),
                 ])->values(),
@@ -356,6 +357,91 @@ class PklController extends Controller
         });
     }
 
+    // ── Edit & tambah penempatan oleh pembimbing ───────────────────────────────
+
+    /** PUT /pkl/placements/{uuid} — pembimbing mengedit penempatan siswa bimbingannya sendiri. */
+    public function updatePlacement(Request $request, string $uuid): JsonResponse
+    {
+        $teacher = $request->user()->teacher;
+        abort_if(! $teacher, 403);
+
+        $p = PklPlacement::where('uuid', $uuid)->firstOrFail();
+        abort_unless($p->pembimbing_teacher_id === $teacher->id, 403, 'Bukan siswa bimbingan Anda.');
+
+        $data = $request->validate([
+            'tempat_pkl'      => ['required', 'string', 'max:200'],
+            'alamat_pkl'      => ['nullable', 'string', 'max:300'],
+            'telpon'          => ['nullable', 'string', 'max:25'],
+            'tanggal_mulai'   => ['required', 'date'],
+            'tanggal_selesai' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
+        ]);
+
+        abort_if(
+            PklPlacement::overlapExists($p->student_id, $p->academic_year_id, $data['tanggal_mulai'], $data['tanggal_selesai'], $p->id),
+            422,
+            'Periode bertumpuk dengan tempat PKL lain milik siswa ini (waktu bersamaan = ada kesalahan data).',
+        );
+
+        $p->update([
+            'tempat_pkl'      => $data['tempat_pkl'],
+            'alamat_pkl'      => $data['alamat_pkl'] ?? null,
+            'telpon_siswa'    => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
+            'tanggal_mulai'   => $data['tanggal_mulai'],
+            'tanggal_selesai' => $data['tanggal_selesai'],
+        ]);
+
+        return response()->json(['message' => 'Penempatan PKL diperbarui.']);
+    }
+
+    /**
+     * POST /pkl/placements — pembimbing menambah tempat PKL baru untuk siswa yang
+     * SUDAH menjadi bimbingannya (satu siswa boleh beberapa tempat, waktu berbeda).
+     */
+    public function storePlacement(Request $request): JsonResponse
+    {
+        $teacher = $request->user()->teacher;
+        abort_if(! $teacher, 403);
+
+        $data = $request->validate([
+            'student_id'      => ['required', 'string'],
+            'tempat_pkl'      => ['required', 'string', 'max:200'],
+            'alamat_pkl'      => ['nullable', 'string', 'max:300'],
+            'telpon'          => ['nullable', 'string', 'max:25'],
+            'tanggal_mulai'   => ['required', 'date'],
+            'tanggal_selesai' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
+        ]);
+
+        $student = \App\Models\Student::where('uuid', $data['student_id'])->firstOrFail();
+
+        $ayId = PklMode::activeAcademicYearId();
+        $bimbingan = PklPlacement::where('student_id', $student->id)
+            ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
+            ->where('pembimbing_teacher_id', $teacher->id)
+            ->orderBy('id')
+            ->first();
+        abort_unless($bimbingan, 403, 'Siswa ini bukan bimbingan Anda.');
+
+        abort_if(
+            PklPlacement::overlapExists($student->id, $ayId ?? $bimbingan->academic_year_id, $data['tanggal_mulai'], $data['tanggal_selesai']),
+            422,
+            'Periode bertumpuk dengan tempat PKL lain milik siswa ini (waktu bersamaan = ada kesalahan data).',
+        );
+
+        $p = PklPlacement::create([
+            'student_id'            => $student->id,
+            'class_id'              => $bimbingan->class_id,
+            'academic_year_id'      => $ayId ?? $bimbingan->academic_year_id,
+            'pembimbing_teacher_id' => $teacher->id,
+            'tempat_pkl'            => $data['tempat_pkl'],
+            'alamat_pkl'            => $data['alamat_pkl'] ?? null,
+            'telpon_siswa'          => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
+            'tanggal_mulai'         => $data['tanggal_mulai'],
+            'tanggal_selesai'       => $data['tanggal_selesai'],
+        ]);
+
+        return response()->json(['message' => 'Tempat PKL ditambahkan.', 'id' => $p->uuid], 201);
+    }
+
     // ── Helper internal ────────────────────────────────────────────────────────
 
     private function myPlacements(int $teacherId): Collection
@@ -409,6 +495,7 @@ class PklController extends Controller
             ->get()
             ->map(fn ($o) => [
                 'id'        => $o->uuid,
+                'kode'      => $o->kode,
                 'deskripsi' => $o->deskripsi,
                 'lingkup'   => $o->jurusan === null ? 'Umum (semua jurusan)' : "Khusus {$o->jurusan}",
             ])->all();
@@ -473,9 +560,13 @@ class PklController extends Controller
     private function placementRow(PklPlacement $p): array
     {
         return [
+            // uuid PENEMPATAN — kunci baris (satu siswa bisa >1 tempat) & target edit.
+            'placement_id' => $p->uuid,
             'id'         => $p->student->uuid,
             'nama'       => $p->student->user->nama,
+            'nis'        => $p->student->nis,
             'nisn'       => $p->student->nisn,
+            'telpon'     => $p->telpon_siswa,
             'tempat_pkl' => $p->tempat_pkl,
             'alamat_pkl' => $p->alamat_pkl ?? '—',
             'mulai'      => $p->tanggal_mulai?->toDateString(),

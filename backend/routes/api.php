@@ -173,6 +173,8 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::post('pkl/agenda',               [PklController::class, 'storeAgenda']);
     Route::get('pkl/students/export',       [PklController::class, 'exportStudents']);
     Route::get('pkl/rekap-absen/export',    [PklController::class, 'exportRekapAbsen']);
+    Route::post('pkl/placements',           [PklController::class, 'storePlacement']);
+    Route::put('pkl/placements/{uuid}',     [PklController::class, 'updatePlacement']);
 
     // ── Kokurikuler (fasilitator = wali kelas; siswa: refleksi + dokumen tim) ──
     Route::get('kokurikuler/overview',        [KokurikulerController::class, 'overview']);
@@ -354,8 +356,11 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::put('pkl/objectives/{uuid}',        [PklObjectiveController::class, 'update']);
         Route::delete('pkl/objectives/{uuid}',     [PklObjectiveController::class, 'destroy']);
         Route::get('pkl/placements/template',      [PklPlacementController::class, 'template']);
+        Route::get('pkl/placements/export',        [PklPlacementController::class, 'export']);
         Route::post('pkl/placements/import',       [PklPlacementController::class, 'import']);
         Route::get('pkl/placements',               [PklPlacementController::class, 'index']);
+        Route::post('pkl/placements',              [PklPlacementController::class, 'store']);
+        Route::put('pkl/placements/{uuid}',        [PklPlacementController::class, 'update']);
         Route::delete('pkl/placements/{uuid}',     [PklPlacementController::class, 'destroy']);
 
         // ── Kokurikuler (projek, kelas+fasilitator, dimensi, rekap) ───────────────

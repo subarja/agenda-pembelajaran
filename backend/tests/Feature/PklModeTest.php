@@ -183,13 +183,14 @@ class PklModeTest extends TestCase
     public function test_import_penempatan_cocok_nisn_dan_nama_guru(): void
     {
         $path = $this->makeXlsx([
-            ['Nama', 'NISN', 'Kelas', 'Tempat PKL', 'Alamat PKL', 'Awal PKL', 'Akhir PKL', 'Guru Pembimbing'],
-            // baris valid (NISN cocok, guru cocok)
-            ['Siswa PKL', '0099887766', 'XII Animasi A', 'PT Baru', 'Jl. Baru', '2026-03-02', '2026-05-29', 'Pembimbing PKL'],
+            ['Nama', 'NIS', 'NISN', 'Kelas', 'No. HP Siswa', 'Tempat PKL', 'Alamat PKL', 'Awal PKL', 'Akhir PKL', 'Guru Pembimbing'],
+            // perusahaan SAMA ('PT Uji' dari setUp) → menimpa/melengkapi baris lama;
+            // telpon 08… dinormalisasi ke 62…
+            ['Siswa PKL', '', '0099887766', 'XII Animasi A', '081234567890', 'PT Uji', 'Jl. Uji Baru', '2026-03-09', '2026-05-29', 'Pembimbing PKL'],
             // NISN tak dikenal
-            ['Hantu', '0000000000', 'XII Animasi A', 'PT X', 'Jl. X', '2026-03-02', '2026-05-29', 'Pembimbing PKL'],
+            ['Hantu', '', '0000000000', 'XII Animasi A', '', 'PT X', 'Jl. X', '2026-03-02', '2026-05-29', 'Pembimbing PKL'],
             // guru tak dikenal
-            ['Siswa PKL', '0099887766', 'XII Animasi A', 'PT Y', 'Jl. Y', '2026-03-02', '2026-05-29', 'Guru Tidak Ada'],
+            ['Siswa PKL', '', '0099887766', 'XII Animasi A', '', 'PT Uji', 'Jl. Y', '2026-03-02', '2026-05-29', 'Guru Tidak Ada'],
         ]);
 
         Sanctum::actingAs($this->admin);
@@ -199,8 +200,159 @@ class PklModeTest extends TestCase
 
         $this->assertSame(1, $res->json('success_count'));
         $this->assertSame(2, $res->json('error_count'));
-        // penempatan ter-update ke tempat baru (updateOrCreate atas unique student+AY)
-        $this->assertDatabaseHas('pkl_placements', ['student_id' => $this->siswa->id, 'tempat_pkl' => 'PT Baru']);
+        $this->assertSame(1, PklPlacement::where('student_id', $this->siswa->id)->count());
+        $this->assertDatabaseHas('pkl_placements', [
+            'student_id' => $this->siswa->id, 'tempat_pkl' => 'PT Uji',
+            'alamat_pkl' => 'Jl. Uji Baru', 'telpon_siswa' => '6281234567890',
+            'tanggal_mulai' => '2026-03-09',
+        ]);
+    }
+
+    public function test_import_penempatan_fallback_nis_saat_nisn_kosong(): void
+    {
+        $this->siswa->update(['nis' => '232400123']);
+
+        $path = $this->makeXlsx([
+            ['Nama', 'NIS', 'NISN', 'Kelas', 'No. HP Siswa', 'Tempat PKL', 'Alamat PKL', 'Awal PKL', 'Akhir PKL', 'Guru Pembimbing'],
+            // NISN kosong → cocok lewat NIS; perusahaan BEDA + periode TIDAK bertumpuk
+            // → jadi tempat PKL kedua; telpon Excel numerik kehilangan 0 depan (8…)
+            ['Siswa PKL', '232400123', '', 'XII Animasi A', '81299998888', 'PT Via NIS', 'Jl. NIS', '2026-06-01', '2026-06-30', 'Pembimbing PKL'],
+        ]);
+
+        Sanctum::actingAs($this->admin);
+        $res = $this->postJson('/api/v1/admin/pkl/placements/import', [
+            'file' => new \Illuminate\Http\UploadedFile($path, 'pkl.xlsx', null, null, true),
+        ])->assertOk();
+
+        $this->assertSame(1, $res->json('success_count'));
+        $this->assertSame(2, PklPlacement::where('student_id', $this->siswa->id)->count());
+        $this->assertDatabaseHas('pkl_placements', [
+            'student_id' => $this->siswa->id, 'tempat_pkl' => 'PT Via NIS', 'telpon_siswa' => '6281299998888',
+        ]);
+    }
+
+    public function test_import_periode_bertumpuk_perusahaan_beda_ditolak(): void
+    {
+        $path = $this->makeXlsx([
+            ['Nama', 'NIS', 'NISN', 'Kelas', 'No. HP Siswa', 'Tempat PKL', 'Alamat PKL', 'Awal PKL', 'Akhir PKL', 'Guru Pembimbing'],
+            // perusahaan beda, periode bertumpuk dengan 'PT Uji' (Mar–Mei) → kesalahan data
+            ['Siswa PKL', '', '0099887766', 'XII Animasi A', '', 'PT Tabrakan', 'Jl. T', '2026-04-01', '2026-04-30', 'Pembimbing PKL'],
+        ]);
+
+        Sanctum::actingAs($this->admin);
+        $res = $this->postJson('/api/v1/admin/pkl/placements/import', [
+            'file' => new \Illuminate\Http\UploadedFile($path, 'pkl.xlsx', null, null, true),
+        ])->assertOk();
+
+        $this->assertSame(0, $res->json('success_count'));
+        $this->assertSame(1, $res->json('error_count'));
+        $this->assertStringContainsString('bertumpuk', $res->json('errors.0'));
+        $this->assertSame(1, PklPlacement::where('student_id', $this->siswa->id)->count());
+    }
+
+    public function test_import_perusahaan_mirip_ditanya_dulu_lalu_keputusan_dihormati(): void
+    {
+        $rows = [
+            ['Nama', 'NIS', 'NISN', 'Kelas', 'No. HP Siswa', 'Tempat PKL', 'Alamat PKL', 'Awal PKL', 'Akhir PKL', 'Guru Pembimbing'],
+            // 'PT Ujii' mirip 'PT Uji' → ditahan, tanyakan dulu
+            ['Siswa PKL', '', '0099887766', 'XII Animasi A', '', 'PT Ujii', 'Jl. U', '2026-03-02', '2026-05-29', 'Pembimbing PKL'],
+        ];
+
+        Sanctum::actingAs($this->admin);
+        $res = $this->postJson('/api/v1/admin/pkl/placements/import', [
+            'file' => new \Illuminate\Http\UploadedFile($this->makeXlsx($rows), 'pkl.xlsx', null, null, true),
+        ])->assertOk();
+
+        $this->assertSame(0, $res->json('success_count'));
+        $this->assertCount(1, $res->json('pending_matches'));
+        $this->assertSame('PT Uji', $res->json('pending_matches.0.tempat_lama'));
+        $key = $res->json('pending_matches.0.key');
+
+        // Keputusan 'timpa' → baris lama diganti nama perusahaan barunya.
+        $res2 = $this->postJson('/api/v1/admin/pkl/placements/import', [
+            'file'      => new \Illuminate\Http\UploadedFile($this->makeXlsx($rows), 'pkl.xlsx', null, null, true),
+            'decisions' => json_encode([$key => 'timpa']),
+        ])->assertOk();
+
+        $this->assertSame(1, $res2->json('success_count'));
+        $this->assertSame(1, PklPlacement::where('student_id', $this->siswa->id)->count());
+        $this->assertDatabaseHas('pkl_placements', ['student_id' => $this->siswa->id, 'tempat_pkl' => 'PT Ujii']);
+    }
+
+    // ── Edit & tambah penempatan oleh pembimbing ───────────────────────────────
+
+    public function test_pembimbing_edit_penempatan_bimbingannya_sendiri(): void
+    {
+        $p = PklPlacement::where('student_id', $this->siswa->id)->first();
+
+        // Guru lain (bukan pembimbingnya) ditolak.
+        Sanctum::actingAs($this->guruLain);
+        $this->putJson("/api/v1/pkl/placements/{$p->uuid}", [
+            'tempat_pkl' => 'PT Disusupi', 'tanggal_mulai' => '2026-03-02', 'tanggal_selesai' => '2026-05-29',
+        ])->assertStatus(403);
+
+        // Pembimbingnya sendiri boleh — edit perusahaan, periode, telpon.
+        Sanctum::actingAs($this->pembimbing);
+        $this->putJson("/api/v1/pkl/placements/{$p->uuid}", [
+            'tempat_pkl' => 'PT Uji Revisi', 'alamat_pkl' => 'Jl. Revisi',
+            'telpon' => '0813333444', 'tanggal_mulai' => '2026-03-02', 'tanggal_selesai' => '2026-06-05',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('pkl_placements', [
+            'id' => $p->id, 'tempat_pkl' => 'PT Uji Revisi', 'telpon_siswa' => '62813333444',
+        ]);
+    }
+
+    public function test_pembimbing_tambah_tempat_kedua_dan_tolak_periode_bertumpuk(): void
+    {
+        Sanctum::actingAs($this->pembimbing);
+
+        // Bertumpuk dengan Mar–Mei → ditolak.
+        $this->postJson('/api/v1/pkl/placements', [
+            'student_id' => $this->siswa->uuid, 'tempat_pkl' => 'PT Kedua',
+            'tanggal_mulai' => '2026-05-01', 'tanggal_selesai' => '2026-06-15',
+        ])->assertStatus(422);
+
+        // Periode berbeda → tempat kedua sah.
+        $this->postJson('/api/v1/pkl/placements', [
+            'student_id' => $this->siswa->uuid, 'tempat_pkl' => 'PT Kedua',
+            'telpon' => '08155556666', 'tanggal_mulai' => '2026-06-01', 'tanggal_selesai' => '2026-06-30',
+        ])->assertCreated();
+
+        $this->assertSame(2, PklPlacement::where('student_id', $this->siswa->id)->count());
+
+        // Guru lain tidak bisa menambahkan untuk siswa yang bukan bimbingannya.
+        Sanctum::actingAs($this->guruLain);
+        $this->postJson('/api/v1/pkl/placements', [
+            'student_id' => $this->siswa->uuid, 'tempat_pkl' => 'PT Susup',
+            'tanggal_mulai' => '2026-07-01', 'tanggal_selesai' => '2026-07-31',
+        ])->assertStatus(403);
+    }
+
+    public function test_admin_tambah_manual_edit_dan_export(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        // Tambah manual per anak (via NISN).
+        $this->postJson('/api/v1/admin/pkl/placements', [
+            'nisn' => '0099887766', 'tempat_pkl' => 'CV Manual', 'telpon' => '087700001111',
+            'tanggal_mulai' => '2026-06-01', 'tanggal_selesai' => '2026-06-30', 'pembimbing' => 'Pembimbing PKL',
+        ])->assertCreated();
+
+        $baru = PklPlacement::where('tempat_pkl', 'CV Manual')->firstOrFail();
+        $this->assertSame('6287700001111', $baru->telpon_siswa);
+
+        // Edit manual: perusahaan, awal, akhir, telpon.
+        $this->putJson("/api/v1/admin/pkl/placements/{$baru->uuid}", [
+            'tempat_pkl' => 'CV Manual Revisi', 'telpon' => '087700002222',
+            'tanggal_mulai' => '2026-06-02', 'tanggal_selesai' => '2026-06-29',
+        ])->assertOk();
+        $this->assertDatabaseHas('pkl_placements', ['id' => $baru->id, 'tempat_pkl' => 'CV Manual Revisi', 'telpon_siswa' => '6287700002222']);
+
+        // Export peserta PKL (format sama dengan template import).
+        $this->get('/api/v1/admin/pkl/placements/export')
+            ->assertOk()
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     }
 
     private function makeXlsx(array $rows): string

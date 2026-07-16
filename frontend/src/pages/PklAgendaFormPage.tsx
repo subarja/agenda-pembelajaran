@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { toLocalDateStr } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { WhatsAppLink } from '@/components/ui/whatsapp-link'
 
 const STATUS = [
   { v: '', label: '—' },
@@ -97,7 +98,10 @@ export default function PklAgendaFormPage() {
                   <input type="checkbox" className="mt-1"
                     checked={objIds.includes(o.id)}
                     onChange={(e) => setObjIds((prev) => e.target.checked ? [...prev, o.id] : prev.filter((x) => x !== o.id))} />
-                  <span>{o.deskripsi}</span>
+                  <span>
+                    {o.kode && <code className="mr-1.5 rounded bg-muted px-1 py-0.5 text-[10px] font-semibold text-muted-foreground">{o.kode}</code>}
+                    {o.deskripsi}
+                  </span>
                 </label>
               ))}
             </div>
@@ -134,7 +138,9 @@ export default function PklAgendaFormPage() {
             <tbody>
               {form.students.map((s) => (
                 <tr key={s.id} className="border-b last:border-0">
-                  <td className="py-1.5 pr-2 sticky left-0 bg-card min-w-[9rem] max-w-[11rem]">{s.nama}</td>
+                  <td className="py-1.5 pr-2 sticky left-0 bg-card min-w-[9rem] max-w-[11rem]">
+                    <span className="inline-flex items-center gap-1.5">{s.nama}<WhatsAppLink telpon={s.telpon} iconOnly /></span>
+                  </td>
                   {form.hari.map((h) => {
                     const future = h.tanggal > today
                     return (

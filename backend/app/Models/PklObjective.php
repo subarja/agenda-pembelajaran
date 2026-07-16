@@ -17,7 +17,7 @@ class PklObjective extends Model
     use HasAuditTrail, HasUuid, SoftDeletes;
 
     protected $fillable = [
-        'deskripsi', 'jurusan', 'academic_year_id', 'aktif',
+        'kode', 'deskripsi', 'jurusan', 'academic_year_id', 'aktif',
         'created_by', 'updated_by',
     ];
 

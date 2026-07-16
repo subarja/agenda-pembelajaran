@@ -11,9 +11,12 @@ export interface PklClass {
 }
 
 export interface PklStudentRow {
+  placement_id: string
   id: string
   nama: string
+  nis: string | null
   nisn: string | null
+  telpon: string | null
   tempat_pkl: string
   alamat_pkl: string
   mulai: string | null
@@ -32,6 +35,7 @@ export interface PklWeek {
 
 export interface PklObjectiveOption {
   id: string
+  kode: string | null
   deskripsi: string
   lingkup: string
 }
@@ -45,6 +49,7 @@ export interface PklAgendaStudent {
   id: string
   nis: string
   nama: string
+  telpon: string | null
   presensi: Record<string, string | null>
 }
 
@@ -60,6 +65,7 @@ export interface PklAgendaForm {
 // Data admin
 export interface PklAdminObjective {
   id: string
+  kode: string | null
   deskripsi: string
   jurusan: string | null
   aktif: boolean
@@ -68,7 +74,9 @@ export interface PklAdminObjective {
 export interface PklPlacementRow {
   id: string
   nama: string | null
+  nis: string | null
   nisn: string | null
+  telpon: string | null
   class_id: string | null
   kelas: string | null
   tempat_pkl: string
@@ -78,10 +86,28 @@ export interface PklPlacementRow {
   pembimbing: string | null
 }
 
+export interface PklPendingMatch {
+  key: string
+  siswa: string | null
+  kelas: string | null
+  tempat_baru: string
+  tempat_lama: string
+}
+
 export interface PklImportResult {
   success_count: number
   error_count: number
   errors: string[]
+  // Perusahaan MIRIP yang ditahan — admin memutuskan: timpa atau perusahaan baru.
+  pending_matches?: PklPendingMatch[]
+}
+
+export interface PklPlacementPayload {
+  tempat_pkl: string
+  alamat_pkl?: string | null
+  telpon?: string | null
+  tanggal_mulai: string
+  tanggal_selesai: string
 }
 
 // ── Unduh biner (Excel / template) ──────────────────────────────────────────
@@ -137,6 +163,12 @@ export const pklApi = {
   downloadStudents: (classId: string, filename: string) =>
     downloadBlob(`/pkl/students/export?class_id=${classId}&format=excel`, filename),
 
+  // Edit & tambah tempat PKL oleh pembimbing (siswa bimbingannya sendiri).
+  updatePlacement: (placementId: string, d: PklPlacementPayload) =>
+    api.put(`/pkl/placements/${placementId}`, d),
+  createPlacement: (d: PklPlacementPayload & { student_id: string }) =>
+    api.post('/pkl/placements', d),
+
   downloadRekap: (classId: string, filename: string) =>
     downloadBlob(`/pkl/rekap-absen/export?class_id=${classId}&format=excel`, filename),
 }
@@ -148,21 +180,27 @@ export const pklAdminApi = {
 
   getObjectives: () =>
     api.get<{ data: PklAdminObjective[]; jurusans: string[] }>('/admin/pkl/objectives'),
-  createObjective: (d: { deskripsi: string; jurusan: string | null }) => api.post('/admin/pkl/objectives', d),
-  updateObjective: (id: string, d: { deskripsi: string; jurusan: string | null; aktif?: boolean }) =>
+  createObjective: (d: { kode?: string | null; deskripsi: string; jurusan: string | null }) => api.post('/admin/pkl/objectives', d),
+  updateObjective: (id: string, d: { kode?: string | null; deskripsi: string; jurusan: string | null; aktif?: boolean }) =>
     api.put(`/admin/pkl/objectives/${id}`, d),
   deleteObjective: (id: string) => api.delete(`/admin/pkl/objectives/${id}`),
 
   getPlacements: (classId?: string) =>
     api.get<ApiResponse<PklPlacementRow[]>>('/admin/pkl/placements', { params: classId ? { class_id: classId } : {} }),
   deletePlacement: (id: string) => api.delete(`/admin/pkl/placements/${id}`),
-  importPlacements: (file: File) => {
+  importPlacements: (file: File, decisions?: Record<string, 'timpa' | 'baru'>) => {
     const fd = new FormData()
     fd.append('file', file)
+    if (decisions) fd.append('decisions', JSON.stringify(decisions))
     return api.post<PklImportResult>('/admin/pkl/placements/import', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data)
   },
+  createPlacement: (d: PklPlacementPayload & { nisn?: string; nis?: string; pembimbing: string }) =>
+    api.post('/admin/pkl/placements', d),
+  updatePlacement: (id: string, d: PklPlacementPayload & { pembimbing?: string | null }) =>
+    api.put(`/admin/pkl/placements/${id}`, d),
+  exportPlacements: () => downloadBlob('/admin/pkl/placements/export', 'peserta_pkl.xlsx'),
   downloadTemplate: () => downloadBlob('/admin/pkl/placements/template', 'template_pkl.xlsx'),
   downloadRekap: (classId: string, filename: string) =>
     downloadBlob(`/pkl/rekap-absen/export?class_id=${classId}&format=excel`, filename),

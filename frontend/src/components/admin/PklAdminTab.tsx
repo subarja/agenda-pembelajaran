@@ -1,12 +1,15 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, Trash2, Upload, Download, Pencil, X, Check, AlertCircle } from 'lucide-react'
-import { pklAdminApi, type PklAdminObjective, type PklImportResult } from '@/features/pkl/api'
+import { pklAdminApi, type PklAdminObjective, type PklImportResult, type PklPlacementRow } from '@/features/pkl/api'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { WhatsAppLink } from '@/components/ui/whatsapp-link'
 
 export default function PklAdminTab() {
   return (
@@ -53,16 +56,17 @@ function ObjectivesSection() {
   const items = data?.data.data ?? []
   const jurusans = data?.data.jurusans ?? []
 
+  const [kode, setKode] = useState('')
   const [deskripsi, setDeskripsi] = useState('')
   const [jurusan, setJurusan] = useState('')            // '' = semua jurusan
   const [editing, setEditing] = useState<PklAdminObjective | null>(null)
 
-  const reset = () => { setDeskripsi(''); setJurusan(''); setEditing(null) }
+  const reset = () => { setKode(''); setDeskripsi(''); setJurusan(''); setEditing(null) }
 
   const save = useMutation({
     mutationFn: () => editing
-      ? pklAdminApi.updateObjective(editing.id, { deskripsi, jurusan: jurusan || null })
-      : pklAdminApi.createObjective({ deskripsi, jurusan: jurusan || null }),
+      ? pklAdminApi.updateObjective(editing.id, { kode: kode.trim() || null, deskripsi, jurusan: jurusan || null })
+      : pklAdminApi.createObjective({ kode: kode.trim() || null, deskripsi, jurusan: jurusan || null }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['pkl-objectives'] }); reset() },
   })
   const del = useMutation({
@@ -71,7 +75,7 @@ function ObjectivesSection() {
   })
 
   function startEdit(o: PklAdminObjective) {
-    setEditing(o); setDeskripsi(o.deskripsi); setJurusan(o.jurusan ?? '')
+    setEditing(o); setKode(o.kode ?? ''); setDeskripsi(o.deskripsi); setJurusan(o.jurusan ?? '')
   }
 
   return (
@@ -82,6 +86,7 @@ function ObjectivesSection() {
       </p>
 
       <div className="flex flex-col sm:flex-row gap-2">
+        <Input placeholder="Kode (mis. PKL-01)" value={kode} onChange={(e) => setKode(e.target.value)} maxLength={30} className="sm:w-36" />
         <Input placeholder="Deskripsi TP PKL…" value={deskripsi} onChange={(e) => setDeskripsi(e.target.value)} className="flex-1" />
         <select className="rounded-md border border-input bg-background px-2 py-2 text-sm" value={jurusan} onChange={(e) => setJurusan(e.target.value)}>
           <option value="">Semua Jurusan</option>
@@ -101,7 +106,10 @@ function ObjectivesSection() {
           {items.map((o) => (
             <div key={o.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
               <div className="flex-1">
-                <p>{o.deskripsi}</p>
+                <p>
+                  {o.kode && <code className="mr-1.5 rounded bg-muted px-1 py-0.5 text-[11px] font-semibold text-muted-foreground">{o.kode}</code>}
+                  {o.deskripsi}
+                </p>
                 <Badge variant={o.jurusan ? 'secondary' : 'outline'} className="mt-1 text-[11px]">
                   {o.jurusan ? `Khusus ${o.jurusan}` : 'Umum (semua jurusan)'}
                 </Badge>
@@ -136,13 +144,23 @@ function PlacementsSection() {
     return [...map.entries()].map(([id, label]) => ({ id, label }))
   }, [rows])
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // File terakhir disimpan supaya keputusan "timpa / perusahaan baru" atas
+  // perusahaan MIRIP bisa diterapkan dengan mengunggah ulang file yang sama.
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [decisions, setDecisions] = useState<Record<string, 'timpa' | 'baru'>>({})
+  const [editRow, setEditRow] = useState<PklPlacementRow | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+
+  async function doImport(file: File, dec?: Record<string, 'timpa' | 'baru'>) {
     setUploading(true); setResult(null)
     try {
-      const res = await pklAdminApi.importPlacements(file)
+      const res = await pklAdminApi.importPlacements(file, dec)
       setResult(res)
+      if (res.pending_matches?.length) {
+        setPendingFile(file); setDecisions({})
+      } else {
+        setPendingFile(null); setDecisions({})
+      }
       qc.invalidateQueries({ queryKey: ['pkl-placements'] })
     } catch (err: any) {
       setResult({ success_count: 0, error_count: 1, errors: [err?.response?.data?.message ?? 'Import gagal.'] })
@@ -151,6 +169,14 @@ function PlacementsSection() {
       if (fileRef.current) fileRef.current.value = ''
     }
   }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) await doImport(file)
+  }
+
+  const pending = result?.pending_matches ?? []
+  const semuaDiputuskan = pending.length > 0 && pending.every((m) => decisions[m.key])
 
   const del = useMutation({
     mutationFn: (id: string) => pklAdminApi.deletePlacement(id),
@@ -168,8 +194,19 @@ function PlacementsSection() {
         <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
           {uploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />} Impor Excel
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+          <Plus className="h-4 w-4 mr-1" /> Tambah Manual
+        </Button>
+        <Button size="sm" variant="outline" disabled={rows.length === 0} onClick={() => pklAdminApi.exportPlacements()}>
+          <Download className="h-4 w-4 mr-1" /> Export Peserta
+        </Button>
         <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onFile} />
       </div>
+      <p className="text-xs text-muted-foreground -mt-1">
+        Impor ulang <strong>melengkapi</strong> data (kunci: siswa + nama perusahaan): perusahaan sama = ditimpa,
+        perusahaan baru = baris tambahan (satu siswa boleh beberapa tempat asal periodenya tidak bertumpuk).
+        Export memakai format yang sama dengan template sehingga hasil edit bisa diimpor kembali.
+      </p>
 
       {result && (
         <div className="rounded-lg border p-3 text-sm space-y-1">
@@ -180,8 +217,49 @@ function PlacementsSection() {
               <ul className="list-disc ml-6 text-xs">{result.errors.map((er, i) => <li key={i}>{er}</li>)}</ul>
             </div>
           )}
+
+          {/* Perusahaan mirip — tanyakan dulu: timpa atau memang perusahaan baru? */}
+          {pending.length > 0 && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 mt-2 space-y-2">
+              <p className="text-amber-800 font-medium text-xs">
+                {pending.length} baris ditahan — nama perusahaannya mirip dengan yang sudah ada. Putuskan satu per satu:
+              </p>
+              {pending.map((m) => (
+                <div key={m.key} className="text-xs flex flex-wrap items-center gap-2">
+                  <span className="min-w-0">
+                    <strong>{m.siswa}</strong> ({m.kelas}): “{m.tempat_baru}” ≈ “{m.tempat_lama}”
+                  </span>
+                  <span className="flex gap-1">
+                    <button
+                      onClick={() => setDecisions((d) => ({ ...d, [m.key]: 'timpa' }))}
+                      className={cnBtn(decisions[m.key] === 'timpa')}>
+                      Timpa yang lama
+                    </button>
+                    <button
+                      onClick={() => setDecisions((d) => ({ ...d, [m.key]: 'baru' }))}
+                      className={cnBtn(decisions[m.key] === 'baru')}>
+                      Perusahaan baru
+                    </button>
+                  </span>
+                </div>
+              ))}
+              <Button size="sm" disabled={!semuaDiputuskan || uploading || !pendingFile}
+                onClick={() => pendingFile && doImport(pendingFile, decisions)}>
+                {uploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
+                Terapkan Keputusan
+              </Button>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Dialog edit / tambah manual */}
+      <PlacementFormDialog
+        open={addOpen || editRow !== null}
+        row={editRow}
+        onClose={() => { setAddOpen(false); setEditRow(null) }}
+        onSaved={() => { setAddOpen(false); setEditRow(null); qc.invalidateQueries({ queryKey: ['pkl-placements'] }) }}
+      />
 
       {/* Rekap absen per kelas */}
       <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -200,19 +278,112 @@ function PlacementsSection() {
       </div>
       {rekapErr && <p className="text-sm text-red-600 flex items-center gap-1"><AlertCircle className="h-4 w-4 shrink-0" /> {rekapErr}</p>}
 
-      {/* Daftar penempatan */}
+      {/* Daftar penempatan — data lengkap seperti saat import, bisa diedit manual */}
       <div className="divide-y border rounded-lg max-h-96 overflow-y-auto">
         {rows.map((r) => (
           <div key={r.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
             <div className="flex-1 min-w-0">
               <p className="font-medium truncate">{r.nama} <span className="text-xs text-muted-foreground">({r.kelas})</span></p>
-              <p className="text-xs text-muted-foreground truncate">NISN {r.nisn ?? '—'} · {r.tempat_pkl} · Pemb.: {r.pembimbing ?? '—'}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                NIS {r.nis ?? '—'} · NISN {r.nisn ?? '—'} · <strong>{r.tempat_pkl}</strong>
+                {r.alamat_pkl ? ` — ${r.alamat_pkl}` : ''}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {r.mulai} → {r.selesai} · Pemb.: {r.pembimbing ?? '—'}
+              </p>
+              {r.telpon && <WhatsAppLink telpon={r.telpon} className="text-xs text-muted-foreground" />}
             </div>
+            <button onClick={() => setEditRow(r)} aria-label="Edit penempatan" className="p-2 -m-1 shrink-0 text-muted-foreground hover:text-foreground"><Pencil className="h-4 w-4" /></button>
             <button onClick={() => del.mutate(r.id)} aria-label="Hapus penempatan" className="p-2 -m-1 shrink-0 text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
           </div>
         ))}
         {rows.length === 0 && <div className="px-3 py-6 text-center text-sm text-muted-foreground">Belum ada data penempatan PKL.</div>}
       </div>
     </CardContent></Card>
+  )
+}
+
+// Tombol keputusan kecil (timpa / perusahaan baru).
+function cnBtn(active: boolean): string {
+  return `rounded border px-2 py-0.5 ${active ? 'border-amber-600 bg-amber-600 text-white' : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'}`
+}
+
+/** Form tambah (row=null) / edit (row terisi) penempatan PKL — dipakai admin. */
+function PlacementFormDialog({ open, row, onClose, onSaved }: {
+  open: boolean
+  row: PklPlacementRow | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [f, setF] = useState({ nisn: '', nis: '', tempat_pkl: '', alamat_pkl: '', telpon: '', tanggal_mulai: '', tanggal_selesai: '', pembimbing: '' })
+  const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Prefill saat mulai mengedit baris.
+  useEffect(() => {
+    if (row) {
+      setF({
+        nisn: row.nisn ?? '', nis: row.nis ?? '',
+        tempat_pkl: row.tempat_pkl, alamat_pkl: row.alamat_pkl ?? '', telpon: row.telpon ?? '',
+        tanggal_mulai: row.mulai ?? '', tanggal_selesai: row.selesai ?? '', pembimbing: row.pembimbing ?? '',
+      })
+    } else {
+      setF({ nisn: '', nis: '', tempat_pkl: '', alamat_pkl: '', telpon: '', tanggal_mulai: '', tanggal_selesai: '', pembimbing: '' })
+    }
+    setErr('')
+  }, [row, open])
+
+  async function save() {
+    setSaving(true); setErr('')
+    try {
+      const base = {
+        tempat_pkl: f.tempat_pkl, alamat_pkl: f.alamat_pkl || null, telpon: f.telpon || null,
+        tanggal_mulai: f.tanggal_mulai, tanggal_selesai: f.tanggal_selesai,
+      }
+      if (row) {
+        await pklAdminApi.updatePlacement(row.id, { ...base, pembimbing: f.pembimbing || null })
+      } else {
+        await pklAdminApi.createPlacement({ ...base, nisn: f.nisn || undefined, nis: f.nis || undefined, pembimbing: f.pembimbing })
+      }
+      onSaved()
+    } catch (e: any) {
+      setErr(e?.response?.data?.message ?? 'Gagal menyimpan.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const valid = f.tempat_pkl.trim() && f.tanggal_mulai && f.tanggal_selesai
+    && (row ? true : (f.pembimbing.trim() && (f.nisn.trim() || f.nis.trim())))
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>{row ? `Edit Penempatan — ${row.nama}` : 'Tambah Penempatan Manual'}</DialogTitle></DialogHeader>
+        <div className="space-y-2.5 text-sm">
+          {!row && (
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label className="text-xs">NISN</Label><Input value={f.nisn} onChange={(e) => setF({ ...f, nisn: e.target.value })} placeholder="kunci utama" /></div>
+              <div><Label className="text-xs">NIS (bila NISN kosong)</Label><Input value={f.nis} onChange={(e) => setF({ ...f, nis: e.target.value })} /></div>
+            </div>
+          )}
+          <div><Label className="text-xs">Nama Perusahaan / Tempat PKL</Label><Input value={f.tempat_pkl} onChange={(e) => setF({ ...f, tempat_pkl: e.target.value })} /></div>
+          <div><Label className="text-xs">Alamat</Label><Input value={f.alamat_pkl} onChange={(e) => setF({ ...f, alamat_pkl: e.target.value })} /></div>
+          <div><Label className="text-xs">No. HP Siswa</Label><Input value={f.telpon} onChange={(e) => setF({ ...f, telpon: e.target.value })} placeholder="08…" /></div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label className="text-xs">Awal PKL</Label><Input type="date" value={f.tanggal_mulai} onChange={(e) => setF({ ...f, tanggal_mulai: e.target.value })} /></div>
+            <div><Label className="text-xs">Akhir PKL</Label><Input type="date" value={f.tanggal_selesai} onChange={(e) => setF({ ...f, tanggal_selesai: e.target.value })} /></div>
+          </div>
+          <div><Label className="text-xs">Guru Pembimbing (nama persis)</Label><Input value={f.pembimbing} onChange={(e) => setF({ ...f, pembimbing: e.target.value })} placeholder={row ? 'kosongkan = tidak diubah' : ''} /></div>
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button size="sm" variant="ghost" onClick={onClose}>Batal</Button>
+            <Button size="sm" disabled={!valid || saving} onClick={save}>
+              {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />} Simpan
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Briefcase, Download, FileText, CheckCircle2, Circle, Loader2, ChevronRight } from 'lucide-react'
-import { pklApi } from '@/features/pkl/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Briefcase, Download, FileText, CheckCircle2, Circle, Loader2, ChevronRight, Pencil, Plus } from 'lucide-react'
+import { pklApi, type PklStudentRow } from '@/features/pkl/api'
 import { usePdfPreview } from '@/hooks/usePdfPreview'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { WhatsAppLink } from '@/components/ui/whatsapp-link'
 
 export default function PklPage() {
   const navigate = useNavigate()
@@ -42,6 +43,60 @@ export default function PklPage() {
     enabled: !!classId,
   })
   const weeks = weeksRes?.data.data.weeks ?? []
+
+  // ── Edit / tambah tempat PKL oleh pembimbing ────────────────────────────────
+  const qc = useQueryClient()
+  const [placeForm, setPlaceForm] = useState<{
+    mode: 'edit' | 'add'
+    placementId?: string
+    studentId: string
+    anchor: string          // placement_id baris tempat form ditampilkan
+    tempat: string; alamat: string; telpon: string; mulai: string; selesai: string
+  } | null>(null)
+  const [placeErr, setPlaceErr] = useState('')
+  const [placeSaving, setPlaceSaving] = useState(false)
+
+  function openEdit(s: PklStudentRow) {
+    setPlaceErr('')
+    setPlaceForm({
+      mode: 'edit', placementId: s.placement_id, studentId: s.id, anchor: s.placement_id,
+      tempat: s.tempat_pkl, alamat: s.alamat_pkl === '—' ? '' : (s.alamat_pkl ?? ''),
+      telpon: s.telpon ?? '', mulai: s.mulai ?? '', selesai: s.selesai ?? '',
+    })
+  }
+
+  function openAdd(s: PklStudentRow) {
+    setPlaceErr('')
+    setPlaceForm({
+      mode: 'add', studentId: s.id, anchor: s.placement_id,
+      tempat: '', alamat: '', telpon: s.telpon ?? '', mulai: '', selesai: '',
+    })
+  }
+
+  async function savePlace() {
+    if (!placeForm) return
+    setPlaceSaving(true); setPlaceErr('')
+    try {
+      const payload = {
+        tempat_pkl: placeForm.tempat, alamat_pkl: placeForm.alamat || null,
+        telpon: placeForm.telpon || null, tanggal_mulai: placeForm.mulai, tanggal_selesai: placeForm.selesai,
+      }
+      if (placeForm.mode === 'edit' && placeForm.placementId) {
+        await pklApi.updatePlacement(placeForm.placementId, payload)
+      } else {
+        await pklApi.createPlacement({ ...payload, student_id: placeForm.studentId })
+      }
+      setPlaceForm(null)
+      qc.invalidateQueries({ queryKey: ['pkl-students'] })
+      qc.invalidateQueries({ queryKey: ['pkl-weeks'] })
+    } catch (e: any) {
+      setPlaceErr(e?.response?.data?.message ?? 'Gagal menyimpan.')
+    } finally {
+      setPlaceSaving(false)
+    }
+  }
+
+  const inputCls = 'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
 
   async function unduh(kind: 'siswa' | 'rekap', format: 'excel' | 'pdf') {
     if (!selected) return
@@ -152,17 +207,45 @@ export default function PklPage() {
             )}
           </div>
 
-          {/* Ringkasan siswa bimbingan */}
+          {/* Ringkasan siswa bimbingan — satu baris per TEMPAT PKL (siswa bisa >1 tempat,
+              periode berbeda); pembimbing bisa edit & menambah tempat secara manual. */}
           <div>
             <h2 className="text-sm font-semibold mb-2">Siswa Bimbingan {selected ? `— ${selected.label}` : ''} ({students.length})</h2>
             <Card><CardContent className="p-0 divide-y">
               {students.map((s) => (
-                <div key={s.id} className="px-4 py-2.5 text-sm flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="font-medium">{s.nama}</p>
-                    <p className="text-xs text-muted-foreground break-words">NISN {s.nisn ?? '—'} · {s.tempat_pkl}</p>
+                <div key={s.placement_id} className="px-4 py-2.5 text-sm">
+                  <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="font-medium">{s.nama}</p>
+                      <p className="text-xs text-muted-foreground break-words">NIS {s.nis ?? '—'} · NISN {s.nisn ?? '—'} · {s.tempat_pkl}</p>
+                      {s.telpon && <WhatsAppLink telpon={s.telpon} className="text-xs text-muted-foreground" />}
+                    </div>
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground sm:whitespace-nowrap sm:shrink-0">
+                      {s.mulai} → {s.selesai}
+                      <button onClick={() => openEdit(s)} aria-label="Edit penempatan" className="p-1.5 -m-0.5 hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => openAdd(s)} aria-label="Tambah tempat PKL" title="Tambah tempat PKL lain untuk siswa ini" className="p-1.5 -m-0.5 hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
+                    </span>
                   </div>
-                  <span className="text-xs text-muted-foreground sm:whitespace-nowrap sm:shrink-0">{s.mulai} → {s.selesai}</span>
+
+                  {placeForm && (placeForm.mode === 'edit' ? placeForm.placementId === s.placement_id : placeForm.studentId === s.id && placeForm.anchor === s.placement_id) && (
+                    <div className="mt-2 rounded-md border bg-muted/30 p-3 space-y-2">
+                      <p className="text-xs font-medium">{placeForm.mode === 'edit' ? 'Edit penempatan' : `Tambah tempat PKL baru untuk ${s.nama}`}</p>
+                      <input className={inputCls} placeholder="Nama perusahaan / tempat PKL" value={placeForm.tempat} onChange={(e) => setPlaceForm({ ...placeForm, tempat: e.target.value })} />
+                      <input className={inputCls} placeholder="Alamat (opsional)" value={placeForm.alamat} onChange={(e) => setPlaceForm({ ...placeForm, alamat: e.target.value })} />
+                      <input className={inputCls} placeholder="No. HP siswa (08…)" value={placeForm.telpon} onChange={(e) => setPlaceForm({ ...placeForm, telpon: e.target.value })} />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="date" className={inputCls} value={placeForm.mulai} onChange={(e) => setPlaceForm({ ...placeForm, mulai: e.target.value })} />
+                        <input type="date" className={inputCls} value={placeForm.selesai} onChange={(e) => setPlaceForm({ ...placeForm, selesai: e.target.value })} />
+                      </div>
+                      {placeErr && <p className="text-xs text-red-600">{placeErr}</p>}
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="ghost" onClick={() => { setPlaceForm(null); setPlaceErr('') }}>Batal</Button>
+                        <Button size="sm" disabled={!placeForm.tempat.trim() || !placeForm.mulai || !placeForm.selesai || placeSaving} onClick={savePlace}>
+                          {placeSaving && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />} Simpan
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
               {students.length === 0 && <div className="px-4 py-6 text-center text-sm text-muted-foreground">Belum ada siswa bimbingan.</div>}
