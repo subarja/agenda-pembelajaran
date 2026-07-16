@@ -534,7 +534,7 @@ function SiswaTab() {
     queryFn: () => adminApi.getStudents({ search: debouncedSearch || undefined, class_id: filterKelas || undefined, status_siswa: filterStatus, page, per_page: perPage === 'semua' ? 'all' : perPage }),
     placeholderData: (prev) => prev,
   })
-  const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
+  const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: () => adminApi.getClasses() })
 
   function toggleSort(col: string) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -1248,7 +1248,7 @@ function JadwalTab() {
     }),
     placeholderData: (prev) => prev,
   })
-  const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
+  const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: () => adminApi.getClasses() })
   const { data: subjects } = useQuery({ queryKey: ['admin-subjects'], queryFn: adminApi.getSubjects })
   const { data: teachers } = useQuery({ queryKey: ['admin-teachers', 'all'], queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
 
@@ -3101,7 +3101,7 @@ export default function AdminPage() {
 
   // Prefetch data ringan yang dipakai banyak tab — mount langsung
   useEffect(() => {
-    qc.prefetchQuery({ queryKey: ['admin-classes'],        queryFn: adminApi.getClasses })
+    qc.prefetchQuery({ queryKey: ['admin-classes'],        queryFn: () => adminApi.getClasses() })
     qc.prefetchQuery({ queryKey: ['admin-students', '', '', 'aktif', 1, 25 as PerPageOpt], queryFn: () => adminApi.getStudents({ status_siswa: 'aktif', page: 1, per_page: 25 }) })
   }, [qc])
 
@@ -3116,14 +3116,14 @@ export default function AdminPage() {
         qc.prefetchQuery({ queryKey: ['admin-students', '', '', 'aktif', 1, 25 as PerPageOpt], queryFn: () => adminApi.getStudents({ status_siswa: 'aktif', page: 1, per_page: 25 }) })
         break
       case 'Kelas':
-        qc.prefetchQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
+        qc.prefetchQuery({ queryKey: ['admin-classes'], queryFn: () => adminApi.getClasses() })
         qc.prefetchQuery({ queryKey: ['admin-teachers', 'all'], queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
         break
       case 'Mapel':
         qc.prefetchQuery({ queryKey: ['admin-subjects'], queryFn: adminApi.getSubjects })
         break
       case 'Jadwal':
-        qc.prefetchQuery({ queryKey: ['admin-classes'],             queryFn: adminApi.getClasses })
+        qc.prefetchQuery({ queryKey: ['admin-classes'],             queryFn: () => adminApi.getClasses() })
         qc.prefetchQuery({ queryKey: ['admin-subjects'],            queryFn: adminApi.getSubjects })
         qc.prefetchQuery({ queryKey: ['admin-teachers', 'all'],    queryFn: () => adminApi.getTeachers({ per_page: 'all' }) })
         qc.prefetchQuery({ queryKey: ['admin-schedules', '', '', '', 1, 25 as PerPageOpt], queryFn: () => adminApi.getSchedules({ page: 1, per_page: 25 }) })

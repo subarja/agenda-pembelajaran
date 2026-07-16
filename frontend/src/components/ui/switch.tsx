@@ -4,12 +4,13 @@ interface SwitchProps {
   checked: boolean
   onCheckedChange: (checked: boolean) => void
   disabled?: boolean
+  className?: string
   'aria-label'?: string
 }
 
 /** Saklar aksesibel: `role="switch"` + `aria-checked` supaya pembaca layar menyebutnya
  *  "aktif/nonaktif", bukan sekadar "tombol". */
-export function Switch({ checked, onCheckedChange, disabled, ...props }: SwitchProps) {
+export function Switch({ checked, onCheckedChange, disabled, className, ...props }: SwitchProps) {
   return (
     <button
       type="button"
@@ -23,6 +24,7 @@ export function Switch({ checked, onCheckedChange, disabled, ...props }: SwitchP
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
         checked ? 'bg-primary-600' : 'bg-muted-foreground/30',
         disabled && 'cursor-not-allowed opacity-50',
+        className,
       )}
     >
       <span

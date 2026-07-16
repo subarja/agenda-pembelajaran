@@ -147,7 +147,7 @@ export default function RekapPerkembanganPage() {
   useEffect(() => { const t = setTimeout(() => setDebounced(search), 350); return () => clearTimeout(t) }, [search])
   useEffect(() => { setPage(1) }, [debounced, filterTingkat, filterJurusan, filterKelas, perPage])
 
-  const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
+  const { data: classes } = useQuery({ queryKey: ['admin-classes'], queryFn: () => adminApi.getClasses() })
   const tingkatList = useMemo(() => Array.from(new Set((classes ?? []).map(c => c.tingkat))).sort(), [classes])
   const jurusanList = useMemo(() => Array.from(new Set((classes ?? []).map(c => c.jurusan))).sort(), [classes])
   // Dropdown kelas mengerucut mengikuti tingkat & jurusan yang dipilih (cascade).

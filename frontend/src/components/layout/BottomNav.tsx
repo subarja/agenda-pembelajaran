@@ -23,7 +23,7 @@ function usePrefetchNav() {
       const fmt = toLocalDateStr
       qc.prefetchQuery({ queryKey: ['teacher-ews', fmt(mulai), fmt(today)], queryFn: () => api.get(`/admin/teacher-ews?tanggal_mulai=${fmt(mulai)}&tanggal_akhir=${fmt(today)}`).then(r => r.data) })
     } else if (path === '/admin') {
-      qc.prefetchQuery({ queryKey: ['admin-classes'], queryFn: adminApi.getClasses })
+      qc.prefetchQuery({ queryKey: ['admin-classes'], queryFn: () => adminApi.getClasses() })
       qc.prefetchQuery({ queryKey: ['admin-teachers', '', 1, 25], queryFn: () => adminApi.getTeachers({ page: 1, per_page: 25 }) })
     }
   }
