@@ -462,7 +462,7 @@ class LearningObjectiveController extends Controller
 
     private function activeYear(): ?AcademicYear
     {
-        return AcademicYear::where('aktif', true)->first();
+        return \App\Support\TahunAjaran::current();
     }
 
     private function writeLog(LearningObjective $lo, string $action, ?array $snapshot, User $user): void

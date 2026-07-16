@@ -131,7 +131,7 @@ class ScheduleCopyController extends Controller
     {
         $request->validate(['source_academic_year_id' => ['required', 'string']]);
 
-        $active = AcademicYear::where('aktif', true)->first();
+        $active = \App\Support\TahunAjaran::current();
         abort_if(! $active, 422, 'Tidak ada tahun ajaran aktif sebagai tujuan.');
 
         $source = AcademicYear::where('uuid', $request->source_academic_year_id)->first();

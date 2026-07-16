@@ -27,7 +27,7 @@ class CharacterManualNote extends Model
     protected static function booted(): void
     {
         static::creating(function (self $m) {
-            $m->academic_year_id ??= AcademicYear::where('aktif', true)->value('id');
+            $m->academic_year_id ??= \App\Support\TahunAjaran::id();
         });
     }
 
@@ -39,7 +39,7 @@ class CharacterManualNote extends Model
     /** Scope ke TA tertentu (default TA aktif) — riwayat & laporan Nilai Tambah per semester. */
     public function scopeTahunAjaran(\Illuminate\Database\Eloquent\Builder $q, ?int $academicYearId = null): \Illuminate\Database\Eloquent\Builder
     {
-        $ayId = $academicYearId ?? AcademicYear::where('aktif', true)->value('id');
+        $ayId = $academicYearId ?? \App\Support\TahunAjaran::id();
 
         return $ayId === null ? $q : $q->where('academic_year_id', $ayId);
     }

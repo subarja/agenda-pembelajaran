@@ -30,7 +30,7 @@ class StudentPhotoController extends Controller
         $user = $request->user();
 
         $kelas = SchoolClass::where('wali_kelas_id', $user->id)
-            ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+            ->where('academic_year_id', \App\Support\TahunAjaran::id())
             ->first();
 
         abort_unless($kelas, 403, 'Anda bukan wali kelas aktif — halaman ini hanya untuk wali kelas.');

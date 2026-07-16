@@ -98,7 +98,7 @@ class StudentAdminController extends Controller
             ]);
 
             // Buat EwsStatus untuk tahun ajaran aktif
-            $ay = AcademicYear::where('aktif', true)->first();
+            $ay = \App\Support\TahunAjaran::current();
             if ($ay) {
                 EwsStatus::firstOrCreate(
                     ['student_id' => $student->id, 'academic_year_id' => $ay->id],

@@ -41,7 +41,7 @@ class Schedule extends Model
      */
     public function scopeTahunAjaran(Builder $q, ?int $academicYearId = null): Builder
     {
-        $ayId = $academicYearId ?? AcademicYear::where('aktif', true)->value('id');
+        $ayId = $academicYearId ?? \App\Support\TahunAjaran::id();
 
         // Instalasi baru tanpa TA sama sekali: jangan menyaring apa pun (tidak ada
         // data lintas tahun yang mungkin bocor).

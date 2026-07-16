@@ -15,7 +15,7 @@ class StudentAttendance extends Model
      */
     public function scopeTahunAjaran(Builder $q, ?int $academicYearId = null): Builder
     {
-        $ayId = $academicYearId ?? AcademicYear::where('aktif', true)->value('id');
+        $ayId = $academicYearId ?? \App\Support\TahunAjaran::id();
 
         if ($ayId === null) {
             return $q;

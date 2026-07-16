@@ -18,7 +18,7 @@ class ClassAdminController extends Controller
         // tab Kelas untuk melihat arsip roster tahun-tahun sebelumnya.
         $ay = $request->filled('academic_year_id')
             ? AcademicYear::where('uuid', $request->academic_year_id)->first()
-            : AcademicYear::where('aktif', true)->first();
+            : \App\Support\TahunAjaran::current();
 
         $classes = SchoolClass::with(['waliKelas', 'academicYear'])
             ->when($ay, fn ($q) => $q->where('academic_year_id', $ay->id))
@@ -68,7 +68,7 @@ class ClassAdminController extends Controller
 
         $ayId = $data['academic_year_id']
             ? AcademicYear::where('uuid', $data['academic_year_id'])->value('id')
-            : AcademicYear::where('aktif', true)->value('id');
+            : \App\Support\TahunAjaran::id();
 
         abort_if(! $ayId, 422, 'Tahun ajaran aktif tidak ditemukan.');
 

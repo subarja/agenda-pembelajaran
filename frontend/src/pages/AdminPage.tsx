@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils'
 // ── Tab labels ────────────────────────────────────────────────────────────────
 // Blok render & prefetch memetakan tab lewat LABEL, jadi urutan array ini bebas
 // diubah — tapi label harus konsisten dengan TAB_META, TAB_GROUPS, dan blok render.
-const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance', 'PKL', 'Kokurikuler', 'Jam & Bel']
+const TABS = ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Karakter', 'Ambang', 'Pengguna', 'Tahun Ajaran', 'TA Arsip', 'Nilai Manual', 'Kalender', 'Backup & Restore', 'Pengaturan Agenda', 'Foto Siswa & Guru', 'Jadwal PDF', 'Penyimpanan', 'Notifikasi Push', 'Guru Inval', 'Deploy & Maintenance', 'PKL', 'Kokurikuler', 'Jam & Bel']
 
 // Metadata tiap tab: slug (URL ?tab=), ikon, dan deskripsi satu kalimat.
 // Slug lama (nilai-manual, pkl, kokurikuler) TIDAK boleh berubah — dipakai deep-link
@@ -40,6 +40,7 @@ const TAB_META: Record<string, { slug: string; icon: LucideIcon; desc: string }>
   'Ambang':             { slug: 'ambang',           icon: Gauge,          desc: 'Ambang poin pemicu rekomendasi tindakan & EWS siswa.' },
   'Pengguna':           { slug: 'pengguna',         icon: UserCog,        desc: 'Akun login: peran, reset password, aktif/nonaktif.' },
   'Tahun Ajaran':       { slug: 'tahun-ajaran',     icon: CalendarRange,  desc: 'Ganti semester/TA, wizard naik kelas, salin jadwal, kunci arsip.' },
+  'TA Arsip':           { slug: 'ta-arsip',         icon: Lock,           desc: 'Saklar akses tulis tahun ajaran non-aktif (arsip baca-saja).' },
   'Nilai Manual':       { slug: 'nilai-manual',     icon: ClipboardEdit,  desc: 'Tinjau & setujui usulan nilai karakter manual dari guru.' },
   'Kalender':           { slug: 'kalender',         icon: Calendar,       desc: 'Kalender pendidikan, sinkronisasi Google, hari tidak efektif.' },
   'Backup & Restore':   { slug: 'backup-restore',   icon: DatabaseBackup, desc: 'Cadangkan dan pulihkan seluruh database.' },
@@ -59,7 +60,7 @@ const TAB_META: Record<string, { slug: string; icon: LucideIcon; desc: string }>
 // (kategori → menu) membuat semuanya terlihat tanpa scroll horizontal.
 const TAB_GROUPS: { label: string; icon: LucideIcon; tabs: string[] }[] = [
   { label: 'Data Master',     icon: Database,      tabs: ['Guru', 'Siswa', 'Kelas', 'Mapel', 'Jadwal', 'Pengguna'] },
-  { label: 'Akademik',        icon: GraduationCap, tabs: ['Tahun Ajaran', 'Kalender', 'Jam & Bel', 'Pengaturan Agenda', 'Guru Inval', 'PKL', 'Kokurikuler'] },
+  { label: 'Akademik',        icon: GraduationCap, tabs: ['Tahun Ajaran', 'TA Arsip', 'Kalender', 'Jam & Bel', 'Pengaturan Agenda', 'Guru Inval', 'PKL', 'Kokurikuler'] },
   { label: 'Karakter & Nilai', icon: Star,         tabs: ['Karakter', 'Ambang', 'Nilai Manual'] },
   { label: 'Import & Berkas', icon: FolderUp,      tabs: ['Foto Siswa & Guru', 'Jadwal PDF'] },
   { label: 'Sistem',          icon: Settings,      tabs: ['Backup & Restore', 'Penyimpanan', 'Notifikasi Push', 'Deploy & Maintenance'] },
@@ -1728,6 +1729,72 @@ function AmbangTab() {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB: PENGATURAN AGENDA (batas waktu pengisian agenda pasca jadwal)
 // ─────────────────────────────────────────────────────────────────────────────
+function ArsipWriteTab() {
+  const qc = useQueryClient()
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
+  const { data, isLoading } = useQuery<{ izinkan_tulis: boolean }>({
+    queryKey: ['admin-archive-write-settings'],
+    queryFn: () => api.get('/admin/archive-write-settings').then(r => r.data.data),
+  })
+
+  const save = useMutation({
+    mutationFn: (izinkan: boolean) => api.put('/admin/archive-write-settings', { izinkan_tulis: izinkan }).then(r => r.data),
+    onSuccess: (d) => {
+      setMsg({ type: 'ok', text: d.message })
+      qc.invalidateQueries({ queryKey: ['admin-archive-write-settings'] })
+    },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal menyimpan.' }),
+  })
+
+  const terbuka = data?.izinkan_tulis ?? false
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <div>
+        <h3 className="font-semibold text-sm">Akses Tulis Tahun Ajaran Arsip</h3>
+        <p className="text-xs text-muted-foreground mt-1">
+          Tahun ajaran <strong>non-aktif</strong> bersifat <strong>baca-saja</strong>: seluruh data
+          semester lama bisa dilihat (login dengan memilih semester itu), tapi tidak bisa diubah.
+          Buka saklar ini sementara bila perlu koreksi data susulan (presensi, agenda, poin) di
+          semester lama, lalu tutup kembali. Kunci Semester di tab Tahun Ajaran tetap berlaku
+          lebih kuat — TA terkunci tidak bisa ditulis walau saklar ini terbuka.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="h-24 rounded-lg bg-muted animate-pulse" />
+      ) : (
+        <div className="rounded-lg border p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm">
+            {terbuka
+              ? <LockOpen className="h-4 w-4 text-amber-600" />
+              : <Lock className="h-4 w-4 text-muted-foreground" />}
+            <span className={terbuka ? 'font-medium text-amber-700' : 'text-muted-foreground'}>
+              {terbuka ? 'Tulis di TA arsip sedang DIBUKA' : 'TA arsip baca-saja (tertutup)'}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant={terbuka ? 'outline' : 'default'}
+            onClick={() => { setMsg(null); save.mutate(!terbuka) }}
+            disabled={save.isPending}
+          >
+            {save.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+            {terbuka ? 'Tutup Akses Tulis' : 'Buka Akses Tulis'}
+          </Button>
+        </div>
+      )}
+
+      {msg && (
+        <div className={`rounded-md border px-3 py-2 text-sm ${msg.type === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PengaturanAgendaTab() {
   const qc = useQueryClient()
   const [batasHari, setBatasHari] = useState('3')
@@ -2411,10 +2478,10 @@ function PenggunaTab() {
       {(subTab === 'guru' || subTab === 'siswa') && (
         <>
           {subTab === 'guru' && (
-            <p className="text-xs text-muted-foreground">Username login guru = <strong>NIP</strong> · Password default: <code>SMKN2Cimahi!</code></p>
+            <p className="text-xs text-muted-foreground">Username login guru = <strong>NIP</strong> · Password default mengikuti <code>DEFAULT_TEACHER_PASSWORD</code> di .env server — akun wajib ganti password saat login pertama</p>
           )}
           {subTab === 'siswa' && (
-            <p className="text-xs text-muted-foreground">Username login siswa = <strong>NISN</strong> · Password default: <code>SMKN2Cimahi_Istimewa!</code></p>
+            <p className="text-xs text-muted-foreground">Username login siswa = <strong>NISN</strong> · Password default mengikuti <code>DEFAULT_STUDENT_PASSWORD</code> di .env server — akun wajib ganti password saat login pertama</p>
           )}
           {detailLoading ? <TableSkeleton cols={[16, 140, 90, 120, 80, 70, 90, 80, 40]} rows={8} /> : (
             <div className="overflow-x-auto rounded-lg border">
@@ -3166,6 +3233,7 @@ export default function AdminPage() {
         {activeLabel === 'Ambang' && <AmbangTab />}
         {activeLabel === 'Pengguna' && <PenggunaTab />}
         {activeLabel === 'Tahun Ajaran' && <TahunAjaranTab />}
+        {activeLabel === 'TA Arsip' && <ArsipWriteTab />}
         {activeLabel === 'Nilai Manual' && <CatatanManualTab />}
         {activeLabel === 'Kalender' && <KalenderAdminTab />}
         {activeLabel === 'Backup & Restore' && <BackupRestoreTab />}
@@ -3542,9 +3610,18 @@ function DapodikSiswaImportCard() {
   )
 }
 
+const SKIP_LABELS: Record<string, string> = {
+  mapel_tak_dikenal: 'Mapel tak dikenal',
+  kelas_tak_dikenal: 'Kelas tak dikenal',
+  tanpa_guru: 'Tanpa guru',
+  guru_tak_dikenal: 'Guru tak dikenal',
+  jam_tak_dikenal: 'Jam tak dikenal',
+}
+
 function ResultCard({
   label, stats,
-}: { label: string; stats: { created: number; updated: number; skipped: number } }) {
+}: { label: string; stats: { created: number; updated: number; skipped: number; dinonaktifkan?: number; skip_detail?: Record<string, number> } }) {
+  const skipDetail = Object.entries(stats.skip_detail ?? {}).filter(([, v]) => v > 0)
   return (
     <div className="rounded-md bg-white border p-3">
       <p className="text-xs font-medium text-muted-foreground mb-2">{label}</p>
@@ -3557,12 +3634,24 @@ function ResultCard({
           <span className="text-blue-700">Diperbarui</span>
           <span className="font-semibold text-blue-700">{stats.updated}</span>
         </div>
+        {(stats.dinonaktifkan ?? 0) > 0 && (
+          <div className="flex justify-between">
+            <span className="text-amber-700">Dinonaktifkan (guru diganti)</span>
+            <span className="font-semibold text-amber-700">{stats.dinonaktifkan}</span>
+          </div>
+        )}
         {stats.skipped > 0 && (
           <div className="flex justify-between">
             <span className="text-muted-foreground">Dilewati</span>
             <span className="font-semibold text-muted-foreground">{stats.skipped}</span>
           </div>
         )}
+        {skipDetail.map(([k, v]) => (
+          <div key={k} className="flex justify-between pl-3 text-xs">
+            <span className="text-muted-foreground">↳ {SKIP_LABELS[k] ?? k}</span>
+            <span className="text-muted-foreground">{v}</span>
+          </div>
+        ))}
       </div>
     </div>
   )

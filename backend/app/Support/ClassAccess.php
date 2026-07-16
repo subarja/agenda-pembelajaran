@@ -46,7 +46,7 @@ class ClassAccess
     public static function waliClassIds(User $user): Collection
     {
         return SchoolClass::where('wali_kelas_id', $user->id)
-            ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+            ->where('academic_year_id', \App\Support\TahunAjaran::id())
             ->pluck('id')
             ->unique()
             ->values();

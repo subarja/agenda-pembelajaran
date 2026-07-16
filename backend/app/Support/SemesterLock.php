@@ -24,6 +24,26 @@ class SemesterLock
 
     public static function assertAyWritable(?AcademicYear $ay): void
     {
+        self::assertAyNotLocked($ay);
+
+        // TA non-aktif = arsip baca-saja secara default. Admin bisa membuka akses
+        // tulis sewaktu-waktu lewat saklar Panel Admin > Pengaturan (koreksi data
+        // susulan), lalu menutupnya kembali.
+        abort_if(
+            $ay !== null && ! $ay->aktif && ! \App\Models\ArchiveWriteSetting::instance()->izinkan_tulis,
+            423,
+            "Tahun ajaran {$ay?->tahun} " . ucfirst($ay?->semester->value ?? '') .
+            ' bukan tahun ajaran aktif (arsip baca-saja). Minta admin membuka saklar' .
+            ' "Izinkan tulis di TA arsip" di Panel Admin → Pengaturan bila memang perlu mengubah data lama.',
+        );
+    }
+
+    /**
+     * Hanya cek kunci — dipakai alur transisi tahun ajaran (wizard Naik Kelas)
+     * yang memang harus menulis ke TA baru yang BELUM diaktifkan.
+     */
+    public static function assertAyNotLocked(?AcademicYear $ay): void
+    {
         abort_if(
             $ay !== null && $ay->locked,
             423,

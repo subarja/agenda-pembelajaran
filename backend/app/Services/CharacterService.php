@@ -21,7 +21,7 @@ class CharacterService
      */
     public function processAfterInput(Student $student): void
     {
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
         if (! $ay) return;
 
         $netScore = $this->calculateNetScore($student);
@@ -37,7 +37,7 @@ class CharacterService
      */
     public function calculateNetScore(Student $student, ?int $academicYearId = null): int
     {
-        $ayId = $academicYearId ?? AcademicYear::where('aktif', true)->value('id');
+        $ayId = $academicYearId ?? \App\Support\TahunAjaran::id();
 
         return CharacterInput::where('student_id', $student->id)
             ->when($ayId !== null, fn ($q) => $q->where('academic_year_id', $ayId))

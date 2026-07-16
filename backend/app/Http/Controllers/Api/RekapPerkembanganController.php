@@ -32,7 +32,7 @@ class RekapPerkembanganController extends Controller
         $this->authorizeAccess($request);
 
         $semesters = $this->orderedSemesters();
-        $activeAy  = AcademicYear::where('aktif', true)->first();
+        $activeAy  = \App\Support\TahunAjaran::current();
 
         if (! $activeAy) {
             return response()->json(['semesters' => [], 'data' => [], 'meta' => ['total' => 0]]);
@@ -67,7 +67,7 @@ class RekapPerkembanganController extends Controller
         $this->authorizeAccess($request);
 
         $semesters = $this->orderedSemesters();
-        $activeAy  = AcademicYear::where('aktif', true)->first();
+        $activeAy  = \App\Support\TahunAjaran::current();
         abort_if(! $activeAy, 404, 'Belum ada tahun ajaran aktif.');
 
         $students = $this->rosterQuery($request, $activeAy->id)->get();
@@ -156,7 +156,7 @@ class RekapPerkembanganController extends Controller
     {
         $this->authorizeAccess($request);
 
-        $activeAy = AcademicYear::where('aktif', true)->first();
+        $activeAy = \App\Support\TahunAjaran::current();
         if (! $activeAy) {
             return response()->json(['semester' => null, 'distribusi' => [], 'perhatian' => [], 'terbaik' => [], 'total' => 0]);
         }

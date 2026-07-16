@@ -32,7 +32,7 @@ class WeeklyReflectionController extends Controller
     private function myKelas(Request $request): SchoolClass
     {
         $kelas = SchoolClass::where('wali_kelas_id', $request->user()->id)
-            ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+            ->where('academic_year_id', \App\Support\TahunAjaran::id())
             ->first();
 
         abort_unless($kelas, 403, 'Anda bukan wali kelas aktif — fitur ini hanya untuk wali kelas.');

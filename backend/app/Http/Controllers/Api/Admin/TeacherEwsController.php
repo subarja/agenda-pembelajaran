@@ -453,7 +453,7 @@ class TeacherEwsController extends Controller
      */
     private function laporanSignatures(): array
     {
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
 
         return [
             'wk_kurikulum' => [

@@ -714,7 +714,7 @@ class RecommendationController extends Controller
             // Wali kelas boleh mengampu >1 kelas → scope ke SEMUA kelas perwaliannya
             // (bukan cuma satu via ->first()), supaya filter kelas di FE bermakna.
             $kelasWaliIds = SchoolClass::where('wali_kelas_id', $user->id)
-                ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+                ->where('academic_year_id', \App\Support\TahunAjaran::id())
                 ->pluck('id');
 
             if ($kelasWaliIds->isNotEmpty()) {

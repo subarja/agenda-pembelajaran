@@ -17,6 +17,7 @@ export interface User {
   status: UserStatus
   nomor_hp?: string | null
   foto_url?: string | null
+  must_change_password?: boolean
   teacher?: TeacherProfile | null
   student?: StudentProfile | null
   linked_student?: LinkedStudentProfile | null
@@ -43,6 +44,8 @@ export interface AcademicYearOption {
   semester: 'ganjil' | 'genap'
   label: string
   aktif?: boolean
+  // TA arsip (non-aktif) baca-saja kecuali admin membuka saklar tulis arsip.
+  tulis_diizinkan?: boolean
 }
 
 export interface TeacherProfile {

@@ -25,7 +25,7 @@ class TanggalTagihan
     public static function ditagih(string $tanggal): bool
     {
         if (self::$rentang === null) {
-            $ay = AcademicYear::where('aktif', true)->first();
+            $ay = \App\Support\TahunAjaran::current();
             self::$rentang = $ay
                 ? [$ay->tanggal_mulai->toDateString(), $ay->tanggal_selesai->toDateString()]
                 : false;

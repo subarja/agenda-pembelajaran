@@ -497,7 +497,7 @@ class PklController extends Controller
         // Kelas target
         if ($classUuid === 'semua') {
             abort_unless(ClassAccess::isSchoolWide($user), 403, 'Hanya admin yang dapat mengunduh semua kelas.');
-            $classes = SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+            $classes = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
                 ->whereHas('students.pklPlacements')
                 ->orderBy('jurusan')->orderBy('rombel')->get();
         } else {

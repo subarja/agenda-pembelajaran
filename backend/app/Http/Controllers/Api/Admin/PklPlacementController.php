@@ -172,7 +172,7 @@ class PklPlacementController extends Controller
             return [null, "Kelas '$label' bukan kelas XII — PKL hanya untuk kelas XII."];
         }
 
-        $class = SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+        $class = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
             ->where('tingkat', $tingkat)->where('jurusan', $jurusan)->where('rombel', $rombel)
             ->first();
 

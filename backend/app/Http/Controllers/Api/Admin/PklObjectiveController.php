@@ -80,7 +80,7 @@ class PklObjectiveController extends Controller
     /** Daftar jurusan distinct pada tahun ajaran aktif — untuk selector "Berlaku untuk". */
     private function jurusanList(): array
     {
-        return SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+        return SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
             ->distinct()
             ->orderBy('jurusan')
             ->pluck('jurusan')

@@ -246,8 +246,13 @@ class YearTransitionTest extends TestCase
             'target_academic_year_id' => $this->taBaru->uuid,
         ])->assertStatus(423);
 
-        // Buka kunci → bisa lagi
+        // Buka kunci → TA lama tetap ARSIP baca-saja (non-aktif) sampai admin juga
+        // membuka saklar tulis arsip. Kunci dan saklar arsip adalah dua lapis terpisah.
         $this->putJson("/api/v1/admin/academic-years/{$this->taLama->uuid}", ['locked' => false])->assertOk();
+        $this->putJson("/api/v1/admin/schedules/{$jadwalLama->uuid}", ['jam_selesai' => '09:00'])
+            ->assertStatus(423);
+
+        \App\Models\ArchiveWriteSetting::instance()->update(['izinkan_tulis' => true]);
         $this->putJson("/api/v1/admin/schedules/{$jadwalLama->uuid}", ['jam_selesai' => '09:00'])
             ->assertOk();
     }

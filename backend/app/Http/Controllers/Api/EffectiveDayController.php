@@ -100,7 +100,7 @@ class EffectiveDayController extends Controller
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403);
 
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
         if (! $ay) return response()->json(['data' => [], 'academic_year' => null]);
 
         $classIds = $teacher->schedules()
@@ -145,7 +145,7 @@ class EffectiveDayController extends Controller
     {
         $teachers = $this->resolveTeachers($request);
 
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
         if (! $ay) return response()->json(['data' => [], 'academic_year' => null]);
 
         $result = [];
@@ -359,7 +359,7 @@ class EffectiveDayController extends Controller
         $teachers = $this->resolveTeachers($request);
         abort_if($teachers->isEmpty(), 404, 'Guru tidak ditemukan.');
 
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
         abort_if(! $ay, 404, 'Tidak ada tahun ajaran aktif. Hubungi admin untuk mengatur tahun ajaran.');
 
         $tempFile = tempnam(sys_get_temp_dir(), 'minggu_efektif_') . '.xlsx';
@@ -449,7 +449,7 @@ class EffectiveDayController extends Controller
         $teachers = $this->resolveTeachers($request);
         abort_if($teachers->isEmpty(), 404, 'Guru tidak ditemukan.');
 
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
         abort_if(! $ay, 404, 'Tidak ada tahun ajaran aktif. Hubungi admin untuk mengatur tahun ajaran.');
 
         $sheets = [];

@@ -20,6 +20,7 @@ class UserResource extends JsonResource
             'role'     => $this->role->value,
             'status'   => $this->status->value,
             'nomor_hp' => $this->nomor_hp,
+            'must_change_password' => (bool) $this->must_change_password,
             'foto_url' => $this->foto
                 ? Storage::disk('public')->url($this->foto)
                 : null,
@@ -29,6 +30,10 @@ class UserResource extends JsonResource
                 'tahun'    => $this->currentAcademicYear->tahun,
                 'semester' => $this->currentAcademicYear->semester->value,
                 'label'    => $this->currentAcademicYear->tahun . ' - ' . ucfirst($this->currentAcademicYear->semester->value),
+                'aktif'    => (bool) $this->currentAcademicYear->aktif,
+                // TA arsip default baca-saja; admin bisa membuka lewat saklar Pengaturan.
+                'tulis_diizinkan' => $this->currentAcademicYear->aktif
+                    || \App\Models\ArchiveWriteSetting::instance()->izinkan_tulis,
             ] : null),
 
             'teacher' => $this->whenLoaded('teacher', fn () => [
@@ -95,7 +100,7 @@ class UserResource extends JsonResource
         $isBk = (bool) ($this->teacher?->is_bk ?? false);
 
         $kelasWali = SchoolClass::where('wali_kelas_id', $this->id)
-            ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+            ->where('academic_year_id', \App\Support\TahunAjaran::id())
             ->first();
 
         $isWaliKelas   = $kelasWali !== null;

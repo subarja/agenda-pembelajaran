@@ -36,7 +36,7 @@ class ReportController extends Controller
         // akun siswa/orang tua menerima daftar seluruh rombel sekolah.
         abort_if(ClassAccess::isStudentSide($request->user()), 403, 'Akses tidak diizinkan.');
 
-        $ay      = \App\Models\AcademicYear::where('aktif', true)->first();
+        $ay      = \App\Support\TahunAjaran::current();
         $classes = SchoolClass::when($ay, fn ($q) => $q->where('academic_year_id', $ay->id))
             ->orderBy('tingkat')->orderBy('jurusan')->orderBy('rombel')
             ->get()
@@ -455,7 +455,7 @@ class ReportController extends Controller
             ->with(['schedule.subject', 'schedule.schoolClass', 'learningObjectives'])
             ->orderBy('tanggal')->orderBy('id')->get();
 
-        $ay = \App\Models\AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
 
         $tglMulai  = \Carbon\Carbon::parse($request->tanggal_mulai)->locale('id');
         $tglAkhir  = \Carbon\Carbon::parse($request->tanggal_akhir)->locale('id');

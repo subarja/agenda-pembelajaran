@@ -54,7 +54,7 @@ class DapodikImportController extends Controller
             'decisions' => 'nullable|string',
         ]);
 
-        if (! AcademicYear::where('aktif', true)->exists()) {
+        if (! \App\Support\TahunAjaran::current()) {
             return response()->json([
                 'message' => 'Belum ada tahun ajaran aktif. Buat atau aktifkan tahun ajaran terlebih dahulu di tab Tahun Ajaran sebelum import.',
             ], 422);
@@ -336,7 +336,7 @@ class DapodikImportController extends Controller
             return compact('created', 'updated', 'skipped');
         }
 
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
         if (! $ay) {
             $errors[] = 'Wali Kelas dilewati: tidak ada tahun ajaran aktif.';
             $skipped = count($rows);
@@ -430,7 +430,7 @@ class DapodikImportController extends Controller
 
         $rows = $this->readXlsxFromRow($request->file('file')->getRealPath(), startRow: 7);
         $actor = $request->user();
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
 
         if (! $ay) {
             return response()->json(['message' => 'Tidak ada tahun ajaran aktif.'], 422);

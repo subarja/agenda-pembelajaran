@@ -33,7 +33,7 @@ class PklMode
     /** Tahun ajaran yang aktif secara global — dipakai konsisten dgn ClassAccess. */
     public static function activeAcademicYearId(): ?int
     {
-        return AcademicYear::where('aktif', true)->value('id');
+        return \App\Support\TahunAjaran::id();
     }
 
     /** Apakah kelas ini kelas XII (yang terdampak Mode PKL)? */

@@ -86,7 +86,7 @@ class AlphaAlertService
 
     private function recordAlert(Student $student, int $streak): void
     {
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
 
         // Buat catatan presensi — cek apakah sudah ada catatan alpha hari ini
         $todayNote = Note::where('target_type', Student::class)

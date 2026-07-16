@@ -212,7 +212,7 @@ class CharacterController extends Controller
         $user = $request->user();
         abort_if(ClassAccess::isStudentSide($user), 403, 'Akses tidak diizinkan.');
 
-        $query = SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true));
+        $query = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id());
 
         if (($data['scope'] ?? 'semua') === 'diampu') {
             $allowed = ClassAccess::teachingClassIds($user);

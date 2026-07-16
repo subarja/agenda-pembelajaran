@@ -27,7 +27,7 @@ class CharacterInput extends Model
     protected static function booted(): void
     {
         static::creating(function (self $m) {
-            $m->academic_year_id ??= AcademicYear::where('aktif', true)->value('id');
+            $m->academic_year_id ??= \App\Support\TahunAjaran::id();
         });
     }
 
@@ -39,7 +39,7 @@ class CharacterInput extends Model
     /** Scope ke TA tertentu (default TA aktif) — semua tampilan/laporan poin per semester. */
     public function scopeTahunAjaran(Builder $q, ?int $academicYearId = null): Builder
     {
-        $ayId = $academicYearId ?? AcademicYear::where('aktif', true)->value('id');
+        $ayId = $academicYearId ?? \App\Support\TahunAjaran::id();
 
         return $ayId === null ? $q : $q->where('academic_year_id', $ayId);
     }

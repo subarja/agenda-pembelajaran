@@ -30,7 +30,7 @@ class Recommendation extends Model
     protected static function booted(): void
     {
         static::creating(function (self $m) {
-            $m->academic_year_id ??= AcademicYear::where('aktif', true)->value('id');
+            $m->academic_year_id ??= \App\Support\TahunAjaran::id();
         });
     }
 

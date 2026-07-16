@@ -70,7 +70,7 @@ Route::prefix('auth')->middleware('throttle:10,1')->group(function () {
 Route::get('academic-years/pilihan', [AcademicYearSelectionController::class, 'pilihan']);
 
 // ── Protected ─────────────────────────────────────────────────────────────────
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
 
     Route::prefix('auth')->group(function () {
         Route::get('/me',          [AuthController::class, 'me']);
@@ -202,6 +202,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('ews',                      [EwsController::class, 'index']);
     Route::get('ews/{uuid}',               [EwsController::class, 'show']);
     Route::get('ews/{uuid}/pdf',           [EwsController::class, 'dimensionPdf']);
+    Route::get('ews/{uuid}/profile-pdf',   [EwsController::class, 'profilePdf']);
 
     // ── Laporan ───────────────────────────────────────────────────────────────
     Route::get('reports/classes',           [ReportController::class, 'classes']);
@@ -332,6 +333,8 @@ Route::middleware('auth:sanctum')->group(function () {
         // ── Pengaturan Waktu Pengisian Agenda (batas hari/jam pasca jadwal) ────────
         Route::get('agenda-fill-settings',                      [AgendaFillSettingController::class, 'show']);
         Route::put('agenda-fill-settings',                      [AgendaFillSettingController::class, 'update']);
+        Route::get('archive-write-settings',                    [\App\Http\Controllers\Api\Admin\ArchiveWriteSettingController::class, 'show']);
+        Route::put('archive-write-settings',                    [\App\Http\Controllers\Api\Admin\ArchiveWriteSettingController::class, 'update']);
 
         // ── Jam & Bel (bel per hari, mode Apel/Tanpa Apel, pengecualian tanggal) ───
         Route::get('bell-schedule',                             [BellScheduleController::class, 'show']);

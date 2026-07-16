@@ -86,8 +86,8 @@ class PromotionController extends Controller
         [$source, $target] = $this->resolveYears($request);
         // Naik kelas menulis ke dua TA sekaligus (status enrollment di sumber, kelas
         // & siswa di tujuan) — dua-duanya harus tidak terkunci.
-        \App\Support\SemesterLock::assertAyWritable($source);
-        \App\Support\SemesterLock::assertAyWritable($target);
+        \App\Support\SemesterLock::assertAyNotLocked($source);
+        \App\Support\SemesterLock::assertAyNotLocked($target);
         $tinggalMap = collect($request->input('tinggal', []));
 
         $stats = DB::transaction(function () use ($source, $target, $tinggalMap) {
@@ -189,7 +189,7 @@ class PromotionController extends Controller
         // naik kelas dulu" tidak menjebak. Default: TA aktif.
         $source = $request->filled('source_academic_year_id')
             ? AcademicYear::where('uuid', $request->source_academic_year_id)->first()
-            : AcademicYear::where('aktif', true)->first();
+            : \App\Support\TahunAjaran::current();
         abort_if(! $source, 422, 'Tahun ajaran sumber tidak ditemukan.');
 
         $target = AcademicYear::where('uuid', $request->target_academic_year_id)->first();

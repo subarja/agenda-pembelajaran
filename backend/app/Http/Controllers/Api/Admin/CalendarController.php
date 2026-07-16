@@ -407,7 +407,7 @@ class CalendarController extends Controller
             ->map(fn ($t) => Carbon::parse($t)->toDateString())
             ->flip();
 
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
 
         // Tanggal dikumpulkan sebagai himpunan, bukan dihitung di dalam loop: dua acara
         // yang saling bertumpang tindih (mis. "Libur Semester" dan "Rapat Kelulusan" di

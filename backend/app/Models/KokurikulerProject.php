@@ -56,7 +56,7 @@ class KokurikulerProject extends Model
     /** Projek berstatus aktif pada tahun ajaran yang aktif. */
     public function scopeBerjalan(Builder $q): Builder
     {
-        $ayId = AcademicYear::where('aktif', true)->value('id');
+        $ayId = \App\Support\TahunAjaran::id();
 
         return $q->where('status', 'aktif')
             ->when($ayId, fn ($qq) => $qq->where('academic_year_id', $ayId));

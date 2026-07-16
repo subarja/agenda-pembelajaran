@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { academicYearApi } from '@/features/auth/api'
 import { useAuthStore } from '@/store/auth'
 import { Button } from '@/components/ui/button'
@@ -10,8 +10,10 @@ import { CalendarRange, Loader2, AlertCircle } from 'lucide-react'
 
 export default function PilihTahunAjaranPage() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const currentAcademicYear = useAuthStore((s) => s.currentAcademicYear)
   const setCurrentAcademicYear = useAuthStore((s) => s.setCurrentAcademicYear)
+  const updateUser = useAuthStore((s) => s.updateUser)
   const [selectedId, setSelectedId] = useState<string | null>(currentAcademicYear?.id ?? null)
 
   const { data, isLoading, error } = useQuery({
@@ -29,8 +31,11 @@ export default function PilihTahunAjaranPage() {
   const mutation = useMutation({
     mutationFn: (id: string) => academicYearApi.pilih(id),
     onSuccess: (res) => {
-      const year = res.data.data.current_academic_year
-      if (year) setCurrentAcademicYear(year)
+      const user = res.data.data
+      updateUser(user)
+      if (user.current_academic_year) setCurrentAcademicYear(user.current_academic_year)
+      // Seluruh data di-scope per TA terpilih — cache query lama milik TA sebelumnya.
+      qc.clear()
       navigate('/')
     },
   })
@@ -104,8 +109,10 @@ export default function PilihTahunAjaranPage() {
             )}
 
             <p className="text-xs text-muted-foreground bg-muted/40 rounded-md px-3 py-2">
-              Catatan: pemilihan tahun pelajaran saat ini belum memengaruhi seluruh data
-              aplikasi &mdash; penerapan penuh menyusul secara bertahap.
+              Seluruh aplikasi akan menampilkan data tahun pelajaran yang dipilih.
+              Tahun pelajaran <strong>non-aktif</strong> dibuka sebagai <strong>arsip
+              baca-saja</strong> &mdash; data lama bisa dilihat tapi tidak bisa diubah,
+              kecuali admin membuka akses tulis di Panel Admin.
             </p>
 
             <Button

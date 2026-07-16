@@ -182,7 +182,7 @@ class ImportController extends Controller
         $request->validate(['file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120']]);
 
         $rows      = $this->readXlsx($request->file('file')->getRealPath());
-        $ay        = AcademicYear::where('aktif', true)->first();
+        $ay        = \App\Support\TahunAjaran::current();
         $success   = 0;
         $completed = 0; // siswa yang sudah ada dan dilengkapi field kosongnya
         $errors    = [];
@@ -308,7 +308,8 @@ class ImportController extends Controller
         $request->validate(['file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120']]);
 
         $rows    = $this->readXlsx($request->file('file')->getRealPath());
-        $ay      = AcademicYear::where('aktif', true)->firstOrFail();
+        $ay      = \App\Support\TahunAjaran::current();
+        abort_unless($ay, 422, 'Belum ada tahun ajaran. Buat tahun ajaran terlebih dahulu di tab Tahun Ajaran.');
         $success = 0;
         $errors  = [];
 
@@ -691,7 +692,7 @@ class ImportController extends Controller
     public function exportWaliKelas(): BinaryFileResponse
     {
         $classes = SchoolClass::with(['waliKelas', 'academicYear'])
-            ->whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+            ->where('academic_year_id', \App\Support\TahunAjaran::id())
             ->orderBy('tingkat')->orderBy('jurusan')->orderBy('rombel')
             ->get();
 
@@ -738,7 +739,7 @@ class ImportController extends Controller
         $rombel  = array_pop($parts);
         $jurusan = implode(' ', $parts);
 
-        $class = SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+        $class = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
             ->where('tingkat', $tingkat)->where('jurusan', $jurusan)->where('rombel', $rombel)
             ->first();
 
@@ -751,7 +752,7 @@ class ImportController extends Controller
         // Kelas tercatat "Mekatronika"). Sarankan padanannya supaya admin tahu harus
         // menulis apa, tapi JANGAN dicocokkan otomatis (pelajaran dari duplikat akun
         // guru akibat fuzzy match).
-        $mirip = SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+        $mirip = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
             ->where('tingkat', $tingkat)->where('rombel', $rombel)
             ->get()
             ->first(fn ($c) => str_contains(strtolower($jurusan), strtolower($c->jurusan))

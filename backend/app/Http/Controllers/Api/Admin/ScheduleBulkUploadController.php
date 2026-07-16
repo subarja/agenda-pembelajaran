@@ -69,7 +69,7 @@ class ScheduleBulkUploadController extends Controller
     {
         $request->validate(['files' => ['required', 'array', 'min:1']]);
 
-        $classes = SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))->get();
+        $classes = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())->get();
 
         $berhasil = [];
         $gagal    = [];
