@@ -160,6 +160,24 @@ class PklScheduleAccessTest extends TestCase
         $this->assertNotEmpty($rows);
     }
 
+    public function test_saklar_on_tanpa_penempatan_tidak_menghilangkan_tagihan(): void
+    {
+        // Kelas XII kedua TANPA penempatan — saklar ON tidak boleh membebaskannya:
+        // tanpa penempatan guru juga tak bisa isi agenda PKL, kewajiban jangan lenyap.
+        $kelasB = SchoolClass::create(['tingkat' => Tingkat::XII, 'jurusan' => 'Animasi', 'rombel' => 'B', 'academic_year_id' => AcademicYear::first()->id]);
+        Schedule::create([
+            'class_id' => $kelasB->id, 'subject_id' => $this->subject->id,
+            'teacher_id' => $this->guruPloting->teacher->id,
+            'hari' => 'rabu', 'jam_mulai' => '10:00', 'jam_selesai' => '11:30', 'aktif' => true,
+        ]);
+
+        Sanctum::actingAs($this->guruPloting);
+        $kelas = array_column($this->getJson('/api/v1/agendas/perlu-diisi')->assertOk()->json('data'), 'kelas');
+
+        $this->assertContains('XII Animasi - B', $kelas);    // tanpa penempatan → tetap ditagih
+        $this->assertNotContains('XII Animasi - A', $kelas); // dalam periode penempatan → bebas
+    }
+
     public function test_isagendaexempt_membaca_periode_placement(): void
     {
         PklSetting::instance()->update(['aktif' => false]);

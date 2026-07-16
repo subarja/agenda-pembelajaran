@@ -40,9 +40,10 @@ class SubstitutionService
         $tgl = Carbon::parse($tanggal, config('app.school_timezone'))->startOfDay();
 
         // Ditegakkan di validasi juga (bukan hanya disembunyikan dari daftar) supaya
-        // request langsung ke API pun tertolak dengan alasan yang sama.
-        if (PklMode::isActive() && PklMode::isPklClass($schedule->schoolClass?->tingkat)) {
-            return 'Kelas XII sedang PKL — sesi ini tidak memerlukan guru pengganti.';
+        // request langsung ke API pun tertolak dengan alasan yang sama. Berbasis periode
+        // penempatan per tanggal — bukan saklar (XII tanpa penempatan tetap bisa inval).
+        if (PklMode::isAgendaExempt($schedule->class_id, $tgl->toDateString())) {
+            return 'Kelas sedang PKL pada tanggal ini — sesi tidak memerlukan guru pengganti.';
         }
 
         if ($tgl->dayOfWeek !== (self::HARI_MAP[$schedule->hari->value] ?? -1)) {
@@ -88,12 +89,6 @@ class SubstitutionService
         $hasil = collect();
 
         foreach ($schedules as $schedule) {
-            // Mode PKL: sesi kelas XII ditekan (siswa di industri, tidak ada agenda
-            // harian yang perlu digantikan) — jangan tawarkan untuk inval.
-            if (PklMode::isActive() && PklMode::isPklClass($schedule->schoolClass?->tingkat)) {
-                continue;
-            }
-
             $target = self::HARI_MAP[$schedule->hari->value] ?? null;
             if ($target === null) {
                 continue;

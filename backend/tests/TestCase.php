@@ -54,5 +54,13 @@ abstract class TestCase extends BaseTestCase
                 'Pastikan database uji sudah dibuat: CREATE DATABASE '.self::TEST_DATABASE.';'
             );
         }
+
+        // Cache statis per-request hidup melewati batas test dalam satu proses PHPUnit —
+        // data test sebelumnya bisa bocor ke test berikutnya. Reset terpusat di sini
+        // supaya tiap test class tidak wajib ingat mem-flush sendiri.
+        \App\Support\BellSchedule::flush();
+        \App\Support\PklMode::flush();
+        \App\Support\KokurikulerMode::flush();
+        \App\Support\TanggalTagihan::flush();
     }
 }

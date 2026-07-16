@@ -151,10 +151,6 @@ class ScheduleController extends Controller
             ->tahunAjaran()
             ->where('hari', $today)
             ->where('aktif', true)
-            // Mode PKL: kelas XII tidak lagi menuntut agenda harian per-sesi — kewajibannya
-            // pindah ke agenda PKL mingguan, jadi sesinya disembunyikan dari daftar "hari ini".
-            ->when(\App\Support\PklMode::isActive(), fn ($q) => $q->whereHas('schoolClass',
-                fn ($c) => $c->where('tingkat', '!=', \App\Enums\Tingkat::XII->value)))
             ->with([
                 'subject',
                 'schoolClass',
@@ -162,9 +158,11 @@ class ScheduleController extends Controller
             ])
             ->orderBy('jam_mulai')
             ->get()
-            // Kokurikuler: kelas peserta projek hari ini tidak menjalani KBM reguler —
-            // sesinya disembunyikan dari "hari ini" (tagihan agendanya juga dibebaskan).
-            ->reject(fn ($s) => \App\Support\KokurikulerMode::isAgendaExempt($s->class_id, $todayDate))
+            // PKL (periode penempatan) & Kokurikuler: kelas yang hari ini tidak menjalani
+            // KBM reguler disembunyikan dari "hari ini" — konsisten dengan pembebasan
+            // tagihan perlu-diisi (bukan blanket saklar: XII tanpa penempatan tetap tampil).
+            ->reject(fn ($s) => PklMode::isAgendaExempt($s->class_id, $todayDate)
+                || \App\Support\KokurikulerMode::isAgendaExempt($s->class_id, $todayDate))
             ->values();
 
         return response()->json([

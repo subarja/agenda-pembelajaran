@@ -600,6 +600,11 @@ class TeacherEwsController extends Controller
             return false;
         }
 
+        // Tanggal di luar semester aktif / hari tidak efektif tidak masuk penyebut.
+        if (! \App\Support\TanggalTagihan::ditagih($tanggal)) {
+            return true;
+        }
+
         if (KokurikulerMode::isAgendaExempt($classId, $tanggal)) {
             return true;
         }

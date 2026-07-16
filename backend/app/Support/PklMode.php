@@ -101,35 +101,21 @@ class PklMode
     /** @var array<int, array{0:string,1:string}>|null cache periode PKL per kelas (TA aktif) */
     private static ?array $placementRanges = null;
 
-    /** @var array<int, true>|null cache id kelas XII TA aktif */
-    private static ?array $xiiClassIds = null;
-
     /**
      * Sesi reguler (kelas, tanggal) ini dibebaskan dari tagihan agenda?
      *
-     * Dua lapis, sengaja TIDAK hanya membaca saklar:
-     *  1. Mode ON → seluruh kelas XII bebas (kewajiban pindah ke agenda PKL mingguan).
-     *  2. Tanggal berada dalam periode PKL kelas itu (min mulai..max selesai placement)
-     *     → tetap bebas WALAU mode sudah OFF. Tanpa lapis ini, mematikan saklar membuat
-     *     sesi XII semasa PKL mendadak ditagih retroaktif sebagai hutang agenda di
-     *     dashboard guru dan EWS Guru — padahal rekamannya ada di agenda PKL.
+     * Murni berbasis PERIODE PENEMPATAN kelas (min mulai..max selesai placement),
+     * BUKAN saklar:
+     *  - Saklar ON tanpa penempatan TIDAK membebaskan apa pun — dulu seluruh kelas XII
+     *    langsung bebas begitu saklar dinyalakan, padahal tanpa penempatan guru juga tak
+     *    bisa mengisi agenda PKL mingguan → kewajibannya lenyap dua-duanya.
+     *  - Tanggal dalam periode tetap bebas WALAU saklar sudah OFF — mematikan saklar
+     *    tidak menagih retroaktif sesi semasa PKL (rekamannya ada di agenda PKL).
      */
     public static function isAgendaExempt(?int $classId, string $tanggal): bool
     {
         if ($classId === null) {
             return false;
-        }
-
-        if (self::isActive()) {
-            self::$xiiClassIds ??= \App\Models\SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
-                ->where('tingkat', Tingkat::XII->value)
-                ->pluck('id')
-                ->flip()
-                ->all();
-
-            if (isset(self::$xiiClassIds[$classId])) {
-                return true;
-            }
         }
 
         self::$placementRanges ??= PklPlacement::query()
@@ -149,7 +135,6 @@ class PklMode
     public static function flush(): void
     {
         self::$placementRanges = null;
-        self::$xiiClassIds = null;
     }
 
     /**

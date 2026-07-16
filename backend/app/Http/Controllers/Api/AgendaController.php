@@ -140,6 +140,14 @@ class AgendaController extends Controller
             fn ($s) => ! \App\Support\KokurikulerMode::isAgendaExempt($s['schedule']->class_id, $s['tanggal']),
         ));
 
+        // Tanggal di luar semester aktif atau hari tidak efektif tidak pernah ditagih —
+        // jendela mundur (batas_hari) bisa menembus batas awal semester (mis. semester
+        // mulai Rabu 15 Jul: Senin–Selasa 13–14 Jul jangan tertagih).
+        $sesi = array_values(array_filter(
+            $sesi,
+            fn ($s) => \App\Support\TanggalTagihan::ditagih($s['tanggal']),
+        ));
+
         // Sebagai gantinya, FASILITATOR ditagih laporan harian kokurikuler — tagihan
         // reguler kelasnya hilang, tapi kewajibannya berpindah ke sini, bukan lenyap.
         $kokurikuler = \App\Support\KokurikulerMode::tagihanFasilitator($request->user(), $mulai, $today, $setting);

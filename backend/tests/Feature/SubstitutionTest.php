@@ -46,9 +46,13 @@ class SubstitutionTest extends TestCase
         parent::setUp();
         Notification::fake();
 
+        // Rentang TA dibuat mengurung "hari ini" — sesi test dipatok ke tanggal nyata,
+        // dan tanggal di luar rentang semester kini memang tidak pernah ditagih.
         AcademicYear::create([
             'tahun' => '2025/2026', 'semester' => Semester::Genap,
-            'tanggal_mulai' => '2026-02-09', 'tanggal_selesai' => '2026-06-19', 'aktif' => true,
+            'tanggal_mulai'   => Carbon::now(config('app.school_timezone'))->subMonths(3)->toDateString(),
+            'tanggal_selesai' => Carbon::now(config('app.school_timezone'))->addMonths(3)->toDateString(),
+            'aktif' => true,
         ]);
 
         $this->pengaju     = $this->guru('Pengaju');
