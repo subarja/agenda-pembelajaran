@@ -20,7 +20,7 @@ class KokurikulerMode
 
     public static function activeAcademicYearId(): ?int
     {
-        return AcademicYear::where('aktif', true)->value('id');
+        return \App\Support\TahunAjaran::id();
     }
 
     /**
@@ -144,6 +144,13 @@ class KokurikulerMode
             for ($d = $dari->copy(); $d->lte($sampai); $d->addDay()) {
                 if ($d->isSunday() || $terisi->has($d->toDateString())) {
                     continue; // hari Minggu bukan hari pelaksanaan (pola projectDates())
+                }
+
+                // Sama seperti sesi reguler: tanggal di luar rentang semester aktif atau
+                // hari tidak efektif tidak pernah ditagih — periode projek bisa saja
+                // menyentuh tanggal sebelum semester mulai atau hari libur kalender.
+                if (! TanggalTagihan::ditagih($d->toDateString())) {
+                    continue;
                 }
 
                 $deadline = $setting->batasWaktu($d->copy()->endOfDay());
