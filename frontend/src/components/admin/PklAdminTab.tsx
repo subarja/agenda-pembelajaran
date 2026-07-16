@@ -154,12 +154,47 @@ function PlacementsSection() {
   const [fDari, setFDari] = useState('')
   const [fSampai, setFSampai] = useState('')
 
+  // Opsi tiap dropdown saling bergantung (cascade): dihitung dari baris yang lolos
+  // semua filter KECUALI dropdown itu sendiri — jadi filter kelas mempersempit pilihan
+  // industri & pembimbing, filter industri mempersempit kelas & pembimbing, dst.
+  // (Pencarian teks sengaja tidak ikut mempersempit opsi supaya dropdown stabil saat mengetik.)
+  const matchExcept = (r: PklPlacementRow, except: 'kelas' | 'industri' | 'pembimbing') => {
+    if (except !== 'kelas' && fKelas && r.class_id !== fKelas) return false
+    if (except !== 'industri' && fIndustri && r.tempat_pkl !== fIndustri) return false
+    if (except !== 'pembimbing' && fPembimbing && (r.pembimbing ?? '') !== fPembimbing) return false
+    if (fDari && (r.selesai ?? '') < fDari) return false
+    if (fSampai && (r.mulai ?? '~') > fSampai) return false
+    return true
+  }
+
+  const kelasOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const r of rows) if (matchExcept(r, 'kelas') && r.class_id && r.kelas) map.set(r.class_id, r.kelas)
+    return [...map.entries()].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label, 'id'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, fIndustri, fPembimbing, fDari, fSampai])
+
   const industriList = useMemo(
-    () => [...new Set(rows.map((r) => r.tempat_pkl).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'id')),
-    [rows])
+    () => [...new Set(rows.filter((r) => matchExcept(r, 'industri')).map((r) => r.tempat_pkl).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'id')),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, fKelas, fPembimbing, fDari, fSampai])
+
   const pembimbingList = useMemo(
-    () => [...new Set(rows.map((r) => r.pembimbing).filter((p): p is string => !!p))].sort((a, b) => a.localeCompare(b, 'id')),
-    [rows])
+    () => [...new Set(rows.filter((r) => matchExcept(r, 'pembimbing')).map((r) => r.pembimbing).filter((p): p is string => !!p))].sort((a, b) => a.localeCompare(b, 'id')),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, fKelas, fIndustri, fDari, fSampai])
+
+  // Pilihan yang tak lagi tersedia setelah filter lain berubah di-reset otomatis,
+  // supaya tidak ada kombinasi "tersembunyi" yang membuat hasil selalu kosong.
+  useEffect(() => {
+    if (fKelas && !kelasOptions.some((c) => c.id === fKelas)) setFKelas('')
+  }, [kelasOptions, fKelas])
+  useEffect(() => {
+    if (fIndustri && !industriList.includes(fIndustri)) setFIndustri('')
+  }, [industriList, fIndustri])
+  useEffect(() => {
+    if (fPembimbing && !pembimbingList.includes(fPembimbing)) setFPembimbing('')
+  }, [pembimbingList, fPembimbing])
 
   const adaFilter = !!(dq.trim() || fKelas || fIndustri || fPembimbing || fDari || fSampai)
   const resetFilter = () => { setQ(''); setFKelas(''); setFIndustri(''); setFPembimbing(''); setFDari(''); setFSampai('') }
@@ -325,7 +360,7 @@ function PlacementsSection() {
         </div>
         <select className="rounded-md border border-input bg-background px-2 py-2 text-sm" value={fKelas} onChange={(e) => setFKelas(e.target.value)} aria-label="Filter kelas">
           <option value="">Semua Kelas</option>
-          {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          {kelasOptions.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
         <select className="rounded-md border border-input bg-background px-2 py-2 text-sm max-w-[180px]" value={fIndustri} onChange={(e) => setFIndustri(e.target.value)} aria-label="Filter industri">
           <option value="">Semua Industri</option>
