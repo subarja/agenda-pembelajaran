@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, Trash2, Upload, Download, Pencil, X, Check, AlertCircle } from 'lucide-react'
+import { Loader2, Plus, Trash2, Upload, Download, Pencil, X, Check, AlertCircle, Search } from 'lucide-react'
+import { useDebounce } from '@/hooks/useDebounce'
 import { pklAdminApi, type PklAdminObjective, type PklImportResult, type PklPlacementRow } from '@/features/pkl/api'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
@@ -144,6 +145,44 @@ function PlacementsSection() {
     return [...map.entries()].map(([id, label]) => ({ id, label }))
   }, [rows])
 
+  // ── Pencarian & filter daftar penempatan (client-side, data sudah utuh) ──
+  const [q, setQ] = useState('')
+  const dq = useDebounce(q, 300)
+  const [fKelas, setFKelas] = useState('')
+  const [fIndustri, setFIndustri] = useState('')
+  const [fPembimbing, setFPembimbing] = useState('')
+  const [fDari, setFDari] = useState('')
+  const [fSampai, setFSampai] = useState('')
+
+  const industriList = useMemo(
+    () => [...new Set(rows.map((r) => r.tempat_pkl).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'id')),
+    [rows])
+  const pembimbingList = useMemo(
+    () => [...new Set(rows.map((r) => r.pembimbing).filter((p): p is string => !!p))].sort((a, b) => a.localeCompare(b, 'id')),
+    [rows])
+
+  const adaFilter = !!(dq.trim() || fKelas || fIndustri || fPembimbing || fDari || fSampai)
+  const resetFilter = () => { setQ(''); setFKelas(''); setFIndustri(''); setFPembimbing(''); setFDari(''); setFSampai('') }
+
+  const filtered = useMemo(() => {
+    const s = dq.trim().toLowerCase()
+    return rows.filter((r) => {
+      if (fKelas && r.class_id !== fKelas) return false
+      if (fIndustri && r.tempat_pkl !== fIndustri) return false
+      if (fPembimbing && (r.pembimbing ?? '') !== fPembimbing) return false
+      // Rentang waktu: tampilkan penempatan yang periodenya BERIRISAN dengan rentang filter
+      // (tanggal ISO dibandingkan sebagai string; baris tanpa tanggal tersaring keluar).
+      if (fDari && (r.selesai ?? '') < fDari) return false
+      if (fSampai && (r.mulai ?? '~') > fSampai) return false
+      if (s) {
+        const hay = [r.nama, r.nis, r.nisn, r.telpon, r.kelas, r.tempat_pkl, r.alamat_pkl, r.pembimbing, r.mulai, r.selesai]
+          .filter(Boolean).join(' ').toLowerCase()
+        if (!hay.includes(s)) return false
+      }
+      return true
+    })
+  }, [rows, dq, fKelas, fIndustri, fPembimbing, fDari, fSampai])
+
   // File terakhir disimpan supaya keputusan "timpa / perusahaan baru" atas
   // perusahaan MIRIP bisa diterapkan dengan mengunggah ulang file yang sama.
   const [pendingFile, setPendingFile] = useState<File | null>(null)
@@ -278,9 +317,41 @@ function PlacementsSection() {
       </div>
       {rekapErr && <p className="text-sm text-red-600 flex items-center gap-1"><AlertCircle className="h-4 w-4 shrink-0" /> {rekapErr}</p>}
 
+      {/* Pencarian & filter daftar penempatan */}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari nama / NIS / industri / alamat…" className="pl-8" />
+        </div>
+        <select className="rounded-md border border-input bg-background px-2 py-2 text-sm" value={fKelas} onChange={(e) => setFKelas(e.target.value)} aria-label="Filter kelas">
+          <option value="">Semua Kelas</option>
+          {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </select>
+        <select className="rounded-md border border-input bg-background px-2 py-2 text-sm max-w-[180px]" value={fIndustri} onChange={(e) => setFIndustri(e.target.value)} aria-label="Filter industri">
+          <option value="">Semua Industri</option>
+          {industriList.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select className="rounded-md border border-input bg-background px-2 py-2 text-sm max-w-[180px]" value={fPembimbing} onChange={(e) => setFPembimbing(e.target.value)} aria-label="Filter pembimbing">
+          <option value="">Semua Pembimbing</option>
+          {pembimbingList.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          PKL antara
+          <Input type="date" value={fDari} onChange={(e) => setFDari(e.target.value)} className="w-[8.7rem] h-9" aria-label="Rentang PKL dari" />
+          s.d.
+          <Input type="date" value={fSampai} onChange={(e) => setFSampai(e.target.value)} className="w-[8.7rem] h-9" aria-label="Rentang PKL sampai" />
+        </span>
+        {adaFilter && (
+          <Button size="sm" variant="ghost" onClick={resetFilter}><X className="h-4 w-4 mr-1" /> Reset</Button>
+        )}
+      </div>
+      {adaFilter && (
+        <p className="text-xs text-muted-foreground -mt-1">{filtered.length} dari {rows.length} penempatan cocok.</p>
+      )}
+
       {/* Daftar penempatan — data lengkap seperti saat import, bisa diedit manual */}
       <div className="divide-y border rounded-lg max-h-96 overflow-y-auto">
-        {rows.map((r) => (
+        {filtered.map((r) => (
           <div key={r.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
             <div className="flex-1 min-w-0">
               <p className="font-medium truncate">{r.nama} <span className="text-xs text-muted-foreground">({r.kelas})</span></p>
@@ -297,7 +368,11 @@ function PlacementsSection() {
             <button onClick={() => del.mutate(r.id)} aria-label="Hapus penempatan" className="p-2 -m-1 shrink-0 text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
           </div>
         ))}
-        {rows.length === 0 && <div className="px-3 py-6 text-center text-sm text-muted-foreground">Belum ada data penempatan PKL.</div>}
+        {filtered.length === 0 && (
+          <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+            {rows.length === 0 ? 'Belum ada data penempatan PKL.' : 'Tidak ada penempatan yang cocok dengan pencarian/filter.'}
+          </div>
+        )}
       </div>
     </CardContent></Card>
   )
