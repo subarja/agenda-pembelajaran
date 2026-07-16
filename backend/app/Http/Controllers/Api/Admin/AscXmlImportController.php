@@ -84,7 +84,7 @@ class AscXmlImportController extends Controller
         }
         libxml_clear_errors();
 
-        $ay = AcademicYear::where('aktif', true)->first();
+        $ay = \App\Support\TahunAjaran::current();
         if (! $ay) {
             return response()->json([
                 'message' => 'Tidak ada tahun ajaran aktif. Buat tahun ajaran terlebih dahulu di tab Tahun Ajaran.',
@@ -537,14 +537,26 @@ class AscXmlImportController extends Controller
             $xmlClassMap[(string) $c['id']] = $kelas?->id;
         }
 
-        // Group cards by lessonid → [days → [periods]]
+        // Kartu → hari konkret. Bitmask `days` aSc bisa multi-hari ('11100' = Sen–Rab)
+        // dan bisa 6 digit (mencakup Sabtu) — dulu hanya one-hot 5 hari yang dikenali,
+        // selain itu di-skip diam-diam sehingga sebagian jadwal hilang tanpa jejak.
         $lessonCards = [];
         foreach ($xml->cards->card as $card) {
             $lessonId = (string) $card['lessonid'];
-            $days = (string) $card['days'];
             $period = (int) $card['period'];
-            $lessonCards[$lessonId][$days][] = $period;
+            foreach ($this->daysFromMask((string) $card['days']) as $hari) {
+                $lessonCards[$lessonId][$hari][] = $period;
+            }
         }
+
+        $skipDetail = [
+            'mapel_tak_dikenal' => 0,
+            'kelas_tak_dikenal' => 0,
+            'tanpa_guru'        => 0,
+            'guru_tak_dikenal'  => 0,
+            'jam_tak_dikenal'   => 0,
+        ];
+        $dinonaktifkan = 0;
 
         // Process each lesson
         foreach ($xml->lessons->lesson as $lesson) {
@@ -560,8 +572,21 @@ class AscXmlImportController extends Controller
             $dbSubjectId = $xmlSubjectMap[$subjectId] ?? null;
             if (! $dbSubjectId) {
                 $skipped++;
+                $skipDetail['mapel_tak_dikenal']++;
 
                 continue;
+            }
+
+            // Semua guru lesson ini sekaligus — satu baris jadwal per guru, karena satu
+            // slot bisa dipegang beberapa guru (team teaching, lazim di mapel kejuruan).
+            $dbTeacherIds = [];
+            foreach ($teacherIds as $teacherId) {
+                $dbTeacherId = $xmlTeacherMap[trim($teacherId)] ?? null;
+                if ($dbTeacherId) {
+                    $dbTeacherIds[] = $dbTeacherId;
+                } else {
+                    $skipDetail['guru_tak_dikenal']++;
+                }
             }
 
             foreach ($classIds as $classId) {
@@ -569,51 +594,43 @@ class AscXmlImportController extends Controller
                 $dbClassId = $xmlClassMap[$classId] ?? null;
                 if (! $dbClassId) {
                     $skipped++;
+                    $skipDetail['kelas_tak_dikenal']++;
 
                     continue;
                 }
 
                 // Jika tidak ada guru → tetap buat jadwal tapi tanpa guru (skip)
-                if (empty($teacherIds)) {
+                if (empty($dbTeacherIds)) {
                     $skipped++;
+                    $skipDetail['tanpa_guru']++;
 
                     continue;
                 }
 
-                foreach ($teacherIds as $teacherId) {
-                    $teacherId = trim($teacherId);
-                    $dbTeacherId = $xmlTeacherMap[$teacherId] ?? null;
-                    if (! $dbTeacherId) {
+                foreach ($lessonCards[$lessonId] as $hari => $periodNums) {
+                    sort($periodNums);
+                    $jamKeMulai = min($periodNums);
+                    $jamKeSelesai = max($periodNums);
+                    $jamMulai = $periods[$jamKeMulai]['start'] ?? null;
+                    $jamSelesai = $periods[$jamKeSelesai]['end'] ?? null;
+                    if (! $jamMulai || ! $jamSelesai) {
                         $skipped++;
+                        $skipDetail['jam_tak_dikenal']++;
 
                         continue;
                     }
 
-                    foreach ($lessonCards[$lessonId] as $daysStr => $periodNums) {
-                        $hari = self::DAY_MAP[$daysStr] ?? null;
-                        if (! $hari) {
-                            $skipped++;
+                    // Baris yang ada di slot ini (termasuk soft-deleted), per guru.
+                    // Dulu lookup TANPA teacher_id: guru kedua pada lesson yang sama
+                    // MENIMPA guru pertama, sehingga beban rekan team-teaching hilang.
+                    $slotRows = Schedule::withTrashed()->where([
+                        'class_id' => $dbClassId,
+                        'hari' => $hari,
+                        'jam_mulai' => $jamMulai,
+                    ])->get()->keyBy('teacher_id');
 
-                            continue;
-                        }
-
-                        sort($periodNums);
-                        $jamKeMulai = min($periodNums);
-                        $jamKeSelesai = max($periodNums);
-                        $jamMulai = $periods[$jamKeMulai]['start'] ?? null;
-                        $jamSelesai = $periods[$jamKeSelesai]['end'] ?? null;
-                        if (! $jamMulai || ! $jamSelesai) {
-                            $skipped++;
-
-                            continue;
-                        }
-
-                        // Cari jadwal yang ada (termasuk soft-deleted)
-                        $existing = Schedule::withTrashed()->where([
-                            'class_id' => $dbClassId,
-                            'hari' => $hari,
-                            'jam_mulai' => $jamMulai,
-                        ])->first();
+                    foreach ($dbTeacherIds as $dbTeacherId) {
+                        $existing = $slotRows->get($dbTeacherId);
 
                         if ($existing) {
                             if ($existing->trashed()) {
@@ -621,7 +638,6 @@ class AscXmlImportController extends Controller
                             }
                             $existing->update([
                                 'subject_id' => $dbSubjectId,
-                                'teacher_id' => $dbTeacherId,
                                 'jam_ke_mulai' => $jamKeMulai,
                                 'jam_ke_selesai' => $jamKeSelesai,
                                 'jam_selesai' => $jamSelesai,
@@ -645,11 +661,41 @@ class AscXmlImportController extends Controller
                             $created++;
                         }
                     }
+
+                    // Baris slot ber-mapel SAMA dengan guru di luar daftar XML = sisa
+                    // import lama (guru diganti di aSc) → nonaktifkan agar tidak ganda.
+                    // Mapel lain di slot yang sama dibiarkan — kelas terbelah dua
+                    // kelompok (mapel & guru berbeda pada jam yang sama) itu sah.
+                    foreach ($slotRows as $teacherIdLama => $row) {
+                        if ($row->subject_id === $dbSubjectId
+                            && ! in_array($teacherIdLama, $dbTeacherIds)
+                            && ! $row->trashed()) {
+                            $row->delete();
+                            $dinonaktifkan++;
+                        }
+                    }
                 }
             }
         }
 
-        return compact('created', 'updated', 'skipped');
+        return compact('created', 'updated', 'skipped', 'dinonaktifkan') + ['skip_detail' => $skipDetail];
+    }
+
+    /**
+     * Bitmask hari kartu aSc → daftar nama hari. Mendukung mask multi-hari ('11100' =
+     * Senin–Rabu) dan panjang 5–7 digit; digit ke-7 (Minggu) tidak dipakai sekolah.
+     */
+    private function daysFromMask(string $mask): array
+    {
+        $urutan = ['senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
+        $hasil = [];
+        foreach (str_split($mask) as $i => $bit) {
+            if ($bit === '1' && isset($urutan[$i])) {
+                $hasil[] = $urutan[$i];
+            }
+        }
+
+        return $hasil;
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────
