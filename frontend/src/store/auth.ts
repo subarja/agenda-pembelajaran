@@ -13,6 +13,7 @@ interface AuthState {
   // blank putih sekejap. Router HARUS tunggu `hasHydrated` dulu sebelum memutuskan render.
   hasHydrated: boolean
   setAuth: (user: User, token: string) => void
+  updateUser: (patch: Partial<User>) => void
   setCurrentAcademicYear: (year: AcademicYearOption) => void
   clearAuth: () => void
   setHasHydrated: (v: boolean) => void
@@ -30,6 +31,7 @@ export const useAuthStore = create<AuthState>()(
         localStorage.setItem('token', token)
         set({ user, token, isAuthenticated: true, currentAcademicYear: user.current_academic_year ?? null })
       },
+      updateUser: (patch) => set((s) => (s.user ? { user: { ...s.user, ...patch } } : {})),
       setCurrentAcademicYear: (year) => set({ currentAcademicYear: year }),
       clearAuth: () => {
         localStorage.removeItem('token')

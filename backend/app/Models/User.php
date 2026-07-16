@@ -20,6 +20,7 @@ class User extends Authenticatable
 
     protected $fillable = [
         'nama', 'email', 'password', 'role', 'status', 'nomor_hp', 'foto',
+        'must_change_password',
         'linked_student_id', 'current_academic_year_id', 'created_by', 'updated_by',
     ];
 
@@ -28,10 +29,11 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password'          => 'hashed',
-            'role'              => UserRole::class,
-            'status'            => UserStatus::class,
+            'email_verified_at'    => 'datetime',
+            'password'             => 'hashed',
+            'must_change_password' => 'boolean',
+            'role'                 => UserRole::class,
+            'status'               => UserStatus::class,
         ];
     }
 

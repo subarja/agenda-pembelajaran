@@ -224,9 +224,11 @@ class UserAdminController extends Controller
     {
         $user = User::where('uuid', $uuid)->firstOrFail();
         $data = $request->validate(['password' => ['required', 'string', 'min:8']]);
-        $user->update(['password' => Hash::make($data['password'])]);
+        // Password yang di-set admin selalu bersifat sementara — pemilik akun
+        // wajib menggantinya sendiri saat login berikutnya.
+        $user->update(['password' => Hash::make($data['password']), 'must_change_password' => true]);
 
-        return response()->json(['message' => 'Password berhasil direset.']);
+        return response()->json(['message' => 'Password berhasil direset. Pengguna wajib mengganti password saat login berikutnya.']);
     }
 
     // PUT /admin/users/{uuid}/toggle-status
@@ -244,41 +246,46 @@ class UserAdminController extends Controller
     {
         $type = $request->query('type', 'guru');
 
+        if (! in_array($type, ['guru', 'siswa'], true)) {
+            return response()->json(['message' => 'Tipe tidak dikenal.'], 422);
+        }
+
+        // Password default tidak lagi di-hardcode — nilai lama sudah tercatat di
+        // riwayat git sehingga wajib dirotasi dan hanya hidup di .env server.
+        $envKey = $type === 'guru' ? 'DEFAULT_TEACHER_PASSWORD' : 'DEFAULT_STUDENT_PASSWORD';
+        $plain  = config($type === 'guru' ? 'accounts.default_teacher_password' : 'accounts.default_student_password');
+
+        if (! $plain) {
+            return response()->json([
+                'message' => "Password default belum dikonfigurasi. Isi {$envKey} di file .env server, lalu coba lagi.",
+            ], 422);
+        }
+
+        $defaultPw = Hash::make($plain);
+        $count = 0;
+
         if ($type === 'guru') {
-            $teachers = Teacher::with('user')->get();
-            $defaultPw = Hash::make('SMKN2Cimahi!');
-            $count = 0;
-            foreach ($teachers as $t) {
+            foreach (Teacher::with('user')->get() as $t) {
                 if ($t->user && $t->nip) {
-                    $t->user->update(['password' => $defaultPw]);
+                    $t->user->update(['password' => $defaultPw, 'must_change_password' => true]);
                     $count++;
                 }
             }
-
-            return response()->json([
-                'message' => "Password default guru berhasil di-set untuk {$count} akun. Username = NIP, password = SMKN2Cimahi!",
-                'count' => $count,
-            ]);
-        }
-
-        if ($type === 'siswa') {
-            $students = Student::with('user')->get();
-            $defaultPw = Hash::make('SMKN2Cimahi_Istimewa!');
-            $count = 0;
-            foreach ($students as $s) {
+        } else {
+            foreach (Student::with('user')->get() as $s) {
                 if ($s->user && $s->nisn) {
-                    $s->user->update(['password' => $defaultPw]);
+                    $s->user->update(['password' => $defaultPw, 'must_change_password' => true]);
                     $count++;
                 }
             }
-
-            return response()->json([
-                'message' => "Password default siswa berhasil di-set untuk {$count} akun. Username = NISN, password = SMKN2Cimahi_Istimewa!",
-                'count' => $count,
-            ]);
         }
 
-        return response()->json(['message' => 'Tipe tidak dikenal.'], 422);
+        $username = $type === 'guru' ? 'NIP' : 'NISN';
+
+        return response()->json([
+            'message' => "Password default {$type} berhasil di-set untuk {$count} akun. Username = {$username}; password sesuai {$envKey} di .env. Semua akun wajib mengganti password saat login pertama.",
+            'count' => $count,
+        ]);
     }
 
     private function format(User $u): array

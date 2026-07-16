@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import AppLayout from '@/components/layout/AppLayout'
@@ -39,6 +39,7 @@ import InvalPage from '@/pages/InvalPage'
 import PklPage from '@/pages/PklPage'
 import PklAgendaFormPage from '@/pages/PklAgendaFormPage'
 import KokurikulerPage from '@/pages/KokurikulerPage'
+import GantiPasswordWajibPage from '@/pages/GantiPasswordWajibPage'
 
 // Spinner penuh-layar — dipakai SELAMA `hasHydrated` masih false, supaya tidak pernah
 // ada window blank putih ataupun sempat "kelihatan" redirect ke /login yang salah
@@ -54,8 +55,16 @@ function FullScreenLoader() {
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const hasHydrated = useAuthStore((s) => s.hasHydrated)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const mustChangePassword = useAuthStore((s) => s.user?.must_change_password)
+  const location = useLocation()
   if (!hasHydrated) return <FullScreenLoader />
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  // Akun dengan password sementara (di-reset admin / generate massal) dikunci di
+  // halaman ganti password — backend juga menolak endpoint lain dengan 403.
+  if (mustChangePassword && location.pathname !== '/ganti-password') {
+    return <Navigate to="/ganti-password" replace />
+  }
+  return <>{children}</>
 }
 
 function GuestRoute({ children }: { children: React.ReactNode }) {
@@ -83,6 +92,7 @@ export default function AppRouter() {
       <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordPage /></GuestRoute>} />
       <Route path="/reset-password"  element={<GuestRoute><ResetPasswordPage /></GuestRoute>} />
       <Route path="/pilih-tahun-ajaran" element={<ProtectedRoute><PilihTahunAjaranPage /></ProtectedRoute>} />
+      <Route path="/ganti-password"     element={<ProtectedRoute><GantiPasswordWajibPage /></ProtectedRoute>} />
 
       <Route element={<ProtectedRoute><RequireAcademicYear><AppLayout /></RequireAcademicYear></ProtectedRoute>}>
         <Route index                            element={<DashboardPage />} />

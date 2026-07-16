@@ -266,7 +266,7 @@ export default function ProfilePage() {
             <div>
               <p className="text-xs text-muted-foreground mb-1">NISN</p>
               <p className="text-sm font-medium">{user.student.nisn}</p>
-              <p className="text-xs text-muted-foreground">Login pakai NISN · Password default = NISN</p>
+              <p className="text-xs text-muted-foreground">Login pakai NISN · Password default diberikan oleh sekolah</p>
             </div>
           )}
 

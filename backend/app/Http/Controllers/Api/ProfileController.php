@@ -87,7 +87,7 @@ class ProfileController extends Controller
             return response()->json(['message' => 'Password lama tidak sesuai.'], 422);
         }
 
-        $user->update(['password' => Hash::make($request->password_baru)]);
+        $user->update(['password' => Hash::make($request->password_baru), 'must_change_password' => false]);
 
         return response()->json(['message' => 'Password berhasil diperbarui.']);
     }
