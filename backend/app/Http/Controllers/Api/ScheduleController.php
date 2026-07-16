@@ -61,6 +61,28 @@ class ScheduleController extends Controller
             ->sortBy([['kelas', 'asc'], ['mapel', 'asc']])
             ->values();
 
+        // Penugasan mengajar yang BELUM diplot ke hari/jam (lesson aSc tanpa kartu) —
+        // beban guru tetap tampil walau jadwalnya belum ditempatkan di grid.
+        $plotted = $schedules->map(fn ($s) => $s->class_id.'|'.$s->subject_id)->flip();
+        $belumDiplot = \App\Models\TeachingAssignment::where('teacher_id', $teacher->id)
+            ->whereHas('schoolClass', fn ($q) => $q->where('academic_year_id', \App\Support\TahunAjaran::id()))
+            ->with(['subject', 'schoolClass'])
+            ->get()
+            ->filter(fn ($a) => ! $plotted->has($a->class_id.'|'.$a->subject_id))
+            ->map(fn ($a) => [
+                'kelas'       => $a->schoolClass
+                    ? "{$a->schoolClass->tingkat->value} {$a->schoolClass->jurusan} - {$a->schoolClass->rombel}"
+                    : '—',
+                'mapel'       => $a->subject->nama ?? '—',
+                'hari'        => 'Belum diplot',
+                'jumlah_sesi' => 0,
+                'jp'          => (int) round($a->jp_per_minggu),
+            ]);
+
+        $rows = $rows->concat($belumDiplot)
+            ->sortBy([['kelas', 'asc'], ['mapel', 'asc']])
+            ->values();
+
         // Penugasan PKL: dari placement (pembimbing), terlepas dari ploting jadwal.
         $ayId = PklMode::activeAcademicYearId();
         $pkl = \App\Models\PklPlacement::where('pembimbing_teacher_id', $teacher->id)

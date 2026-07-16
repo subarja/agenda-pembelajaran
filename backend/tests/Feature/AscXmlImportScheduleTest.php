@@ -51,6 +51,7 @@ class AscXmlImportScheduleTest extends TestCase
   </periods>
   <subjects>
     <subject id="S1" name="KK Animasi 12" short="KKA"/>
+    <subject id="S2" name="Pilihan Animasi 12" short="PA12"/>
   </subjects>
   <teachers>
     <teacher id="T1" name="Budi Hartono Nugraha" short="KKA-Budi"/>
@@ -61,6 +62,7 @@ class AscXmlImportScheduleTest extends TestCase
   </classes>
   <lessons>
     <lesson id="L1" classids="C1" subjectid="S1" teacherids="T1,T2" periodsperweek="4"/>
+    <lesson id="L2" classids="C1" subjectid="S2" teacherids="T1" periodsperweek="6"/>
   </lessons>
   <cards>
     <card lessonid="L1" days="11000" period="1"/>
@@ -101,5 +103,36 @@ XML;
         $this->assertSame(0, $res->json('data.jadwal.created'));
         $this->assertSame(4, $res->json('data.jadwal.updated'));
         $this->assertSame(4, Schedule::count());
+
+        // Penugasan diisi ulang penuh setiap import — tidak menggandakan JP.
+        $this->assertSame(3, \App\Models\TeachingAssignment::count());
+        $this->assertEquals(6.0, \App\Models\TeachingAssignment::whereHas('subject', fn ($q) => $q->where('nama', 'Pilihan Animasi 12'))->value('jp_per_minggu'));
+    }
+
+    public function test_lesson_tanpa_kartu_tetap_terekam_dan_tampil_di_beban_mengajar(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $this->post('/api/v1/admin/import/asc-xml', ['file' => $this->xmlFile()])->assertOk();
+
+        // Lesson L2 (Pilihan Animasi 12, 6 JP) tidak punya kartu → tidak jadi baris
+        // schedules, tapi penugasannya terekam: 2 guru L1 + 1 guru L2 = 3 baris.
+        $this->assertSame(3, \App\Models\TeachingAssignment::count());
+        $this->assertSame(4, Schedule::count());
+
+        // Beban Mengajar guru T1 menampilkan ploting L1 DAN penugasan belum-diplot L2.
+        $guru = User::where('nama', 'Budi Hartono Nugraha')->firstOrFail();
+        $ay = AcademicYear::where('aktif', true)->first();
+        $guru->update(['current_academic_year_id' => $ay->id]);
+        Sanctum::actingAs($guru->fresh());
+
+        $data = $this->getJson('/api/v1/beban-mengajar')->assertOk()->json('data');
+        $byMapel = collect($data['rows'])->keyBy('mapel');
+
+        $this->assertSame(2, count($data['rows']));
+        $this->assertSame('Belum diplot', $byMapel['Pilihan Animasi 12']['hari']);
+        $this->assertSame(0, $byMapel['Pilihan Animasi 12']['jumlah_sesi']);
+        $this->assertSame(6, $byMapel['Pilihan Animasi 12']['jp']);
+        $this->assertSame(2, $byMapel['KK Animasi 12']['jumlah_sesi']); // senin + selasa
+        $this->assertSame(6, $data['total_jp'] + 0 - $byMapel['KK Animasi 12']['jp']); // total = plotted + belum diplot
     }
 }

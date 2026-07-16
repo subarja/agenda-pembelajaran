@@ -557,6 +557,11 @@ class AscXmlImportController extends Controller
             'jam_tak_dikenal'   => 0,
         ];
         $dinonaktifkan = 0;
+        $penugasan = 0;
+
+        // Penugasan mengajar diisi ulang penuh untuk kelas-kelas yang ada di file —
+        // import adalah sumber kebenaran ploting, jadi sisa penugasan lama ikut hilang.
+        \App\Models\TeachingAssignment::whereIn('class_id', array_values(array_filter($xmlClassMap)))->delete();
 
         // Process each lesson
         foreach ($xml->lessons->lesson as $lesson) {
@@ -564,10 +569,6 @@ class AscXmlImportController extends Controller
             $classIds = explode(',', (string) $lesson['classids']);
             $subjectId = (string) $lesson['subjectid'];
             $teacherIds = array_filter(explode(',', (string) $lesson['teacherids']));
-
-            if (empty($lessonCards[$lessonId])) {
-                continue;
-            }
 
             $dbSubjectId = $xmlSubjectMap[$subjectId] ?? null;
             if (! $dbSubjectId) {
@@ -604,6 +605,29 @@ class AscXmlImportController extends Controller
                     $skipped++;
                     $skipDetail['tanpa_guru']++;
 
+                    continue;
+                }
+
+                // Penugasan mengajar dicatat untuk SETIAP lesson ber-guru — termasuk
+                // yang BELUM diplot ke hari/jam (tanpa kartu). Beban Mengajar guru
+                // membaca ini sebagai baris "belum diplot" agar bebannya tetap terlihat.
+                foreach ($dbTeacherIds as $dbTeacherId) {
+                    $assignment = \App\Models\TeachingAssignment::firstOrNew([
+                        'class_id'   => $dbClassId,
+                        'subject_id' => $dbSubjectId,
+                        'teacher_id' => $dbTeacherId,
+                    ]);
+                    if (! $assignment->exists) {
+                        $penugasan++;
+                    }
+                    // Dua lesson terpisah utk pasangan yang sama (mis. kelas terbelah
+                    // kelompok) menjumlahkan JP-nya, bukan saling menimpa.
+                    $assignment->jp_per_minggu = ($assignment->jp_per_minggu ?? 0) + (float) $lesson['periodsperweek'];
+                    $assignment->save();
+                }
+
+                // Penempatan ke grid hanya untuk lesson yang punya kartu.
+                if (empty($lessonCards[$lessonId])) {
                     continue;
                 }
 
@@ -678,7 +702,7 @@ class AscXmlImportController extends Controller
             }
         }
 
-        return compact('created', 'updated', 'skipped', 'dinonaktifkan') + ['skip_detail' => $skipDetail];
+        return compact('created', 'updated', 'skipped', 'dinonaktifkan', 'penugasan') + ['skip_detail' => $skipDetail];
     }
 
     /**

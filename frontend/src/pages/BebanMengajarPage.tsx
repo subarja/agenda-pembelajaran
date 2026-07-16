@@ -73,7 +73,7 @@ export default function BebanMengajarPage() {
                     <td className="px-3 py-2 text-muted-foreground w-10 text-center">{i + 1}</td>
                     <td className="px-3 py-2 font-medium">{r.kelas}</td>
                     <td className="px-3 py-2">{r.mapel}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{r.hari}</td>
+                    <td className={`px-3 py-2 ${r.hari === 'Belum diplot' ? 'italic text-amber-600' : 'text-muted-foreground'}`}>{r.hari}</td>
                     <td className="px-3 py-2 text-center">{r.jumlah_sesi}</td>
                     <td className="px-3 py-2 text-center font-semibold">{r.jp}</td>
                   </tr>
