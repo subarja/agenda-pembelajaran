@@ -31,6 +31,7 @@ import HariEfektifPage from '@/pages/HariEfektifPage'
 import PilihTahunAjaranPage from '@/pages/PilihTahunAjaranPage'
 import RekapPerkembanganPage from '@/pages/RekapPerkembanganPage'
 import JadwalSayaPage from '@/pages/JadwalSayaPage'
+import BebanMengajarPage from '@/pages/BebanMengajarPage'
 import RefleksiMingguanPage from '@/pages/RefleksiMingguanPage'
 import RiwayatDokumenPenangananPage from '@/pages/RiwayatDokumenPenangananPage'
 import PengaturanNotifikasiPage from '@/pages/PengaturanNotifikasiPage'
@@ -110,6 +111,7 @@ export default function AppRouter() {
         <Route path="kalender"                  element={<KalenderPage />} />
         <Route path="hari-efektif"              element={<HariEfektifPage />} />
         <Route path="jadwal-saya"               element={<JadwalSayaPage />} />
+        <Route path="beban-mengajar"            element={<BebanMengajarPage />} />
         <Route path="refleksi-mingguan"         element={<RefleksiMingguanPage />} />
         <Route path="riwayat-dokumen-penanganan" element={<RiwayatDokumenPenangananPage />} />
 

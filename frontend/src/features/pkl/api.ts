@@ -6,6 +6,8 @@ export interface PklClass {
   id: string
   label: string
   jumlah_siswa: number
+  // 'pembimbing' = penugasan bimbingan; 'pengajar' = ber-ploting jadwal di kelas XII itu
+  sebagai?: 'pembimbing' | 'pengajar'
 }
 
 export interface PklStudentRow {

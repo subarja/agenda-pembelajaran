@@ -70,6 +70,88 @@ class PklMode
             ->exists();
     }
 
+    /** id kelas XII (TA aktif) yang diajar guru ini lewat ploting jadwal aktif. */
+    public static function taughtXiiClassIds(int $teacherId): array
+    {
+        return Schedule::tahunAjaran()
+            ->where('teacher_id', $teacherId)
+            ->where('aktif', true)
+            ->whereHas('schoolClass', fn ($q) => $q->where('tingkat', Tingkat::XII->value))
+            ->pluck('class_id')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Guru berhak masuk alur agenda PKL bila ia pembimbing (penugasan, walau tanpa
+     * ploting) ATAU ber-ploting jadwal di kelas XII (walau tanpa penugasan bimbingan).
+     * Keduanya setara: agenda PKL mingguan lepas dari jadwal harian.
+     */
+    public static function canFillAgenda(User $user): bool
+    {
+        $teacher = $user->teacher;
+        if (! $teacher) {
+            return false;
+        }
+
+        return self::isPembimbing($user) || self::taughtXiiClassIds($teacher->id) !== [];
+    }
+
+    /** @var array<int, array{0:string,1:string}>|null cache periode PKL per kelas (TA aktif) */
+    private static ?array $placementRanges = null;
+
+    /** @var array<int, true>|null cache id kelas XII TA aktif */
+    private static ?array $xiiClassIds = null;
+
+    /**
+     * Sesi reguler (kelas, tanggal) ini dibebaskan dari tagihan agenda?
+     *
+     * Dua lapis, sengaja TIDAK hanya membaca saklar:
+     *  1. Mode ON → seluruh kelas XII bebas (kewajiban pindah ke agenda PKL mingguan).
+     *  2. Tanggal berada dalam periode PKL kelas itu (min mulai..max selesai placement)
+     *     → tetap bebas WALAU mode sudah OFF. Tanpa lapis ini, mematikan saklar membuat
+     *     sesi XII semasa PKL mendadak ditagih retroaktif sebagai hutang agenda di
+     *     dashboard guru dan EWS Guru — padahal rekamannya ada di agenda PKL.
+     */
+    public static function isAgendaExempt(?int $classId, string $tanggal): bool
+    {
+        if ($classId === null) {
+            return false;
+        }
+
+        if (self::isActive()) {
+            self::$xiiClassIds ??= \App\Models\SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
+                ->where('tingkat', Tingkat::XII->value)
+                ->pluck('id')
+                ->flip()
+                ->all();
+
+            if (isset(self::$xiiClassIds[$classId])) {
+                return true;
+            }
+        }
+
+        self::$placementRanges ??= PklPlacement::query()
+            ->when(self::activeAcademicYearId(), fn ($q, $ay) => $q->where('academic_year_id', $ay))
+            ->selectRaw('class_id, MIN(tanggal_mulai) as mulai, MAX(tanggal_selesai) as selesai')
+            ->groupBy('class_id')
+            ->get()
+            ->mapWithKeys(fn ($r) => [(int) $r->class_id => [(string) $r->mulai, (string) $r->selesai]])
+            ->all();
+
+        $range = self::$placementRanges[$classId] ?? null;
+
+        return $range !== null && $tanggal >= $range[0] && $tanggal <= $range[1];
+    }
+
+    /** Reset cache statis — dipakai test & setelah import/hapus placement. */
+    public static function flush(): void
+    {
+        self::$placementRanges = null;
+        self::$xiiClassIds = null;
+    }
+
     /**
      * Batas akhir pengisian agenda PKL untuk minggu yang mulai $mingguMulai (Senin).
      *

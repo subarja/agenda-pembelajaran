@@ -36,7 +36,7 @@ class PklController extends Controller
 
     // ── Ringkasan & daftar siswa bimbingan ────────────────────────────────────
 
-    /** GET /pkl/overview — kelas yang saya bimbing + jumlah siswa (untuk halaman PKL). */
+    /** GET /pkl/overview — kelas yang saya bimbing ATAU ajar (ploting XII) + jumlah siswa. */
     public function overview(Request $request): JsonResponse
     {
         $teacher = $request->user()->teacher;
@@ -51,13 +51,39 @@ class PklController extends Controller
                 'id'           => $class->uuid,
                 'label'        => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
                 'jumlah_siswa' => $group->count(),
+                'sebagai'      => 'pembimbing',
             ];
-        })->values();
+        });
+
+        // Guru ber-ploting jadwal kelas XII ikut alur agenda PKL walau bukan pembimbing —
+        // jadwal lepas dari ploting saat PKL, kewajibannya jadi agenda mingguan per kelas.
+        // Hanya kelas yang periodenya terdefinisi (punya placement) yang bisa diisi.
+        $taughtIds = collect(PklMode::taughtXiiClassIds($teacher->id))
+            ->diff($placements->pluck('class_id'));
+        if ($taughtIds->isNotEmpty()) {
+            $ayId = PklMode::activeAcademicYearId();
+            $taught = PklPlacement::whereIn('class_id', $taughtIds)
+                ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
+                ->with('schoolClass')
+                ->get()
+                ->groupBy('class_id')
+                ->map(function (Collection $group) {
+                    $class = $group->first()->schoolClass;
+
+                    return [
+                        'id'           => $class->uuid,
+                        'label'        => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                        'jumlah_siswa' => $group->count(),
+                        'sebagai'      => 'pengajar',
+                    ];
+                });
+            $classes = $classes->union($taught);
+        }
 
         return response()->json([
             'data' => [
                 'mode_aktif' => PklMode::isActive(),
-                'classes'    => $classes,
+                'classes'    => $classes->values()->sortBy('label')->values(),
             ],
         ]);
     }
@@ -341,7 +367,14 @@ class PklController extends Controller
             ->get();
     }
 
-    /** Pastikan kelas ini benar dibimbing $teacherId; kembalikan [kelas, placements-nya]. */
+    /**
+     * Pastikan kelas ini benar dibimbing ATAU diajar $teacherId; kembalikan
+     * [kelas, placements yang menjadi tanggung jawabnya].
+     *
+     * Pembimbing (penugasan) → hanya siswa bimbingannya. Guru ber-ploting jadwal XII
+     * tanpa penugasan → seluruh siswa PKL kelas itu (ia mengajar satu kelas penuh,
+     * jadi presensi & agendanya mencakup semua siswa yang ditempatkan).
+     */
     private function authorizeClass(int $teacherId, string $classUuid): array
     {
         $class = SchoolClass::where('uuid', $classUuid)->firstOrFail();
@@ -351,7 +384,15 @@ class PklController extends Controller
             ->filter(fn ($p) => $p->class_id === $class->id)
             ->values();
 
-        abort_if($placements->isEmpty(), 403, 'Anda tidak membimbing siswa di kelas ini.');
+        if ($placements->isEmpty() && in_array($class->id, PklMode::taughtXiiClassIds($teacherId), true)) {
+            $ayId = PklMode::activeAcademicYearId();
+            $placements = PklPlacement::where('class_id', $class->id)
+                ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
+                ->with('student.user')
+                ->get();
+        }
+
+        abort_if($placements->isEmpty(), 403, 'Anda tidak membimbing atau mengajar kelas ini.');
 
         return [$class, $placements];
     }

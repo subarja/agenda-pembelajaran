@@ -43,13 +43,15 @@ class UserResource extends JsonResource
 
             'kapabilitas' => $this->whenLoaded('teacher', fn () => $this->computeKapabilitas()),
 
-            // Status Mode PKL untuk gating menu di frontend. is_pembimbing hanya dihitung
-            // saat mode aktif (menghindari query sia-sia ketika PKL mati).
+            // Status Mode PKL untuk gating menu di frontend — hanya dihitung saat mode
+            // aktif (menghindari query sia-sia ketika PKL mati). `is_pembimbing` kini
+            // berarti "berhak masuk alur agenda PKL": pembimbing (penugasan) ATAU
+            // ber-ploting jadwal kelas XII — keduanya mengisi agenda PKL mingguan.
             'pkl' => [
                 'mode_aktif'    => PklMode::isActive(),
                 'is_pembimbing' => PklMode::isActive()
                     && $this->relationLoaded('teacher') && $this->teacher
-                    && PklMode::isPembimbing($this->resource),
+                    && PklMode::canFillAgenda($this->resource),
             ],
 
             // Status modul Kokurikuler — menu muncul selama ada projek aktif di TA aktif

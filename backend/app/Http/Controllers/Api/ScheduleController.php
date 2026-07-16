@@ -17,6 +17,94 @@ class ScheduleController extends Controller
 {
     use ServesStoredPdf;
 
+    /**
+     * GET /beban-mengajar — rekap beban mengajar guru yang login: kelas & mapel yang
+     * diampu, jumlah sesi/minggu, jam pelajaran (JP), dan total JP. Ditambah penugasan
+     * PKL (pembimbing) yang TIDAK lewat ploting jadwal — supaya guru tanpa ploting
+     * kelas XII tetap melihat beban penugasannya.
+     */
+    public function bebanMengajar(Request $request): JsonResponse
+    {
+        $teacher = $request->user()->teacher;
+        abort_if(! $teacher, 403, 'Menu Beban Mengajar khusus guru.');
+
+        $hariOrder = ['senin' => 0, 'selasa' => 1, 'rabu' => 2, 'kamis' => 3, 'jumat' => 4, 'sabtu' => 5];
+
+        $schedules = $teacher->schedules()
+            ->tahunAjaran()
+            ->where('aktif', true)
+            ->with(['subject', 'schoolClass'])
+            ->get();
+
+        $rows = $schedules->groupBy(fn ($s) => $s->class_id.'|'.$s->subject_id)
+            ->map(function ($group) use ($hariOrder) {
+                $s = $group->first();
+
+                return [
+                    'kelas'       => $s->schoolClass
+                        ? "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}"
+                        : '—',
+                    // Nama mapel ASLI, bukan label PKL — beban mengajar adalah dokumen
+                    // ploting; penugasan PKL dilaporkan terpisah di bawah.
+                    'mapel'       => $s->subject->nama ?? '—',
+                    'hari'        => $group->pluck('hari')
+                        ->map(fn ($h) => $h->value)
+                        ->unique()
+                        ->sortBy(fn ($h) => $hariOrder[$h] ?? 9)
+                        ->map(fn ($h) => ucfirst($h))
+                        ->values()
+                        ->join(', '),
+                    'jumlah_sesi' => $group->count(),
+                    'jp'          => $group->sum(fn ($x) => $this->hitungJp($x)),
+                ];
+            })
+            ->sortBy([['kelas', 'asc'], ['mapel', 'asc']])
+            ->values();
+
+        // Penugasan PKL: dari placement (pembimbing), terlepas dari ploting jadwal.
+        $ayId = PklMode::activeAcademicYearId();
+        $pkl = \App\Models\PklPlacement::where('pembimbing_teacher_id', $teacher->id)
+            ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
+            ->with('schoolClass')
+            ->get()
+            ->groupBy('class_id')
+            ->map(fn ($group) => [
+                'kelas'        => $group->first()->schoolClass
+                    ? "{$group->first()->schoolClass->tingkat->value} {$group->first()->schoolClass->jurusan} - {$group->first()->schoolClass->rombel}"
+                    : '—',
+                'jumlah_siswa' => $group->count(),
+                'periode'      => Carbon::parse($group->min('tanggal_mulai'))->locale('id')->isoFormat('D MMM YYYY')
+                    .' – '.Carbon::parse($group->max('tanggal_selesai'))->locale('id')->isoFormat('D MMM YYYY'),
+            ])
+            ->sortBy('kelas')
+            ->values();
+
+        return response()->json(['data' => [
+            'rows'     => $rows,
+            'total_jp' => $rows->sum('jp'),
+            'pkl'      => $pkl,
+        ]]);
+    }
+
+    /**
+     * Jumlah JP satu baris jadwal: dari rentang jam-ke bila ada (hasil import XML),
+     * kalau tidak dari durasi menit ÷ 45 (1 JP = 45 menit, dibulatkan, minimal 1).
+     */
+    private function hitungJp(Schedule $s): int
+    {
+        if ($s->jam_ke_mulai !== null && $s->jam_ke_selesai !== null && $s->jam_ke_selesai >= $s->jam_ke_mulai) {
+            return $s->jam_ke_selesai - $s->jam_ke_mulai + 1;
+        }
+
+        if ($s->jam_mulai && $s->jam_selesai) {
+            $menit = Carbon::parse($s->jam_mulai)->diffInMinutes(Carbon::parse($s->jam_selesai));
+
+            return max(1, (int) round($menit / 45));
+        }
+
+        return 0;
+    }
+
     // GET /schedules/my-pdf — jadwal PDF milik guru/siswa yang login (?preview=1 = JSON base64)
     public function myPdf(Request $request)
     {

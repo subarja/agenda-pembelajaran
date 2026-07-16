@@ -93,6 +93,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('schedules/this-week',     [ScheduleController::class, 'thisWeek']);
     Route::get('schedules/today-student', [ScheduleController::class, 'todayStudent']);
     Route::get('schedules/my-pdf',        [ScheduleController::class, 'myPdf']);
+    Route::get('beban-mengajar',          [ScheduleController::class, 'bebanMengajar']);
 
     // ── Siswa ─────────────────────────────────────────────────────────────────
     Route::get('students',                                        [StudentController::class, 'index']);

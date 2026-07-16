@@ -80,7 +80,8 @@ export default function PklPage() {
 
       {classes.length === 0 ? (
         <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">
-          Anda belum ditetapkan sebagai guru pembimbing PKL. Data PKL diimpor oleh admin.
+          Anda belum ditetapkan sebagai pembimbing PKL dan tidak punya ploting jadwal di kelas XII
+          yang siswanya sudah ditempatkan. Data penempatan PKL diimpor oleh admin.
         </CardContent></Card>
       ) : (
         <>
@@ -91,7 +92,7 @@ export default function PklPage() {
                 <button key={c.id} onClick={() => setClassId(c.id)}
                   className={cn('rounded-lg border px-3 py-1.5 text-sm transition-colors',
                     c.id === classId ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-border hover:bg-accent')}>
-                  {c.label} <span className="text-muted-foreground">({c.jumlah_siswa})</span>
+                  {c.label} <span className="text-muted-foreground">({c.jumlah_siswa}{c.sebagai === 'pengajar' ? ' · pengajar' : ''})</span>
                 </button>
               ))}
             </div>

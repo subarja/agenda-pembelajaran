@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
-  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles,
+  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles, Clock,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -35,6 +35,7 @@ const allNav: Record<string, NavItem> = {
   notifikasi:    { label: 'Notifikasi',      path: '/pengaturan/notifikasi', icon: BellRing },
   profil:        { label: 'Profil',          path: '/profil',          icon: User },
   jadwalSaya:    { label: 'Jadwal Saya',     path: '/jadwal-saya',     icon: FileText },
+  bebanMengajar: { label: 'Beban Mengajar',  path: '/beban-mengajar',  icon: Clock },
   inval:         { label: 'Guru Inval',      path: '/inval',           icon: UserPlus },
   pkl:           { label: 'PKL',             path: '/pkl',             icon: Briefcase },
   kokurikuler:   { label: 'Kokurikuler',     path: '/kokurikuler',     icon: Sparkles },
@@ -55,7 +56,7 @@ export function getNavForUser(user: UserType): NavItem[] {
   if (role === 'guru') {
     // Riwayat Dokumen Penanganan SENGAJA tidak di sini — hanya untuk guru yang
     // wali kelas dan/atau BK (lihat cabang kapabilitas). Guru biasa tidak dapat.
-    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya)
+    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya, allNav.bebanMengajar)
 
     // Menu PKL hanya saat Mode PKL aktif DAN guru ini benar-benar seorang pembimbing.
     if (user.pkl?.mode_aktif && user.pkl?.is_pembimbing) {
@@ -94,7 +95,7 @@ export function getNavForUser(user: UserType): NavItem[] {
     }
   } else if (role === 'wali_kelas') {
     // Legacy role — backward compat
-    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan)
+    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan, allNav.bebanMengajar)
     if (user.kokurikuler?.is_fasilitator) items.push(allNav.kokurikuler)
     items.push(
       withSection(allNav.presensiHarian, 'Menu Wali Kelas'),

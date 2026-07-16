@@ -14,7 +14,6 @@ use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\TeacherAttendance;
-use App\Enums\Tingkat;
 use App\Support\BellSchedule;
 use App\Support\PklMode;
 use App\Support\SessionTeacher;
@@ -124,14 +123,14 @@ class AgendaController extends Controller
             }
         }
 
-        // Mode PKL: sesi kelas XII tidak lagi menuntut agenda harian — kewajibannya pindah
-        // ke agenda PKL mingguan. Buang dari daftar "perlu diisi" (termasuk sesi inval XII).
-        if (PklMode::isActive()) {
-            $sesi = array_values(array_filter(
-                $sesi,
-                fn ($s) => $s['schedule']->schoolClass?->tingkat !== Tingkat::XII,
-            ));
-        }
+        // Mode PKL: sesi kelas XII tidak menuntut agenda harian — kewajibannya pindah ke
+        // agenda PKL mingguan. Pembebasan dihitung per (kelas, tanggal) lewat periode
+        // placement, BUKAN cuma saklar — mematikan mode tidak membuat sesi semasa PKL
+        // ditagih retroaktif (termasuk sesi inval XII).
+        $sesi = array_values(array_filter(
+            $sesi,
+            fn ($s) => ! PklMode::isAgendaExempt($s['schedule']->class_id, $s['tanggal']),
+        ));
 
         // Kokurikuler: kelas peserta projek pada tanggal dalam periode projek dibebaskan
         // dari kewajiban agenda reguler — tidak muncul sebagai tagihan dan tidak pernah

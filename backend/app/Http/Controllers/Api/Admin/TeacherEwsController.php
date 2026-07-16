@@ -585,7 +585,6 @@ class TeacherEwsController extends Controller
     }
 
     /** Cache id kelas XII TA aktif — untuk pengecualian Mode PKL tanpa N+1. */
-    private ?array $kelasXiiIds = null;
 
     /**
      * Sesi yang TIDAK menuntut agenda reguler (tidak ikut penyebut EWS Guru):
@@ -605,16 +604,9 @@ class TeacherEwsController extends Controller
             return true;
         }
 
-        if (! PklMode::isActive()) {
-            return false;
-        }
-
-        $this->kelasXiiIds ??= SchoolClass::whereHas('academicYear', fn ($q) => $q->where('aktif', true))
-            ->where('tingkat', Tingkat::XII->value)
-            ->pluck('id')
-            ->all();
-
-        return in_array($classId, $this->kelasXiiIds, true);
+        // Per (kelas, tanggal) lewat periode placement — sesi XII semasa PKL tetap bebas
+        // walau saklar sudah OFF, supaya EWS Guru tidak menagih retroaktif.
+        return PklMode::isAgendaExempt($classId, $tanggal);
     }
 
     /**
