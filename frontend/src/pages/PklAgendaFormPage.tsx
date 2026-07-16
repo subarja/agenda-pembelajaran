@@ -85,7 +85,7 @@ export default function PklAgendaFormPage() {
   if (error || !form) return <div className="p-4 text-sm text-red-600">Gagal memuat agenda PKL.</div>
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <button onClick={() => navigate('/pkl')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Kembali
       </button>
@@ -95,6 +95,9 @@ export default function PklAgendaFormPage() {
         <p className="text-xs text-muted-foreground">Minggu {form.hari[0]?.tanggal} s/d {form.hari[form.hari.length - 1]?.tanggal}</p>
       </div>
 
+      {/* Desktop lebar: TP + catatan di kolom kiri, presensi (butuh lebar) di kanan. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start">
+      <div className="space-y-4 lg:sticky lg:top-4">
       {/* TP Khusus PKL */}
       <Card><CardContent className="p-4 space-y-3">
         <Label>Tujuan Pembelajaran PKL</Label>
@@ -123,12 +126,14 @@ export default function PklAgendaFormPage() {
       {/* Catatan monitoring */}
       <Card><CardContent className="p-4 space-y-2">
         <Label htmlFor="catatan">Catatan Monitoring</Label>
-        <textarea id="catatan" rows={3}
+        <textarea id="catatan" rows={4}
           className="w-full rounded-md border border-input px-3 py-2 text-sm bg-background"
           placeholder="Ringkasan monitoring PKL minggu ini…"
           value={catatan} onChange={(e) => setCatatan(e.target.value)} />
       </CardContent></Card>
+      </div>
 
+      <div className="space-y-4 min-w-0">
       {/* Presensi harian — tap sekali sentuh, default semua Hadir */}
       <Card><CardContent className="p-4 space-y-2">
         <Label>Presensi Harian (Senin–Jumat)</Label>
@@ -207,6 +212,8 @@ export default function PklAgendaFormPage() {
           {save.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
           Simpan Agenda PKL
         </Button>
+      </div>
+      </div>
       </div>
     </div>
   )

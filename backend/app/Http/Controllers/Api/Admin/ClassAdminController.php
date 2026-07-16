@@ -66,13 +66,15 @@ class ClassAdminController extends Controller
             'academic_year_id' => ['nullable', 'string'],
         ]);
 
-        $ayId = $data['academic_year_id']
+        // Field opsional: `nullable` TIDAK menambahkan key ke $data bila absen dari body —
+        // pakai ?? null supaya create tanpa TA/wali kelas tidak crash (dulu 500).
+        $ayId = ($data['academic_year_id'] ?? null)
             ? AcademicYear::where('uuid', $data['academic_year_id'])->value('id')
             : \App\Support\TahunAjaran::id();
 
         abort_if(! $ayId, 422, 'Tahun ajaran aktif tidak ditemukan.');
 
-        $waliId = $data['wali_kelas_id']
+        $waliId = ($data['wali_kelas_id'] ?? null)
             ? Teacher::where('uuid', $data['wali_kelas_id'])->value('user_id')
             : null;
 

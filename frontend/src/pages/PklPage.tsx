@@ -39,6 +39,9 @@ export default function PklPage() {
     })),
   })
   const loadingWeeks = weekQueries.some((q) => q.isLoading)
+  // Kunci dependency berupa string stabil (bukan array dinamis — ukurannya bisa
+  // berubah antar-render saat query datang bertahap dan memicu warning React).
+  const weeksSig = weekQueries.map((q) => q.dataUpdatedAt).join(',')
   const allWeeks: WeekRow[] = useMemo(() =>
     weekQueries.flatMap((q, i) => {
       const cls = classes[i]
@@ -46,7 +49,7 @@ export default function PklPage() {
       return cls ? weeks.map((w) => ({ ...w, classId: cls.id, classLabel: cls.label })) : []
     }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [classes, ...weekQueries.map((q) => q.data)])
+  [weeksSig])
 
   // Prioritas: (1) minggu berjalan yang harus segera diisi, (2) yang telat (lewat batas,
   // belum diisi), lalu riwayat terisi di balik toggle. Minggu yang belum mulai
@@ -163,7 +166,7 @@ export default function PklPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Briefcase className="h-5 w-5 text-primary-600" />
         <div>
@@ -178,9 +181,11 @@ export default function PklPage() {
           atau ditambahkan oleh admin.
         </CardContent></Card>
       ) : (
-        <>
+        // Desktop lebar: agenda mingguan jadi kolom kiri yang lebih ramping, daftar
+        // siswa mengisi sisa lebar layar (grid) — tidak menyisakan ruang kosong.
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
           {/* ── Agenda PKL mingguan — daftar prioritas ── */}
-          <div>
+          <div className="lg:sticky lg:top-4">
             <h2 className="text-sm font-semibold mb-2">Agenda PKL Mingguan</h2>
             {loadingWeeks ? (
               <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Memuat minggu…</div>
@@ -214,37 +219,38 @@ export default function PklPage() {
           </div>
 
           {/* ── Siswa bimbingan — semua langsung tampil + filter ── */}
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <h2 className="text-sm font-semibold">Siswa Bimbingan ({filteredStudents.length}{filteredStudents.length !== students.length ? ` dari ${students.length}` : ''})</h2>
-              <div className="flex flex-wrap gap-2 ml-auto">
-                <select className="rounded-md border border-input bg-background px-2 py-1.5 text-xs" value={fKelas} onChange={(e) => setFKelas(e.target.value)} aria-label="Filter kelas">
+          <div className="min-w-0">
+            <div className="flex flex-col gap-2 mb-2 sm:flex-row sm:items-center">
+              <h2 className="text-sm font-semibold shrink-0">Siswa Bimbingan ({filteredStudents.length}{filteredStudents.length !== students.length ? ` dari ${students.length}` : ''})</h2>
+              <div className="flex flex-wrap gap-2 sm:ml-auto">
+                <select className="min-w-0 flex-1 sm:flex-none rounded-md border border-input bg-background px-2 py-1.5 text-xs" value={fKelas} onChange={(e) => setFKelas(e.target.value)} aria-label="Filter kelas">
                   <option value="">Semua Kelas</option>
                   {kelasOptions.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </select>
-                <select className="rounded-md border border-input bg-background px-2 py-1.5 text-xs max-w-[170px]" value={fIndustri} onChange={(e) => setFIndustri(e.target.value)} aria-label="Filter industri">
+                <select className="min-w-0 flex-1 sm:flex-none sm:max-w-[170px] rounded-md border border-input bg-background px-2 py-1.5 text-xs" value={fIndustri} onChange={(e) => setFIndustri(e.target.value)} aria-label="Filter industri">
                   <option value="">Semua Industri</option>
                   {industriOptions.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
                 {(fKelas || fIndustri) && (
-                  <button onClick={() => { setFKelas(''); setFIndustri('') }} aria-label="Reset filter" className="p-1.5 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+                  <button onClick={() => { setFKelas(''); setFIndustri('') }} aria-label="Reset filter" className="p-1.5 text-muted-foreground hover:text-foreground shrink-0"><X className="h-4 w-4" /></button>
                 )}
               </div>
             </div>
 
-            <Card><CardContent className="p-0 divide-y">
+            <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
               {filteredStudents.map((s) => (
-                <div key={s.placement_id} className="px-4 py-2.5 text-sm">
-                  <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+                <div key={s.placement_id} className="rounded-lg border bg-card px-4 py-2.5 text-sm">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium">{s.nama} {s.kelas && <span className="text-xs font-normal text-muted-foreground">· {s.kelas}</span>}</p>
-                      <p className="text-xs text-muted-foreground break-words">NIS {s.nis ?? '—'} · NISN {s.nisn ?? '—'} · {s.tempat_pkl}</p>
+                      <p className="text-xs text-muted-foreground break-words">NIS {s.nis ?? '—'} · NISN {s.nisn ?? '—'}</p>
+                      <p className="text-xs text-muted-foreground break-words">{s.tempat_pkl}</p>
+                      <p className="text-xs text-muted-foreground">{s.mulai} → {s.selesai}</p>
                       {s.telpon && <WhatsAppLink telpon={s.telpon} className="text-xs text-muted-foreground" />}
                     </div>
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground sm:whitespace-nowrap sm:shrink-0">
-                      {s.mulai} → {s.selesai}
-                      <button onClick={() => openEdit(s)} aria-label="Edit penempatan" className="p-1.5 -m-0.5 hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => openAdd(s)} aria-label="Tambah tempat PKL" title="Tambah tempat PKL lain untuk siswa ini" className="p-1.5 -m-0.5 hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
+                    <span className="flex items-center gap-0.5 text-muted-foreground shrink-0">
+                      <button onClick={() => openEdit(s)} aria-label="Edit penempatan" className="p-1.5 hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => openAdd(s)} aria-label="Tambah tempat PKL" title="Tambah tempat PKL lain untuk siswa ini" className="p-1.5 hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
                     </span>
                   </div>
 
@@ -270,35 +276,35 @@ export default function PklPage() {
                 </div>
               ))}
               {filteredStudents.length === 0 && (
-                <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                <div className="md:col-span-2 2xl:col-span-3 rounded-lg border px-4 py-6 text-center text-sm text-muted-foreground">
                   {students.length === 0 ? 'Belum ada siswa bimbingan.' : 'Tidak ada siswa yang cocok dengan filter.'}
                 </div>
               )}
+            </div>
+
+            {/* ── Unduhan (mengikuti filter kelas; tanpa filter = semua bimbingan) ── */}
+            <Card className="mt-4"><CardContent className="p-4 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Unduh {fKelas ? `kelas ${kelasOptions.find((c) => c.id === fKelas)?.label ?? ''}` : 'seluruh siswa bimbingan'}:
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'excel')}>
+                  <Download className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (Excel)
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'pdf')}>
+                  <FileText className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (PDF)
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'excel')}>
+                  <Download className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (Excel)
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'pdf')}>
+                  <FileText className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (PDF)
+                </Button>
+              </div>
+              {unduhErr && <p className="text-sm text-red-600">{unduhErr}</p>}
             </CardContent></Card>
           </div>
-
-          {/* ── Unduhan (mengikuti filter kelas; tanpa filter = semua bimbingan) ── */}
-          <Card><CardContent className="p-4 space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Unduh {fKelas ? `kelas ${kelasOptions.find((c) => c.id === fKelas)?.label ?? ''}` : 'seluruh siswa bimbingan'}:
-            </p>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'excel')}>
-                <Download className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (Excel)
-              </Button>
-              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('siswa', 'pdf')}>
-                <FileText className="h-4 w-4 mr-1 shrink-0" /> Data Siswa (PDF)
-              </Button>
-              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'excel')}>
-                <Download className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (Excel)
-              </Button>
-              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => unduh('rekap', 'pdf')}>
-                <FileText className="h-4 w-4 mr-1 shrink-0" /> Rekap Absen (PDF)
-              </Button>
-            </div>
-            {unduhErr && <p className="text-sm text-red-600">{unduhErr}</p>}
-          </CardContent></Card>
-        </>
+        </div>
       )}
 
       {pdf.modal}
