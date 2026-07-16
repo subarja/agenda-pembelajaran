@@ -212,9 +212,7 @@ class CharacterManualNoteController extends Controller
     private function formatNote(CharacterManualNote $n): array
     {
         $kelas = $n->student?->schoolClass
-            ? $n->student->schoolClass->tingkat->value . ' '
-              . $n->student->schoolClass->jurusan . ' - '
-              . $n->student->schoolClass->rombel
+            ? $n->student->schoolClass->label()
             : null;
 
         return [

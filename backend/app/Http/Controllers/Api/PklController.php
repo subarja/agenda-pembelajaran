@@ -49,7 +49,7 @@ class PklController extends Controller
 
             return [
                 'id'           => $class->uuid,
-                'label'        => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                'label'        => $class->label(),
                 'jumlah_siswa' => $group->count(),
                 'sebagai'      => 'pembimbing',
             ];
@@ -72,7 +72,7 @@ class PklController extends Controller
 
                     return [
                         'id'           => $class->uuid,
-                        'label'        => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                        'label'        => $class->label(),
                         'jumlah_siswa' => $group->count(),
                         'sebagai'      => 'pengajar',
                     ];
@@ -265,8 +265,8 @@ class PklController extends Controller
 
         [$class, $students] = $this->authorizeClass($teacher->id, $request->class_id);
         $rows = $students->map(fn ($p) => $this->placementRow($p))->values();
-        $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
-        $filename   = 'data_pkl_'.$class->tingkat->value.'_'.$class->jurusan.'_'.$class->rombel;
+        $kelasLabel = $class->label();
+        $filename   = 'data_pkl_'.$class->tingkat->value.'_'.$class->jurusanKode().'_'.$class->rombel;
 
         if ($request->format === 'pdf') {
             $printSettings = PrintSetting::instance($request->user()->id);
@@ -553,7 +553,7 @@ class PklController extends Controller
     {
         return [
             'id'    => $class->uuid,
-            'label' => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+            'label' => $class->label(),
         ];
     }
 
@@ -631,7 +631,7 @@ class PklController extends Controller
                 });
 
             $sections[] = [
-                'kelas' => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                'kelas' => $class->label(),
                 'rows'  => $rows->all(),
             ];
         }

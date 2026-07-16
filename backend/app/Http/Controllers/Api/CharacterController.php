@@ -233,7 +233,7 @@ class CharacterController extends Controller
             ->get()
             ->map(fn ($c) => [
                 'id'    => $c->uuid,
-                'label' => "{$c->tingkat->value} {$c->jurusan} - {$c->rombel}",
+                'label' => $c->label(),
             ]);
 
         return response()->json(['data' => $classes]);

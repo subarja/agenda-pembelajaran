@@ -944,7 +944,7 @@ function SiswaDashboard() {
 
   const ews    = EWS_LABEL[ewsLevel] ?? EWS_LABEL.hijau
   const kelas  = user?.student?.kelas
-  const kelasLabel = kelas ? `${kelas.tingkat} ${kelas.jurusan} - ${kelas.rombel}` : '—'
+  const kelasLabel = kelas ? kelas.label : '—'
 
   const rekomendasiAktif = (rekap?.rekomendasi ?? []).filter(
     (r: any) => r.status === 'pending' || r.status === 'proses'
@@ -1225,7 +1225,7 @@ function OrangTuaDashboard() {
   const childId   = user?.linked_student?.id
   const childNama = user?.linked_student?.nama
   const kelas     = user?.linked_student?.kelas
-  const kelasLabel = kelas ? `${kelas.tingkat} ${kelas.jurusan} - ${kelas.rombel}` : '—'
+  const kelasLabel = kelas ? kelas.label : '—'
 
   const { data: rekapRes, isLoading } = useQuery({
     queryKey: ['ortu-rekap', childId],

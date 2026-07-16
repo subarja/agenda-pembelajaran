@@ -49,10 +49,10 @@ class PromotionController extends Controller
 
                 return [
                     'id'            => $c->uuid,
-                    'label'         => "{$c->tingkat->value} {$c->jurusan} - {$c->rombel}",
+                    'label'         => $c->label(),
                     'tingkat'       => $c->tingkat->value,
                     'wali_kelas'    => $c->waliKelas?->nama,
-                    'tujuan'        => $next === null ? 'LULUS' : "{$next} {$c->jurusan} - {$c->rombel}",
+                    'tujuan'        => $next === null ? 'LULUS' : "{$next} {$c->jurusanKode()} {$c->rombel}",
                     'tujuan_ada'    => $targetExists,
                     'jumlah_siswa'  => $c->students->count(),
                     'students'      => $c->students->map(fn ($s) => [

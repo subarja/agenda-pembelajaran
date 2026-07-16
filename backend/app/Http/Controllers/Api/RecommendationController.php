@@ -334,7 +334,7 @@ class RecommendationController extends Controller
                     'student_id'    => $r->student->uuid,
                     'nama'          => $r->student->user->nama,
                     'kelas'         => $r->student->schoolClass
-                        ? "{$r->student->schoolClass->tingkat->value} {$r->student->schoolClass->jurusan} - {$r->student->schoolClass->rombel}"
+                        ? $r->student->schoolClass->label()
                         : null,
                     'foto_url'      => $r->student->foto ? Storage::disk('public')->url($r->student->foto) : null,
                     'status'        => $r->bk_status->value === 'none' ? 'wali_kelas' : $r->bk_status->value,
@@ -491,7 +491,7 @@ class RecommendationController extends Controller
                     'id'    => $r->student->uuid,
                     'nama'  => $r->student->user->nama,
                     'kelas' => $r->student->schoolClass
-                        ? "{$r->student->schoolClass->tingkat->value} {$r->student->schoolClass->jurusan} - {$r->student->schoolClass->rombel}"
+                        ? $r->student->schoolClass->label()
                         : null,
                 ],
                 'bk_status'               => $r->bk_status->value,
@@ -728,7 +728,7 @@ class RecommendationController extends Controller
         foreach ($query->orderByDesc('tanggal')->get() as $s) {
             $student = $s->recommendation->student;
             $kelas = $student->schoolClass
-                ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
+                ? $student->schoolClass->label()
                 : '-';
 
             foreach (($s->links ?? []) as $link) {

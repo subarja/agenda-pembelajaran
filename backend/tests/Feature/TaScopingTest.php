@@ -70,7 +70,7 @@ class TaScopingTest extends TestCase
         Sanctum::actingAs($this->guru->fresh());
         $rows = $this->getJson('/api/v1/beban-mengajar')->assertOk()->json('data.rows');
         $this->assertCount(1, $rows);
-        $this->assertSame('XI Animasi - A', $rows[0]['kelas']);
+        $this->assertSame('XI Animasi A', $rows[0]['kelas']);
 
         // Login memilih TA baru (aktif) → jadwal TA lama TIDAK ikut terbaca.
         $this->guru->update(['current_academic_year_id' => $this->newAy->id]);

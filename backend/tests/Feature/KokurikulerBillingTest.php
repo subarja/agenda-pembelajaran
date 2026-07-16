@@ -103,8 +103,8 @@ class KokurikulerBillingTest extends TestCase
 
         // Sesi XI A hari ini bebas; sesi X A tetap ditagih.
         $kelas = array_column($rows, 'kelas');
-        $this->assertNotContains('XI Animasi - A', $kelas);
-        $this->assertContains('X Animasi - A', $kelas);
+        $this->assertNotContains('XI Animasi A', $kelas);
+        $this->assertContains('X Animasi A', $kelas);
     }
 
     public function test_di_luar_periode_projek_kembali_ditagih(): void
@@ -113,7 +113,7 @@ class KokurikulerBillingTest extends TestCase
 
         Sanctum::actingAs($this->guruXi);
         $kelas = array_column($this->getJson('/api/v1/agendas/perlu-diisi')->json('data'), 'kelas');
-        $this->assertContains('XI Animasi - A', $kelas);
+        $this->assertContains('XI Animasi A', $kelas);
     }
 
     public function test_projek_draft_tidak_membebaskan(): void
@@ -123,7 +123,7 @@ class KokurikulerBillingTest extends TestCase
 
         Sanctum::actingAs($this->guruXi);
         $kelas = array_column($this->getJson('/api/v1/agendas/perlu-diisi')->json('data'), 'kelas');
-        $this->assertContains('XI Animasi - A', $kelas);
+        $this->assertContains('XI Animasi A', $kelas);
     }
 
     // ── Tagihan fasilitator ──────────────────────────────────────────────────

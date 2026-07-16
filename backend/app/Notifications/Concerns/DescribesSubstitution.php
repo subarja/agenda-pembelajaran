@@ -36,7 +36,7 @@ trait DescribesSubstitution
         $waktu   = $s->schedule ? \App\Support\BellSchedule::resolve($s->schedule, $s->tanggal->toDateString()) : null;
         $jam     = substr($waktu['jam_mulai'] ?? '', 0, 5).'–'.substr($waktu['jam_selesai'] ?? '', 0, 5);
         $kelas   = $s->schedule?->schoolClass;
-        $label   = $kelas ? "{$kelas->tingkat->value} {$kelas->jurusan} {$kelas->rombel}" : '—';
+        $label   = $kelas ? $kelas->label() : '—';
         $mapel   = $s->schedule?->subject?->nama;
 
         return "{$tanggal} {$jam} • {$label}".($mapel ? " • {$mapel}" : '');

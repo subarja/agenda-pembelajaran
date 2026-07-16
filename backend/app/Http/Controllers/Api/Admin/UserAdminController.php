@@ -167,7 +167,7 @@ class UserAdminController extends Controller
                 ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->whereLikeCi('nama', $s)
                     ->orWhereLikeCi('email', $s)
                     ->orWhereHas('student', fn ($st) => $st->whereLikeCi('nis', $s)->orWhereLikeCi('nisn', $s))
-                    ->orWhereHas('student.schoolClass', fn ($sc) => $sc->whereLikeCi("CONCAT(tingkat, ' ', jurusan, ' - ', rombel)", $s))
+                    ->orWhereHas('student.schoolClass', fn ($sc) => $sc->whereLabelLike($s))
                 ))
                 ->orderBy('nama')
                 ->paginate(100);
@@ -206,7 +206,7 @@ class UserAdminController extends Controller
                 $row['nis'] = $s?->nis;
                 $row['nisn'] = $s?->nisn;
                 $row['kelas'] = $s?->schoolClass
-                    ? $s->schoolClass->tingkat->value.' '.$s->schoolClass->jurusan.' - '.$s->schoolClass->rombel
+                    ? $s->schoolClass->label()
                     : null;
             }
 
@@ -306,7 +306,7 @@ class UserAdminController extends Controller
                 'nama' => $s->user?->nama,
                 'nis' => $s->nis,
                 'kelas' => $s->schoolClass
-                    ? $s->schoolClass->tingkat->value.' '.$s->schoolClass->jurusan.' - '.$s->schoolClass->rombel
+                    ? $s->schoolClass->label()
                     : null,
             ];
         }

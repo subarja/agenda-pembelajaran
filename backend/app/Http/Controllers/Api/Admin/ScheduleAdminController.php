@@ -32,7 +32,7 @@ class ScheduleAdminController extends Controller
                           ->orWhereHas('subject', fn ($m) => $m->whereLikeCi('nama', $s)->orWhereLikeCi('kode', $s))
                           ->orWhereHas('teacher.user', fn ($u) => $u->whereLikeCi('nama', $s))
                           ->orWhereHas('teacher', fn ($t) => $t->whereLikeCi('nip', $s))
-                          ->orWhereHas('schoolClass', fn ($sc) => $sc->whereLikeCi("CONCAT(tingkat, ' ', jurusan, ' - ', rombel)", $s))
+                          ->orWhereHas('schoolClass', fn ($sc) => $sc->whereLabelLike($s))
                 )
             )
             ->orderByRaw("CASE hari WHEN 'senin' THEN 1 WHEN 'selasa' THEN 2 WHEN 'rabu' THEN 3 WHEN 'kamis' THEN 4 WHEN 'jumat' THEN 5 WHEN 'sabtu' THEN 6 END")
@@ -145,7 +145,7 @@ class ScheduleAdminController extends Controller
             'jam_selesai'=> substr($s->jam_selesai, 0, 5),
             'aktif'      => $s->aktif,
             'kelas'      => $class
-                ? ['id' => $class->uuid, 'label' => $class->tingkat->value . ' ' . $class->jurusan . ' - ' . $class->rombel]
+                ? ['id' => $class->uuid, 'label' => $class->label()]
                 : ['id' => '', 'label' => '— (kelas terhapus)'],
             'mapel'      => $subject
                 ? ['id' => $subject->uuid, 'nama' => $subject->nama]

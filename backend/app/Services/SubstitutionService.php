@@ -223,6 +223,6 @@ class SubstitutionService
     {
         $k = $schedule->schoolClass;
 
-        return $k ? "{$k->tingkat->value} {$k->jurusan} - {$k->rombel}" : '—';
+        return $k ? $k->label() : '—';
     }
 }

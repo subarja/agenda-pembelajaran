@@ -330,7 +330,7 @@ class KokurikulerAdminController extends Controller
         foreach ($project->projectClasses as $pc) {
             $c = $pc->schoolClass;
             $writer->addRow(Row::fromValuesWithStyle([
-                "{$c->tingkat->value} {$c->jurusan} - {$c->rombel}",
+                $c->label(),
                 (string) ($pc->fasilitator?->teacher?->nip ?? ''),
                 (string) ($pc->fasilitator?->nama ?? ''),
             ], $this->xlsxCellStyle()));
@@ -356,7 +356,7 @@ class KokurikulerAdminController extends Controller
         $byLabel = $project->projectClasses->keyBy(function ($pc) {
             $c = $pc->schoolClass;
 
-            return mb_strtolower(trim("{$c->tingkat->value} {$c->jurusan} - {$c->rombel}"));
+            return mb_strtolower(trim($c->label()));
         });
 
         $success = 0;
@@ -436,7 +436,7 @@ class KokurikulerAdminController extends Controller
 
             return [
                 'id'           => $pc->schoolClass->uuid,
-                'label'        => "{$pc->schoolClass->tingkat->value} {$pc->schoolClass->jurusan} - {$pc->schoolClass->rombel}",
+                'label'        => $pc->schoolClass->label(),
                 'fasilitator'  => $pc->fasilitator?->nama ?? '— (belum ada fasilitator)',
                 'jumlah_siswa' => $jumlahSiswa,
                 'jumlah_tim'   => (int) $tim->get($pc->class_id, 0),
@@ -479,7 +479,7 @@ class KokurikulerAdminController extends Controller
 
             foreach ($project->projectClasses as $pc) {
                 $class = $pc->schoolClass;
-                $label = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
+                $label = $class->label();
                 $w->addRow(Row::fromValuesWithStyle(["Absen Kokurikuler {$project->judul} — {$label}"], $this->xlsxTitleStyle()));
                 $w->addRow(Row::fromValuesWithStyle(
                     ['No', 'Nama', 'NIS', ...$dates->map(fn ($t) => Carbon::parse($t)->format('d/m')), 'H', 'S', 'I', 'A', '% Hadir'],
@@ -715,7 +715,7 @@ class KokurikulerAdminController extends Controller
             'classes' => $project->relationLoaded('projectClasses')
                 ? $project->projectClasses->map(fn ($pc) => [
                     'id'          => $pc->schoolClass->uuid,
-                    'label'       => "{$pc->schoolClass->tingkat->value} {$pc->schoolClass->jurusan} - {$pc->schoolClass->rombel}",
+                    'label'       => $pc->schoolClass->label(),
                     'fasilitator' => $pc->relationLoaded('fasilitator') ? $pc->fasilitator?->nama : null,
                     'fasilitator_user_id' => $pc->fasilitator?->uuid,
                     'wali_adalah_fasilitator' => $pc->fasilitator_user_id !== null

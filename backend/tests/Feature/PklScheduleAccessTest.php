@@ -174,8 +174,8 @@ class PklScheduleAccessTest extends TestCase
         Sanctum::actingAs($this->guruPloting);
         $kelas = array_column($this->getJson('/api/v1/agendas/perlu-diisi')->assertOk()->json('data'), 'kelas');
 
-        $this->assertContains('XII Animasi - B', $kelas);    // tanpa penempatan → tetap ditagih
-        $this->assertNotContains('XII Animasi - A', $kelas); // dalam periode penempatan → bebas
+        $this->assertContains('XII Animasi B', $kelas);    // tanpa penempatan → tetap ditagih
+        $this->assertNotContains('XII Animasi A', $kelas); // dalam periode penempatan → bebas
     }
 
     public function test_isagendaexempt_membaca_periode_placement(): void

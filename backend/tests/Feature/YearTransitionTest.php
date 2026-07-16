@@ -275,7 +275,7 @@ class YearTransitionTest extends TestCase
             ->assertOk()->json('data');
         $this->assertEquals(1, $preview['jumlah_jadwal']);
         // Kelas XII lama tidak punya padanan di TA baru → dilaporkan, bukan digagalkan
-        $this->assertContains('XII Mekatronika - A', $preview['tanpa_padanan']);
+        $this->assertContains('XII Mekatronika A', $preview['tanpa_padanan']);
 
         $this->postJson('/api/v1/admin/schedules/copy-from', [
             'source_academic_year_id' => $this->taLama->uuid,

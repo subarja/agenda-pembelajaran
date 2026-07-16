@@ -774,6 +774,6 @@ class KokurikulerController extends Controller
 
     private function classLabel(SchoolClass $class): string
     {
-        return "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
+        return $class->label();
     }
 }

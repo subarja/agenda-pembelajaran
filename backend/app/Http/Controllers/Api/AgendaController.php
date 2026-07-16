@@ -45,7 +45,7 @@ class AgendaController extends Controller
             ->get()
             ->map(fn ($c) => [
                 'id'    => $c->uuid,
-                'label' => "{$c->tingkat->value} {$c->jurusan} - {$c->rombel}",
+                'label' => $c->label(),
             ]);
 
         return response()->json(['data' => $classes]);
@@ -183,7 +183,7 @@ class AgendaController extends Controller
                     'jam_selesai'  => substr($jam['jam_selesai'] ?? '', 0, 5),
                     'class_id'     => $schedule->schoolClass?->uuid,
                     'kelas'        => $schedule->schoolClass
-                        ? "{$schedule->schoolClass->tingkat->value} {$schedule->schoolClass->jurusan} - {$schedule->schoolClass->rombel}"
+                        ? $schedule->schoolClass->label()
                         : '—',
                     'mapel'        => $schedule->subject->nama ?? '—',
                     'deadline'     => $deadline->format('Y-m-d H:i'),
@@ -217,7 +217,7 @@ class AgendaController extends Controller
         if ($request->filled('kelas')) {
             $kelas = $request->kelas;
             $query->whereHas('schedule.schoolClass', function ($q) use ($kelas) {
-                $q->whereLikeCi("CONCAT(tingkat, ' ', jurusan, ' - ', rombel)", $kelas);
+                $q->whereLabelLike($kelas);
             });
         }
 

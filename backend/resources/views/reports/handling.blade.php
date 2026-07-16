@@ -79,7 +79,7 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
     </tr>
     <tr>
       <td>Kelas</td><td>:</td>
-      <td>{{ $student->schoolClass ? $student->schoolClass->tingkat->value . ' ' . $student->schoolClass->jurusan . ' - ' . $student->schoolClass->rombel : '-' }}</td>
+      <td>{{ $student->schoolClass ? $student->schoolClass->label() : '-' }}</td>
       <td></td>
       <td style="color:#666">Wali Kelas</td><td>:</td>
       <td>{{ $wali?->nama ?? '-' }}</td>

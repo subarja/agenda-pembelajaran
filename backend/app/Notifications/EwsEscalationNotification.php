@@ -39,9 +39,7 @@ class EwsEscalationNotification extends Notification implements ShouldQueue
             'level_lama'   => $this->levelLama,
             'level_baru'   => $this->levelBaru,
             'kelas'        => $this->student->schoolClass
-                ? $this->student->schoolClass->tingkat->value . ' '
-                  . $this->student->schoolClass->jurusan . ' - '
-                  . $this->student->schoolClass->rombel
+                ? $this->student->schoolClass->label()
                 : null,
             'url'          => "/siswa/{$this->student->uuid}/rekap",
         ];
@@ -58,7 +56,7 @@ class EwsEscalationNotification extends Notification implements ShouldQueue
             ->greeting("Yth. {$notifiable->nama},")
             ->line("Status Early Warning System (EWS) salah satu siswa binaan Anda **berubah**.")
             ->line("**Nama Siswa:** {$this->student->user->nama}")
-            ->line("**Kelas:** " . ($this->student->schoolClass ? $this->student->schoolClass->tingkat->value . ' ' . $this->student->schoolClass->jurusan . ' - ' . $this->student->schoolClass->rombel : '—'))
+            ->line("**Kelas:** " . ($this->student->schoolClass ? $this->student->schoolClass->label() : '—'))
             ->line("**Status sebelumnya:** " . ucfirst($this->levelLama))
             ->line("**Status sekarang:** **{$levelBaru}**")
             ->action('Lihat Rekap Lengkap Siswa', "{$frontendUrl}/siswa/{$this->student->uuid}/rekap")

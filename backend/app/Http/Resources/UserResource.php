@@ -75,6 +75,7 @@ class UserResource extends JsonResource
                         'tingkat' => $this->student->schoolClass->tingkat->value,
                         'jurusan' => $this->student->schoolClass->jurusan,
                         'rombel'  => $this->student->schoolClass->rombel,
+                        'label'   => $this->student->schoolClass->label(),
                     ]
                     : null,
             ]),
@@ -89,6 +90,7 @@ class UserResource extends JsonResource
                         'tingkat' => $this->linkedStudent->schoolClass->tingkat->value,
                         'jurusan' => $this->linkedStudent->schoolClass->jurusan,
                         'rombel'  => $this->linkedStudent->schoolClass->rombel,
+                        'label'   => $this->linkedStudent->schoolClass->label(),
                     ]
                     : null,
             ] : null),
@@ -106,7 +108,7 @@ class UserResource extends JsonResource
         $isWaliKelas   = $kelasWali !== null;
         $waliKelasClass = $kelasWali ? [
             'id'    => $kelasWali->uuid,
-            'label' => $kelasWali->tingkat->value . ' ' . $kelasWali->jurusan . ' - ' . $kelasWali->rombel,
+            'label' => $kelasWali->label(),
         ] : null;
 
         return [

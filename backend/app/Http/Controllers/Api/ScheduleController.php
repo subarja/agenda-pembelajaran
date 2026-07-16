@@ -42,7 +42,7 @@ class ScheduleController extends Controller
 
                 return [
                     'kelas'       => $s->schoolClass
-                        ? "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}"
+                        ? $s->schoolClass->label()
                         : '—',
                     // Nama mapel ASLI, bukan label PKL — beban mengajar adalah dokumen
                     // ploting; penugasan PKL dilaporkan terpisah di bawah.
@@ -71,7 +71,7 @@ class ScheduleController extends Controller
             ->filter(fn ($a) => ! $plotted->has($a->class_id.'|'.$a->subject_id))
             ->map(fn ($a) => [
                 'kelas'       => $a->schoolClass
-                    ? "{$a->schoolClass->tingkat->value} {$a->schoolClass->jurusan} - {$a->schoolClass->rombel}"
+                    ? $a->schoolClass->label()
                     : '—',
                 'mapel'       => $a->subject->nama ?? '—',
                 'hari'        => 'Belum diplot',
@@ -92,7 +92,7 @@ class ScheduleController extends Controller
             ->groupBy('class_id')
             ->map(fn ($group) => [
                 'kelas'        => $group->first()->schoolClass
-                    ? "{$group->first()->schoolClass->tingkat->value} {$group->first()->schoolClass->jurusan} - {$group->first()->schoolClass->rombel}"
+                    ? $group->first()->schoolClass->label()
                     : '—',
                 'jumlah_siswa' => $group->count(),
                 'periode'      => Carbon::parse($group->min('tanggal_mulai'))->locale('id')->isoFormat('D MMM YYYY')
@@ -147,7 +147,7 @@ class ScheduleController extends Controller
             if (! $class || ! $class->jadwal_pdf) {
                 abort(404, 'Jadwal PDF belum diunggah admin.');
             }
-            $filename = 'Jadwal - '.Str::slug("{$class->tingkat->value} {$class->jurusan} {$class->rombel}").'.pdf';
+            $filename = 'Jadwal - '.Str::slug($class->label()).'.pdf';
             return $this->storedPdfResponse($class->jadwal_pdf, $filename, $request);
         }
 
@@ -226,7 +226,7 @@ class ScheduleController extends Controller
                     'subject'     => ['id' => $s->subject->uuid, 'kode' => $s->subject->kode, 'nama' => PklMode::subjectLabelFor($s)],
                     'class'       => [
                         'id'    => $s->schoolClass->uuid,
-                        'label' => "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}",
+                        'label' => $s->schoolClass->label(),
                     ],
                 ];
             });

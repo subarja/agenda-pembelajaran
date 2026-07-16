@@ -163,7 +163,7 @@ class KokurikulerMode
                     'jam_mulai'    => '',
                     'jam_selesai'  => '',
                     'class_id'     => $class->uuid,
-                    'kelas'        => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                    'kelas'        => $class->label(),
                     'mapel'        => "Kokurikuler — {$p->judul}",
                     'deadline'     => $deadline->format('Y-m-d H:i'),
                     'bisa_diisi'   => $now->lte($deadline),

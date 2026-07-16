@@ -67,19 +67,19 @@ class ImportController extends Controller
             'siswa' => [
                 'filename' => 'template_siswa.xlsx',
                 'headers'  => ['nama', 'nis', 'nisn', 'kelas', 'angkatan', 'wali_nama', 'wali_kontak', 'jenis_kelamin'],
-                'example'  => ['Ahmad Fauzi', '2324001', '0012345678', 'XII Rekayasa Perangkat Lunak A', '2023', 'Bapak Fauzi', '081234567890', 'L'],
-                'notes'    => ['wajib', 'wajib, unik', 'opsional', 'harus sama persis dgn menu Kelas, contoh: XII Rekayasa Perangkat Lunak A', 'tahun masuk', 'opsional', 'opsional', 'L / P, opsional'],
+                'example'  => ['Ahmad Fauzi', '2324001', '0012345678', 'XII RPL A', '2023', 'Bapak Fauzi', '081234567890', 'L'],
+                'notes'    => ['wajib', 'wajib, unik', 'opsional', 'kode kelas, contoh: XII RPL A (nama jurusan lengkap juga diterima)', 'tahun masuk', 'opsional', 'opsional', 'L / P, opsional'],
             ],
             'kelas' => [
                 'filename' => 'template_kelas.xlsx',
                 'headers'  => ['kelas', 'nip_wali_kelas'],
-                'example'  => ['XII Rekayasa Perangkat Lunak A', '199001012020011001'],
-                'notes'    => ['format: TINGKAT JURUSAN ROMBEL, contoh: XII RPL A', 'opsional — NIP guru wali kelas'],
+                'example'  => ['XII RPL A', '199001012020011001'],
+                'notes'    => ['format: TINGKAT KODE ROMBEL, contoh: XII RPL A', 'opsional — NIP guru wali kelas'],
             ],
             'wali_kelas' => [
                 'filename' => 'template_wali_kelas.xlsx',
                 'headers'  => ['kelas', 'nip_guru', 'nama_guru'],
-                'example'  => ['XI Pengembangan Perangkat Lunak dan Gim A', '199001012020011001', 'Budi Santoso'],
+                'example'  => ['XI RPL A', '199001012020011001', 'Budi Santoso'],
                 'notes'    => ['label kelas sesuai data — lihat tab Kelas di panel admin', 'NIP guru (utama, kosongkan jika tidak punya)', 'nama lengkap guru (fallback jika NIP kosong)'],
             ],
             'mapel' => [
@@ -91,8 +91,8 @@ class ImportController extends Controller
             'jadwal' => [
                 'filename' => 'template_jadwal.xlsx',
                 'headers'  => ['kelas', 'kode_mapel', 'nip_guru', 'hari', 'jam_mulai', 'jam_selesai'],
-                'example'  => ['XII Rekayasa Perangkat Lunak A', 'RPL-001', '199001012020011001', 'senin', '08:00', '09:30'],
-                'notes'    => ['format: TINGKAT JURUSAN ROMBEL', 'kode mata pelajaran', 'NIP guru', 'senin/selasa/rabu/kamis/jumat/sabtu', 'HH:MM', 'HH:MM'],
+                'example'  => ['XII RPL A', 'RPL-001', '199001012020011001', 'senin', '08:00', '09:30'],
+                'notes'    => ['format: TINGKAT KODE ROMBEL, contoh: XII RPL A', 'kode mata pelajaran', 'NIP guru', 'senin/selasa/rabu/kamis/jumat/sabtu', 'HH:MM', 'HH:MM'],
             ],
         ];
 
@@ -315,7 +315,7 @@ class ImportController extends Controller
 
         foreach ($rows as $i => $row) {
             $rowNum     = $i + 2;
-            $kelasLabel = trim((string) ($row[0] ?? ''));  // "XII Rekayasa Perangkat Lunak A"
+            $kelasLabel = trim((string) ($row[0] ?? ''));  // "XII RPL A"
             $nipWali    = trim((string) ($row[1] ?? '')) ?: null;
 
             if ($kelasLabel === '') continue;
@@ -323,7 +323,7 @@ class ImportController extends Controller
             // Parse "TINGKAT JURUSAN ROMBEL"
             $parts = explode(' ', $kelasLabel);
             if (count($parts) < 3) {
-                $errors[] = "Baris $rowNum: Format kelas '$kelasLabel' tidak valid. Contoh: XII Rekayasa Perangkat Lunak A";
+                $errors[] = "Baris $rowNum: Format kelas '$kelasLabel' tidak valid. Contoh: XII RPL A";
                 continue;
             }
             $tingkat = strtoupper(array_shift($parts));
@@ -417,7 +417,7 @@ class ImportController extends Controller
 
         foreach ($rows as $i => $row) {
             $rowNum     = $i + 2;
-            $kelasLabel = trim((string) ($row[0] ?? ''));  // "XII Rekayasa Perangkat Lunak A"
+            $kelasLabel = trim((string) ($row[0] ?? ''));  // "XII RPL A"
             $kodeMapel  = trim((string) ($row[1] ?? ''));
             $nipGuru    = trim((string) ($row[2] ?? ''));
             $hari       = strtolower(trim((string) ($row[3] ?? '')));
@@ -707,7 +707,7 @@ class ImportController extends Controller
 
         $cellStyle = $this->xlsxCellStyle();
         foreach ($classes as $class) {
-            $label    = "{$class->tingkat->value} {$class->jurusan} {$class->rombel}";
+            $label    = $class->label();
             $teacher  = $class->waliKelas ? Teacher::where('user_id', $class->waliKelas->id)->first() : null;
             $nip      = $teacher?->nip ?? '';
             $nama     = $class->waliKelas?->nama ?? '';
@@ -726,32 +726,36 @@ class ImportController extends Controller
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     /**
-     * Parse "XII Rekayasa Perangkat Lunak A" → SchoolClass model.
-     * Returns [SchoolClass|null, errorMessage|null].
+     * Parse "XII RPL A" (kode) atau "XII RPL A" (nama lengkap,
+     * format lama) → SchoolClass model. Returns [SchoolClass|null, errorMessage|null].
      */
     private function resolveClass(string $label): array
     {
         $parts = explode(' ', trim($label));
         if (count($parts) < 3) {
-            return [null, "Format kelas '$label' tidak valid. Contoh: XII Rekayasa Perangkat Lunak A"];
+            return [null, "Format kelas '$label' tidak valid. Contoh: XII RPL A"];
         }
         $tingkat = strtoupper(array_shift($parts));
         $rombel  = array_pop($parts);
         $jurusan = implode(' ', $parts);
 
+        // Cocokkan persis terhadap kode program keahlian ("RPL") ATAU nama jurusan
+        // lengkap ("Rekayasa Perangkat Lunak") — dua-duanya eksak, tanpa fuzzy.
         $class = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
-            ->where('tingkat', $tingkat)->where('jurusan', $jurusan)->where('rombel', $rombel)
-            ->first();
+            ->where('tingkat', $tingkat)->where('rombel', $rombel)
+            ->get()
+            ->first(fn ($c) => mb_strtolower($c->jurusan) === mb_strtolower($jurusan)
+                || mb_strtolower($c->jurusanKode()) === mb_strtolower($jurusan));
 
         if ($class) {
             return [$class, null];
         }
 
-        // Nama jurusan harus sama persis dengan menu Kelas — kesalahan paling sering
-        // adalah varian nama (mis. Excel menulis "Teknik Mekatronika" padahal di menu
-        // Kelas tercatat "Mekatronika"). Sarankan padanannya supaya admin tahu harus
-        // menulis apa, tapi JANGAN dicocokkan otomatis (pelajaran dari duplikat akun
-        // guru akibat fuzzy match).
+        // Kode/nama jurusan harus sama persis dengan menu Kelas — kesalahan paling
+        // sering adalah varian nama (mis. Excel menulis "Teknik Mekatronika" padahal
+        // di menu Kelas tercatat "Mekatronika"). Sarankan padanannya supaya admin tahu
+        // harus menulis apa, tapi JANGAN dicocokkan otomatis (pelajaran dari duplikat
+        // akun guru akibat fuzzy match).
         $mirip = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
             ->where('tingkat', $tingkat)->where('rombel', $rombel)
             ->get()
@@ -759,7 +763,7 @@ class ImportController extends Controller
                 || str_contains(strtolower($c->jurusan), strtolower($jurusan)));
 
         $saran = $mirip
-            ? " Mungkin maksudnya '{$tingkat} {$mirip->jurusan} {$rombel}' — nama jurusan harus sama persis dengan di menu Kelas."
+            ? " Mungkin maksudnya '{$mirip->label()}' — tulis kode kelas persis seperti di menu Kelas."
             : '';
 
         return [null, "Kelas '$label' tidak ditemukan di tahun ajaran aktif.".$saran];

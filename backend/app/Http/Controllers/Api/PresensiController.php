@@ -46,9 +46,7 @@ class PresensiController extends Controller
                     'id'      => $agenda->uuid,
                     'tanggal' => $agenda->tanggal->format('Y-m-d'),
                     'subject' => $agenda->schedule->subject->nama,
-                    'class'   => $agenda->schedule->schoolClass->tingkat->value
-                                 . ' ' . $agenda->schedule->schoolClass->jurusan
-                                 . ' - ' . $agenda->schedule->schoolClass->rombel,
+                    'class'   => $agenda->schedule->schoolClass->label(),
                 ],
                 'records'       => $records,
                 'total_siswa'   => $students->count(),

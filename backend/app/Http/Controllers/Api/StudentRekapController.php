@@ -78,7 +78,7 @@ class StudentRekapController extends Controller
             'nisn'        => $student->nisn,
             'angkatan'    => $student->angkatan,
             'kelas'       => $kelas ? [
-                'label'      => $kelas->tingkat->value . ' ' . $kelas->jurusan . ' - ' . $kelas->rombel,
+                'label'      => $kelas->label(),
                 'wali_kelas' => $kelas->waliKelas?->nama,
             ] : null,
             'wali_nama'   => $student->wali_nama,

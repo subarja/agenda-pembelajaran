@@ -130,7 +130,7 @@ class EwsController extends Controller
                 'nama'            => $s->user->nama,
                 'nis'             => $s->nis,
                 'kelas'           => $s->schoolClass
-                    ? "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}"
+                    ? $s->schoolClass->label()
                     : null,
                 'foto_url'        => $s->foto ? \Illuminate\Support\Facades\Storage::disk('public')->url($s->foto) : null,
                 'level'           => $level,
@@ -233,7 +233,7 @@ class EwsController extends Controller
                 'status'  => $a->status->value,
                 'mapel'   => $a->agenda->schedule->subject->nama ?? '—',
                 'kelas'   => $a->agenda->schedule->schoolClass
-                    ? "{$a->agenda->schedule->schoolClass->tingkat->value} {$a->agenda->schedule->schoolClass->jurusan} - {$a->agenda->schedule->schoolClass->rombel}"
+                    ? $a->agenda->schedule->schoolClass->label()
                     : '—',
             ]);
 
@@ -369,7 +369,7 @@ class EwsController extends Controller
                     'nama'  => $student->user->nama,
                     'nis'   => $student->nis,
                     'kelas' => $student->schoolClass
-                        ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
+                        ? $student->schoolClass->label()
                         : null,
                     'foto_url' => $student->foto ? \Illuminate\Support\Facades\Storage::disk('public')->url($student->foto) : null,
                     'bk_pengampu' => $bkPengampu,
@@ -410,7 +410,7 @@ class EwsController extends Controller
         $generated = now('Asia/Jakarta')->format('d M Y H:i');
         $namaFile  = "EWS_{$dim}_{$student->user->nama}";
         $kelas     = $student->schoolClass
-            ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
+            ? $student->schoolClass->label()
             : '—';
         $printSettings = PrintSetting::instance($request->user()->id);
         $paperDims     = $printSettings->paperDimensionsPt();
@@ -535,7 +535,7 @@ class EwsController extends Controller
         $ayLabel   = $ay ? "TP {$ay->tahun} — Semester ".ucfirst($ay->semester->value) : '—';
         $generated = now('Asia/Jakarta')->format('d M Y H:i');
         $kelas     = $student->schoolClass
-            ? "{$student->schoolClass->tingkat->value} {$student->schoolClass->jurusan} - {$student->schoolClass->rombel}"
+            ? $student->schoolClass->label()
             : '—';
         $printSettings = PrintSetting::instance($request->user()->id);
 

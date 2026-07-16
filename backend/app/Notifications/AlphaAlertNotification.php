@@ -31,9 +31,7 @@ class AlphaAlertNotification extends Notification implements ShouldQueue
             'student_nama' => $this->student->user->nama,
             'streak'     => $this->streak,
             'kelas'      => $this->student->schoolClass
-                ? $this->student->schoolClass->tingkat->value . ' '
-                  . $this->student->schoolClass->jurusan . ' - '
-                  . $this->student->schoolClass->rombel
+                ? $this->student->schoolClass->label()
                 : null,
             'url'        => "/siswa/{$this->student->uuid}/rekap",
         ];

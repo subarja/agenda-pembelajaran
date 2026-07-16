@@ -34,7 +34,7 @@ class StudentAdminController extends Controller
                 ->orWhereLikeCi('students.nis', $s)
                 ->orWhereLikeCi('students.nisn', $s)
                 ->orWhereLikeCi('students.angkatan', $s)
-                ->orWhereHas('schoolClass', fn ($sc) => $sc->whereLikeCi("CONCAT(tingkat, ' ', jurusan, ' - ', rombel)", $s))
+                ->orWhereHas('schoolClass', fn ($sc) => $sc->whereLabelLike($s))
             )
             )
             ->when($request->class_id, fn ($q, $c) => $q->whereHas('schoolClass', fn ($sc) => $sc->where('uuid', $c))
@@ -199,7 +199,7 @@ class StudentAdminController extends Controller
             'wali_kontak' => $s->wali_kontak,
             'kelas' => $s->schoolClass ? [
                 'id' => $s->schoolClass->uuid,
-                'label' => $s->schoolClass->tingkat->value.' '.$s->schoolClass->jurusan.' - '.$s->schoolClass->rombel,
+                'label' => $s->schoolClass->label(),
             ] : null,
             'foto_url' => $s->foto ? Storage::disk('public')->url($s->foto) : null,
         ];

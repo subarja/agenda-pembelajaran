@@ -283,7 +283,7 @@ export default function ProfilePage() {
             <div>
               <p className="text-xs text-muted-foreground mb-1">Kelas</p>
               <p className="text-sm font-medium">
-                {user.student.kelas.tingkat} {user.student.kelas.jurusan} - {user.student.kelas.rombel}
+                {user.student.kelas.label}
               </p>
             </div>
           )}

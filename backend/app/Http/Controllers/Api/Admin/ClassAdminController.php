@@ -129,7 +129,7 @@ class ClassAdminController extends Controller
             'tingkat'      => $c->tingkat->value,
             'jurusan'      => $c->jurusan,
             'rombel'       => $c->rombel,
-            'label'        => $c->tingkat->value . ' ' . $c->jurusan . ' - ' . $c->rombel,
+            'label'        => $c->label(),
             'wali_kelas'   => $c->waliKelas ? ['id' => $c->waliKelas->uuid, 'nama' => $c->waliKelas->nama] : null,
             'tahun_ajaran' => $c->academicYear ? $c->academicYear->tahun . ' ' . $c->academicYear->semester->value : null,
             'jumlah_siswa' => $c->students()->count(),

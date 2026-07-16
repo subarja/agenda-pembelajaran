@@ -43,9 +43,7 @@ class TeacherAttendanceController extends Controller
                 'jam_mulai'  => $r->agenda?->schedule?->jam_mulai,
                 'mapel'      => $r->agenda?->schedule?->subject?->nama,
                 'kelas'      => $r->agenda?->schedule?->schoolClass
-                    ? $r->agenda->schedule->schoolClass->tingkat->value . ' ' .
-                      $r->agenda->schedule->schoolClass->jurusan . ' - ' .
-                      $r->agenda->schedule->schoolClass->rombel
+                    ? $r->agenda->schedule->schoolClass->label()
                     : null,
                 'catatan'    => $r->catatan,
             ]),

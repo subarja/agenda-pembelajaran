@@ -68,7 +68,7 @@ export interface StudentProfile {
   id: string
   nis: string
   nisn: string | null
-  kelas: { tingkat: string; jurusan: string; rombel: string } | null
+  kelas: { tingkat: string; jurusan: string; rombel: string; label: string } | null
   foto_url: string | null
 }
 
@@ -77,7 +77,7 @@ export interface LinkedStudentProfile {
   nama: string | null
   nis: string
   nisn: string | null
-  kelas: { tingkat: string; jurusan: string; rombel: string } | null
+  kelas: { tingkat: string; jurusan: string; rombel: string; label: string } | null
 }
 
 export interface ApiResponse<T> {

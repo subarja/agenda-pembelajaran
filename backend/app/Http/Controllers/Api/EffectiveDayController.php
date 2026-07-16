@@ -118,7 +118,7 @@ class EffectiveDayController extends Controller
 
             $result[] = [
                 'class_id'          => $class->uuid,
-                'class_label'       => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                'class_label'       => $class->label(),
                 'total_mapel'       => count($rekap),
                 'rekap'             => $rekap,
             ];
@@ -166,7 +166,7 @@ class EffectiveDayController extends Controller
                     'teacher_id'      => $teacher->uuid,
                     'teacher_nama'    => $teacher->nama_lengkap,
                     'class_id'        => $class->uuid,
-                    'class_label'     => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                    'class_label'     => $class->label(),
                     'total_mapel'     => count($rekap),
                     'total_minggu'    => $totalMinggu,
                     'total_efektif'   => $totalEfektif,
@@ -389,13 +389,13 @@ class EffectiveDayController extends Controller
                 $class = SchoolClass::find($classId);
                 if (! $class) continue;
 
-                $classLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
+                $classLabel = $class->label();
                 $rekap = $this->service->rekapMingguByClass($classId, $teacher->id, $ay->id);
                 if (empty($rekap)) continue;
 
                 foreach ($rekap as $mapelData) {
                     $sheetName = $this->uniqueSheetName(
-                        "{$namaGuru} {$class->tingkat->value}{$class->jurusan}-{$class->rombel} {$mapelData['subject_kode']}",
+                        "{$namaGuru} {$class->label()} {$mapelData['subject_kode']}",
                         $usedNames
                     );
 
@@ -476,7 +476,7 @@ class EffectiveDayController extends Controller
                     $sheets[] = [
                         'nama_guru'    => $namaGuru,
                         'nip_guru'     => $nipGuru,
-                        'class_label'  => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                        'class_label'  => $class->label(),
                         'mapel'        => $mapelData['subject_nama'],
                         'hari_jadwal'  => $mapelData['hari_jadwal'],
                         'bulan'        => $mapelData['bulan'],
@@ -539,7 +539,7 @@ class EffectiveDayController extends Controller
 
             $result[] = [
                 'class_id'      => $class->uuid,
-                'class_label'   => "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}",
+                'class_label'   => $class->label(),
                 'total_mapel'   => count($rekap),
                 'total_minggu'  => $totalMinggu,
                 'total_efektif' => $totalEfektif,
@@ -565,7 +565,7 @@ class EffectiveDayController extends Controller
     {
         $sheets = [];
         foreach ($classes as $class) {
-            $classLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
+            $classLabel = $class->label();
             $rekap = $this->service->rekapMingguAllByClass($class->id, $ay->id);
             foreach ($rekap as $mapelData) {
                 $sheets[] = [
@@ -630,12 +630,12 @@ class EffectiveDayController extends Controller
         $usedNames    = [];
 
         foreach ($classes as $class) {
-            $classLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
+            $classLabel = $class->label();
             $rekap = $this->service->rekapMingguAllByClass($class->id, $ay->id);
 
             foreach ($rekap as $mapelData) {
                 $sheetName = $this->uniqueSheetName(
-                    "{$class->tingkat->value} {$class->jurusan}-{$class->rombel} {$mapelData['subject_kode']}",
+                    "{$class->label()} {$mapelData['subject_kode']}",
                     $usedNames
                 );
 

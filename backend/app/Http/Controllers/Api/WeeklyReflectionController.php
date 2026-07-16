@@ -129,7 +129,7 @@ class WeeklyReflectionController extends Controller
 
         $guru       = $teacher->nama_lengkap;
         $nip        = $teacher->nip ?? '—';
-        $kelasLabel = "{$kelas->tingkat->value} {$kelas->jurusan} - {$kelas->rombel}";
+        $kelasLabel = $kelas->label();
         $filename   = 'Refleksi_Mingguan_' . str_replace(' ', '_', $guru);
 
         if ($request->format === 'pdf') {

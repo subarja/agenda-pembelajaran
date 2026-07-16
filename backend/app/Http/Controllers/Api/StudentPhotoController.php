@@ -46,7 +46,7 @@ class StudentPhotoController extends Controller
             'data' => $students->map(fn (Student $s) => $this->format($s)),
             'kelas' => [
                 'id'    => $kelas->uuid,
-                'label' => "{$kelas->tingkat->value} {$kelas->jurusan} - {$kelas->rombel}",
+                'label' => $kelas->label(),
             ],
         ]);
     }

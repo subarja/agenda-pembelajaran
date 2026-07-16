@@ -176,7 +176,7 @@ class RekapPerkembanganController extends Controller
             return [
                 'nama'     => $st->student?->user?->nama ?? '-',
                 'nis'      => $st->student?->nis,
-                'kelas'    => $c ? "{$c->tingkat->value} {$c->jurusan} - {$c->rombel}" : null,
+                'kelas'    => $c ? $c->label() : null,
                 'karakter' => (int) $st->karakter_score,
                 'level'    => $st->level instanceof \App\Enums\EwsLevel ? $st->level->value : (string) $st->level,
             ];
@@ -245,7 +245,7 @@ class RekapPerkembanganController extends Controller
             }
 
             $kelas = $s->schoolClass
-                ? "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}"
+                ? $s->schoolClass->label()
                 : null;
 
             return [

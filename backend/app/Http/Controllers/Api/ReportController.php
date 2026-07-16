@@ -40,7 +40,7 @@ class ReportController extends Controller
         $classes = SchoolClass::when($ay, fn ($q) => $q->where('academic_year_id', $ay->id))
             ->orderBy('tingkat')->orderBy('jurusan')->orderBy('rombel')
             ->get()
-            ->map(fn ($c) => ['id' => $c->uuid, 'label' => "{$c->tingkat->value} {$c->jurusan} - {$c->rombel}"]);
+            ->map(fn ($c) => ['id' => $c->uuid, 'label' => $c->label()]);
         return response()->json(['data' => $classes]);
     }
 
@@ -95,8 +95,8 @@ class ReportController extends Controller
                  + ['nama' => $s->user->nama, 'nis' => $s->nis, 'jk' => $s->jenis_kelamin ?? '—'];
         });
 
-        $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
-        $filename   = "kehadiran_{$class->tingkat->value}_{$class->jurusan}_{$class->rombel}";
+        $kelasLabel = $class->label();
+        $filename   = "kehadiran_{$class->tingkat->value}_{$class->jurusanKode()}_{$class->rombel}";
 
         // Cari mapel yang diajarkan guru di kelas ini
         $mapelGuru = null;
@@ -195,8 +195,8 @@ class ReportController extends Controller
             return ['nama' => $s->user->nama, 'nis' => $s->nis, 'jk' => $s->jenis_kelamin ?? '—', 'total' => $total, 'per_kategori' => $perKat];
         });
 
-        $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
-        $filename   = "karakter_{$class->tingkat->value}_{$class->jurusan}";
+        $kelasLabel = $class->label();
+        $filename   = "karakter_{$class->tingkat->value}_{$class->jurusanKode()}";
 
         $guruNama  = $teacher ? $teacher->nama_lengkap : null;
         $guruNip   = $teacher ? ($teacher->nip ?? '—') : null;
@@ -299,8 +299,8 @@ class ReportController extends Controller
             'oleh_inval' => $n->diberikanOlehInval(),
         ]);
 
-        $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
-        $filename   = "nilai_tambah_{$class->tingkat->value}_{$class->jurusan}";
+        $kelasLabel = $class->label();
+        $filename   = "nilai_tambah_{$class->tingkat->value}_{$class->jurusanKode()}";
         $periode    = now('Asia/Jakarta')->format('M Y');
 
         $guruNama = $teacher ? $teacher->nama_lengkap : null;
@@ -375,8 +375,8 @@ class ReportController extends Controller
             return compact('level','kehadiran','karakter','catatan','nilai')+['nama'=>$s->user->nama,'nis'=>$s->nis,'jk'=>$s->jenis_kelamin ?? '—'];
         })->sortBy(fn($r)=>match($r['level']){'merah'=>0,'oranye'=>1,'kuning'=>2,default=>3})->values();
 
-        $kelasLabel = "{$class->tingkat->value} {$class->jurusan} - {$class->rombel}";
-        $filename   = "ews_{$class->tingkat->value}_{$class->jurusan}";
+        $kelasLabel = $class->label();
+        $filename   = "ews_{$class->tingkat->value}_{$class->jurusanKode()}";
 
         if ($request->format === 'pdf') {
             $printSettings = PrintSetting::instance($request->user()->id);
@@ -496,9 +496,7 @@ class ReportController extends Controller
             return [
                 'hari_tanggal'        => ucfirst($tglCarbon->isoFormat('dddd, D MMMM YYYY')),
                 'jam'                 => $jam,
-                'kelas'               => $a->schedule->schoolClass->tingkat->value . ' ' .
-                                         $a->schedule->schoolClass->jurusan . ' - ' .
-                                         $a->schedule->schoolClass->rombel,
+                'kelas'               => $a->schedule->schoolClass->label(),
                 'mapel'               => $a->schedule->subject->nama,
                 'tujuan_pembelajaran' => $los->pluck('deskripsi')->join('; '),
                 'tp_kode'             => $los->pluck('kode')->join(', '),
@@ -525,7 +523,7 @@ class ReportController extends Controller
                 'hari_tanggal'        => ucfirst(\Carbon\Carbon::parse($r->tanggal)->locale('id')->isoFormat('dddd, D MMMM YYYY')),
                 'jam'                 => '—',
                 'kelas'               => $r->schoolClass
-                    ? $r->schoolClass->tingkat->value . ' ' . $r->schoolClass->jurusan . ' - ' . $r->schoolClass->rombel
+                    ? $r->schoolClass->label()
                     : '—',
                 'mapel'               => 'Kokurikuler',
                 'tujuan_pembelajaran' => trim(($r->project?->judul ?? 'Projek Kokurikuler') .
@@ -682,7 +680,7 @@ class ReportController extends Controller
             ->map(fn ($s) => $s->schoolClass)
             ->filter()
             ->unique('id')
-            ->map(fn ($c) => ['id' => $c->uuid, 'label' => $c->tingkat->value . ' ' . $c->jurusan . ' - ' . $c->rombel])
+            ->map(fn ($c) => ['id' => $c->uuid, 'label' => $c->label()])
             ->values();
 
         return response()->json(['data' => $classes]);
@@ -714,7 +712,7 @@ class ReportController extends Controller
         foreach ($schedules as $s) {
             $c = $s->schoolClass;
             if (! $c) continue;
-            $key = "{$c->tingkat->value} {$c->jurusan}";
+            $key = "{$c->tingkat->value} {$c->jurusanKode()}";
             $groups[$key][$c->rombel] = true;
         }
         ksort($groups);

@@ -45,7 +45,7 @@ class ScheduleResource extends JsonResource
                 'tingkat' => $this->schoolClass->tingkat->value,
                 'jurusan' => $this->schoolClass->jurusan,
                 'rombel'  => $this->schoolClass->rombel,
-                'label'   => "{$this->schoolClass->tingkat->value} {$this->schoolClass->jurusan} - {$this->schoolClass->rombel}",
+                'label'   => $this->schoolClass->label(),
             ],
             'agenda_hari_ini' => $today ? [
                 'id'     => $today->uuid,

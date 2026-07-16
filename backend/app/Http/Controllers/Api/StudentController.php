@@ -75,7 +75,7 @@ class StudentController extends Controller
                 'nama'  => $s->user->nama,
                 'jenis_kelamin' => $s->jenis_kelamin,
                 'kelas' => $s->schoolClass
-                    ? "{$s->schoolClass->tingkat->value} {$s->schoolClass->jurusan} - {$s->schoolClass->rombel}"
+                    ? $s->schoolClass->label()
                     : null,
                 'foto_url' => $s->foto ? Storage::disk('public')->url($s->foto) : null,
             ]);

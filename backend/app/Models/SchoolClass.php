@@ -54,6 +54,29 @@ class SchoolClass extends Model
         return $this->hasMany(LearningObjective::class, 'class_id');
     }
 
+    /** Cache per-request: jurusan (lower) → ProgramKeahlian|null, hindari query berulang. */
+    protected static array $pkMatchCache = [];
+
+    /**
+     * Cari Program Keahlian yang konsentrasinya cocok longgar dengan sebuah
+     * nama jurusan (kolom `jurusan` kelas menyimpan nama Konsentrasi Keahlian).
+     */
+    public static function programKeahlianFor(?string $jurusan): ?ProgramKeahlian
+    {
+        $key = mb_strtolower(trim((string) $jurusan));
+        if ($key === '') return null;
+
+        if (! array_key_exists($key, static::$pkMatchCache)) {
+            static::$pkMatchCache[$key] = ProgramKeahlian::get()->first(function ($pk) use ($key) {
+                $konsentrasi = mb_strtolower(trim($pk->konsentrasi));
+                return $konsentrasi !== ''
+                    && (str_contains($konsentrasi, $key) || str_contains($key, $konsentrasi));
+            });
+        }
+
+        return static::$pkMatchCache[$key];
+    }
+
     /**
      * Nama Program Keahlian (label lebih luas dari `jurusan`, yang sebenarnya
      * menyimpan nama Konsentrasi Keahlian). Dicocokkan longgar terhadap tabel
@@ -62,16 +85,7 @@ class SchoolClass extends Model
      */
     public function programKeahlianNama(): ?string
     {
-        $jurusan = mb_strtolower(trim($this->jurusan));
-        if ($jurusan === '') return null;
-
-        $match = ProgramKeahlian::get()->first(function ($pk) use ($jurusan) {
-            $konsentrasi = mb_strtolower(trim($pk->konsentrasi));
-            return $konsentrasi !== ''
-                && (str_contains($konsentrasi, $jurusan) || str_contains($jurusan, $konsentrasi));
-        });
-
-        return $match?->program_keahlian;
+        return static::programKeahlianFor($this->jurusan)?->program_keahlian;
     }
 
     /**
@@ -81,15 +95,42 @@ class SchoolClass extends Model
      */
     public function programKeahlianKode(): ?string
     {
-        $jurusan = mb_strtolower(trim($this->jurusan));
-        if ($jurusan === '') return null;
+        return static::programKeahlianFor($this->jurusan)?->kode;
+    }
 
-        $match = ProgramKeahlian::get()->first(function ($pk) use ($jurusan) {
-            $konsentrasi = mb_strtolower(trim($pk->konsentrasi));
-            return $konsentrasi !== ''
-                && (str_contains($konsentrasi, $jurusan) || str_contains($jurusan, $konsentrasi));
-        });
+    /**
+     * Kode jurusan untuk label kelas: kode Program Keahlian (mis. "RPL", "MEKA",
+     * "ANIMASI") — fallback ke nama jurusan apa adanya bila referensi belum ada.
+     */
+    public function jurusanKode(): string
+    {
+        return $this->programKeahlianKode() ?? $this->jurusan;
+    }
 
-        return $match?->kode;
+    /**
+     * Nama baku kelas untuk SEMUA tampilan & dokumen: "{tingkat} {KODE} {rombel}",
+     * mis. "XII RPL A". Jangan merangkai tingkat+jurusan+rombel manual di tempat lain.
+     */
+    public function label(): string
+    {
+        return trim("{$this->tingkat->value} {$this->jurusanKode()} {$this->rombel}");
+    }
+
+    /**
+     * Cari kelas berdasarkan potongan nama bakunya ("XII RPL A") — nama jurusan
+     * lengkap format lama ("XII Rekayasa Perangkat Lunak - A") tetap diterima.
+     * Kode jurusan datang dari tabel referensi dengan pencocokan longgar, jadi
+     * tidak bisa dirangkai di SQL — kandidat dicocokkan di PHP lalu di-whereIn.
+     */
+    public function scopeWhereLabelLike($query, string $term): void
+    {
+        $term = mb_strtolower(trim($term));
+
+        $ids = static::query()->get(['id', 'tingkat', 'jurusan', 'rombel'])
+            ->filter(fn ($c) => str_contains(mb_strtolower($c->label()), $term)
+                || str_contains(mb_strtolower("{$c->tingkat->value} {$c->jurusan} - {$c->rombel}"), $term))
+            ->pluck('id');
+
+        $query->whereIn($this->getTable().'.id', $ids);
     }
 }

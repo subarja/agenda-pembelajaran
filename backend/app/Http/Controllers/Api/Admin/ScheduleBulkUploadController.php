@@ -117,7 +117,7 @@ class ScheduleBulkUploadController extends Controller
             $path = $file->store('jadwal_kelas', 'public');
             $match->update(['jadwal_pdf' => $path]);
 
-            $berhasil[] = ['file' => $filename, 'kelas' => "{$match->tingkat->value} {$match->jurusan} {$match->rombel}"];
+            $berhasil[] = ['file' => $filename, 'kelas' => $match->label()];
         }
 
         return response()->json($this->buildResponse('kelas', $berhasil, $gagal));

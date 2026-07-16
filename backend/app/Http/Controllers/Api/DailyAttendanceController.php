@@ -52,7 +52,7 @@ class DailyAttendanceController extends Controller
                 'tanggal'    => $tanggal,
                 'kelas'      => [
                     'id'    => $kelas->uuid,
-                    'label' => "{$kelas->tingkat->value} {$kelas->jurusan} - {$kelas->rombel}",
+                    'label' => $kelas->label(),
                 ],
                 'is_filled'  => $existing->isNotEmpty(),
                 'siswa'      => $data,
@@ -159,7 +159,7 @@ class DailyAttendanceController extends Controller
         return response()->json([
             'data' => [
                 'bulan'  => $month,
-                'kelas'  => "{$kelas->tingkat->value} {$kelas->jurusan} - {$kelas->rombel}",
+                'kelas'  => $kelas->label(),
                 'siswa'  => $data,
             ],
         ]);

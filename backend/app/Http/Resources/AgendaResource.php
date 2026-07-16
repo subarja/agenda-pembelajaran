@@ -32,7 +32,7 @@ class AgendaResource extends JsonResource
                     'tingkat' => $this->schedule->schoolClass->tingkat->value,
                     'jurusan' => $this->schedule->schoolClass->jurusan,
                     'rombel'  => $this->schedule->schoolClass->rombel,
-                    'label'   => "{$this->schedule->schoolClass->tingkat->value} {$this->schedule->schoolClass->jurusan} - {$this->schedule->schoolClass->rombel}",
+                    'label'   => $this->schedule->schoolClass->label(),
                 ],
             ]),
 

@@ -119,7 +119,7 @@ class ScheduleCopyController extends Controller
             if ($t) {
                 $pairs[$c->id] = $t->id;
             } else {
-                $unmatched->push("{$c->tingkat->value} {$c->jurusan} - {$c->rombel}");
+                $unmatched->push($c->label());
             }
         }
 

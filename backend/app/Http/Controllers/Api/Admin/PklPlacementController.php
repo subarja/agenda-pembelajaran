@@ -36,12 +36,12 @@ class PklPlacementController extends Controller
     public function template(): BinaryFileResponse
     {
         $example = [
-            'Ahmad Fauzi', '2324001', '0012345678', 'XII Rekayasa Perangkat Lunak A', '081234567890',
+            'Ahmad Fauzi', '2324001', '0012345678', 'XII RPL A', '081234567890',
             'PT Teknologi Nusantara', 'Jl. Merdeka No. 10, Bandung', '2026-07-01', '2026-12-20', 'Budi Santoso, S.Kom.',
         ];
         $notes = [
             'nama siswa (referensi saja)', 'NIS siswa — kunci pencocokan cadangan bila NISN kosong',
-            'NISN siswa — kunci pencocokan utama', 'contoh: XII Rekayasa Perangkat Lunak A (harus kelas XII)',
+            'NISN siswa — kunci pencocokan utama', 'contoh: XII RPL A (harus kelas XII)',
             'nomor HP siswa (opsional) — tampil ke pembimbing dgn tombol WhatsApp', 'nama tempat/DU-DI',
             'alamat tempat PKL', 'YYYY-MM-DD', 'YYYY-MM-DD', 'nama lengkap guru pembimbing (harus persis)',
         ];
@@ -285,7 +285,7 @@ class PklPlacementController extends Controller
                 (string) ($p->student?->user?->nama ?? ''),
                 (string) ($p->student?->nis ?? ''),
                 (string) ($p->student?->nisn ?? ''),
-                $p->schoolClass ? "{$p->schoolClass->tingkat->value} {$p->schoolClass->jurusan} {$p->schoolClass->rombel}" : '',
+                $p->schoolClass ? $p->schoolClass->label() : '',
                 (string) ($p->telpon_siswa ?? ''),
                 $p->tempat_pkl,
                 (string) ($p->alamat_pkl ?? ''),
@@ -320,7 +320,7 @@ class PklPlacementController extends Controller
                 'telpon'     => $p->telpon_siswa,
                 'class_id'   => $p->schoolClass?->uuid,
                 'kelas'      => $p->schoolClass
-                    ? "{$p->schoolClass->tingkat->value} {$p->schoolClass->jurusan} - {$p->schoolClass->rombel}" : null,
+                    ? $p->schoolClass->label() : null,
                 'tempat_pkl' => $p->tempat_pkl,
                 'alamat_pkl' => $p->alamat_pkl,
                 'mulai'      => $p->tanggal_mulai?->toDateString(),
@@ -347,7 +347,7 @@ class PklPlacementController extends Controller
 
         $parts = explode(' ', trim($label));
         if (count($parts) < 3) {
-            return [null, "Format kelas '$label' tidak valid. Contoh: XII Rekayasa Perangkat Lunak A"];
+            return [null, "Format kelas '$label' tidak valid. Contoh: XII RPL A"];
         }
         $tingkat = strtoupper(array_shift($parts));
         $rombel  = array_pop($parts);
@@ -357,9 +357,12 @@ class PklPlacementController extends Controller
             return [null, "Kelas '$label' bukan kelas XII — PKL hanya untuk kelas XII."];
         }
 
+        // Terima kode program keahlian ("RPL") maupun nama jurusan lengkap (format lama).
         $class = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
-            ->where('tingkat', $tingkat)->where('jurusan', $jurusan)->where('rombel', $rombel)
-            ->first();
+            ->where('tingkat', $tingkat)->where('rombel', $rombel)
+            ->get()
+            ->first(fn ($c) => mb_strtolower($c->jurusan) === mb_strtolower($jurusan)
+                || mb_strtolower($c->jurusanKode()) === mb_strtolower($jurusan));
 
         return $class ? [$class, null] : [null, "Kelas '$label' tidak ditemukan di tahun ajaran aktif."];
     }
