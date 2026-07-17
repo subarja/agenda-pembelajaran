@@ -166,17 +166,15 @@ table.data tr:nth-child(even) td { background:#f8fafc; }
 {{-- TTD Wali Kelas (kiri) + Wakasek (kanan) --}}
 @php $waliKelas = $student->schoolClass?->waliKelas; $waliTeacher = $waliKelas ? \App\Models\Teacher::where('user_id', $waliKelas->id)->first() : null; @endphp
 <div style="margin-top:16px; border-top:2px solid #1f4e79; padding-top:12px;">
-  <div style="font-size:10pt; font-weight:bold; color:#1f4e79; margin-bottom:12px;">Mengetahui</div>
+  <div style="font-size:10pt; font-weight:bold; color:#1f4e79; margin-bottom:12px; text-align:center;">Mengetahui</div>
   <table style="width:100%; border-collapse:collapse;">
     <tr>
-      <td style="width:220px; text-align:center; vertical-align:top;">
-        <div style="font-size:9pt; color:#555; margin-bottom:2px;">Wali Kelas</div>
+      <td style="width:50%; text-align:center; vertical-align:top; padding:0 8px;">
         <div style="font-size:9.5pt; font-weight:bold; margin-bottom:50px;">Wali Kelas</div>
-        <div style="border-top:1px solid #333; padding-top:4px; font-size:9pt;">{{ $waliKelas?->nama ?? '................................' }}</div>
+        <div style="border-top:1px solid #333; padding-top:4px; font-size:9pt; display:inline-block; min-width:140px;">{{ $waliKelas?->nama ?? '................................' }}</div>
         <div style="font-size:8.5pt; color:#777;">NIP. {{ $waliTeacher?->nip ?? '................................' }}</div>
       </td>
-      <td style="text-align:center; vertical-align:top; padding:0 8px;">
-        <div style="font-size:9pt; color:#555; margin-bottom:2px;">Wakasek Bid. Kurikulum</div>
+      <td style="width:50%; text-align:center; vertical-align:top; padding:0 8px;">
         <div style="font-size:9.5pt; font-weight:bold; margin-bottom:50px;">Wakasek Bid. Kurikulum</div>
         <div style="border-top:1px solid #333; padding-top:4px; font-size:9pt; display:inline-block; min-width:140px;">Kusman Subarja, S.Pd., M.T.</div>
         <div style="font-size:8.5pt; color:#777;">NIP. 197501012005011001</div>

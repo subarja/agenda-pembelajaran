@@ -252,19 +252,17 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
 {{-- TTD Wali Kelas (kiri, table-based) --}}
 @php $waliTeacher = $wali ? \App\Models\Teacher::where('user_id', $wali->id)->first() : null; @endphp
 <div style="margin-top: 24px; border-top: 2px solid #1f4e79; padding-top: 14px;">
-  <div style="font-size: 10pt; font-weight: bold; color: #1f4e79; margin-bottom: 14px;">Validasi Dokumen</div>
+  <div style="font-size: 10pt; font-weight: bold; color: #1f4e79; margin-bottom: 14px; text-align: center;">Validasi Dokumen</div>
   <table style="width: 100%; border-collapse: collapse;">
     <tr>
-      <td style="width: 220px; text-align: center; vertical-align: top;">
-        <div style="font-size: 9pt; color: #555; margin-bottom: 2px;">Wali Kelas</div>
+      <td style="width: 50%; text-align: center; vertical-align: top; padding: 0 8px;">
         <div style="font-size: 9.5pt; font-weight: bold; margin-bottom: 50px;">Wali Kelas</div>
-        <div style="border-top: 1px solid #333; padding-top: 4px; font-size: 9pt;">
+        <div style="border-top: 1px solid #333; padding-top: 4px; font-size: 9pt; display: inline-block; min-width: 140px;">
           {{ $wali?->nama ?? '................................' }}
         </div>
         <div style="font-size: 8.5pt; color: #777;">NIP. {{ $waliTeacher?->nip ?? '................................' }}</div>
       </td>
-      <td style="text-align:center; vertical-align:top; padding:0 8px;">
-        <div style="font-size:9pt; color:#555; margin-bottom:2px;">Wakasek Bid. Kurikulum</div>
+      <td style="width:50%; text-align:center; vertical-align:top; padding:0 8px;">
         <div style="font-size:9.5pt; font-weight:bold; margin-bottom:50px;">Wakasek Bid. Kurikulum</div>
         <div style="border-top:1px solid #333; padding-top:4px; font-size:9pt; display:inline-block; min-width:140px;">Kusman Subarja, S.Pd., M.T.</div>
         <div style="font-size:8.5pt; color:#777;">NIP. 197501012005011001</div>
