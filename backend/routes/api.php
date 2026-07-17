@@ -412,6 +412,10 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::get('backup/download',             [DatabaseBackupController::class, 'download']);
         Route::post('backup/restore',             [DatabaseBackupController::class, 'restore']);
 
+        // Ekspor/Impor kredensial R2 + FCM + Kalender (admin-only, dijaga di controller)
+        Route::get('credentials/export',          [\App\Http\Controllers\Api\Admin\CredentialTransferController::class, 'export']);
+        Route::post('credentials/import',         [\App\Http\Controllers\Api\Admin\CredentialTransferController::class, 'import']);
+
         // Tools Deploy & Maintenance — cPanel tanpa Terminal (admin-only, dijaga di controller)
         Route::get('deploy-tools/status',         [DeployToolController::class, 'status']);
         Route::post('deploy-tools/migrate',       [DeployToolController::class, 'migrate']);

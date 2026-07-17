@@ -328,6 +328,8 @@ Cocok kalau sekolah/vendor hanya punya akses cPanel biasa (tanpa root/Docker). B
 >   `https://api.agenda.namasekolah.sch.id/cpanel-deploy.php?token=0e58dfc76a7cb02e1ab18e8c25fab8d37c76c942730624ce&action=all`
 > - **Setelah berhasil, HAPUS `cpanel-deploy.php` dari server lewat File Manager** — file ini bisa menjalankan migrasi/seed lewat URL, jangan dibiarkan menempel permanen di produksi.
 > - **Update kode berikutnya:** cukup **Pull or Deploy** lagi lewat Git™ Version Control seperti biasa. `vendor/` tidak perlu diupload ulang kecuali `composer.json`/`composer.lock` berubah. Kalau ada migration baru, upload lagi `cpanel-deploy.php` sementara, jalankan `?action=migrate`, lalu hapus lagi.
+> - ⚠️ **JANGAN PERNAH menjalankan `?action=all` untuk update** — `action=all` hanya untuk instalasi pertama. Ia ikut menjalankan `key:generate` yang **mengganti APP_KEY**, dan semua kredensial terenkripsi di database (Penyimpanan R2, Notifikasi Push) langsung tidak terbaca lagi — di aplikasi tampak "hilang/kosong" dan harus diisi ulang. Update cukup `?action=migrate`, atau lebih aman lagi lewat menu **Admin Panel → Deploy & Maintenance**. Kalau terlanjur: pulihkan lewat **Admin Panel → Backup & Restore → Impor Kredensial** (dari file hasil Ekspor Kredensial — biasakan ekspor dulu setiap kali sebelum update).
+> - `.env` juga **tidak boleh ikut tertimpa** saat update — file ini berisi APP_KEY dan koneksi database; menggantinya dengan salinan baru dari `.env.example` membuat aplikasi menunjuk database kosong/kunci baru sehingga seluruh data tampak "ter-reset".
 
 **1. Tarik kode** — pakai fitur **Git™ Version Control** (lihat bagian A) atau `git clone` dari Terminal cPanel ke folder di luar `public_html`, misal `/home/<user>/repositories/agenda-pembelajaran`.
 
