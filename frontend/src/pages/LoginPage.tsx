@@ -16,9 +16,13 @@ export default function LoginPage() {
   const [error, setError]   = useState('')
   const [loading, setLoading] = useState(false)
 
-  const { data: years } = useQuery({
+  // retry 3 (bukan default global 1): cegatan proteksi bot hosting terhadap XHR ini
+  // bersifat sementara (cookie challenge belum terpasang saat halaman baru dibuka) —
+  // percobaan ulang beberapa detik kemudian biasanya lolos sendiri.
+  const { data: years, isError, isFetching, refetch } = useQuery({
     queryKey: ['academic-years-pilihan'],
-    queryFn: () => academicYearApi.pilihan().then((r) => r.data.data),
+    queryFn: () => academicYearApi.pilihan(),
+    retry: 3,
   })
 
   useEffect(() => {
@@ -108,7 +112,8 @@ export default function LoginPage() {
                   onChange={(e) => setForm({ ...form, academic_year_id: e.target.value })}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
-                  {!years && <option value="">Memuat...</option>}
+                  {!years && !isError && <option value="">Memuat...</option>}
+                  {!years && isError && <option value="">Gagal memuat</option>}
                   {years?.length === 0 && <option value="">Belum ada semester</option>}
                   {years?.map((y) => (
                     <option key={y.id} value={y.id}>
@@ -116,6 +121,19 @@ export default function LoginPage() {
                     </option>
                   ))}
                 </select>
+                {isError && (
+                  <p className="text-xs text-red-600">
+                    Gagal memuat daftar semester.{' '}
+                    <button
+                      type="button"
+                      onClick={() => refetch()}
+                      disabled={isFetching}
+                      className="font-medium underline"
+                    >
+                      {isFetching ? 'Memuat...' : 'Coba lagi'}
+                    </button>
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Semua semester dapat diakses siapa pun — pilih yang ingin dikerjakan.
                 </p>

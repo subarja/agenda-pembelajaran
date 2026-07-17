@@ -4705,6 +4705,132 @@ function BackupRestoreTab() {
           Pulihkan Sekarang
         </Button>
       </div>
+
+      <CredentialTransferCard />
+    </div>
+  )
+}
+
+// ── Ekspor/Impor Kredensial (R2 + Push FCM + Kalender) ────────────────────────
+// Kredensial R2 & FCM tersimpan TERENKRIPSI dengan APP_KEY. Kalau update server
+// sampai mengganti APP_KEY (mis. cpanel-deploy.php?action=all ikut `key:generate`),
+// semuanya tak terbaca lagi dan tampak "hilang" — admin harus mengetik ulang dari
+// dashboard Cloudflare/Firebase. Kartu ini: ekspor sekali SEBELUM update, impor lagi
+// setelahnya — nilai dienkripsi ulang otomatis dengan APP_KEY yang baru.
+function CredentialTransferCard() {
+  const qc = useQueryClient()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [file, setFile]       = useState<File | null>(null)
+  const [result, setResult]   = useState<string | null>(null)
+  const [error, setError]     = useState<string | null>(null)
+  const [exLoading, setExLoading] = useState(false)
+
+  async function exportCredentials() {
+    setExLoading(true)
+    try {
+      const resp = await api.get('/admin/credentials/export')
+      const blob = new Blob([JSON.stringify(resp.data, null, 2)], { type: 'application/json' })
+      const url  = URL.createObjectURL(blob)
+      const ts   = new Date().toISOString().slice(0, 10)
+      const a    = document.createElement('a'); a.href = url; a.download = `kredensial-agenda-${ts}.json`; a.click()
+      URL.revokeObjectURL(url)
+      setError(null)
+      setResult('File kredensial terunduh. Simpan di tempat aman — isinya TIDAK terenkripsi.')
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? err?.message ?? 'Ekspor gagal.')
+      setResult(null)
+    } finally {
+      setExLoading(false)
+    }
+  }
+
+  const importMut = useMutation({
+    mutationFn: async () => {
+      const form = new FormData()
+      form.append('file', file as File)
+      const resp = await api.post('/admin/credentials/import', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return resp.data as { message: string }
+    },
+    onSuccess: (data) => {
+      setResult(data.message); setError(null); setFile(null)
+      if (fileRef.current) fileRef.current.value = ''
+      qc.invalidateQueries({ queryKey: ['admin-r2-settings'] })
+      qc.invalidateQueries({ queryKey: ['admin-fcm-settings'] })
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.message ?? err?.message ?? 'Impor gagal.')
+      setResult(null)
+    },
+  })
+
+  return (
+    <div className="rounded-lg border bg-card p-5 space-y-3">
+      <div className="flex items-center gap-2">
+        <Key className="h-5 w-5 text-primary-600" />
+        <h3 className="text-sm font-semibold">Ekspor / Impor Kredensial (R2, Push, Kalender)</h3>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Kredensial Penyimpanan R2 dan Notifikasi Push disimpan terenkripsi dengan kunci
+        aplikasi (APP_KEY) — bila kunci itu berganti saat update server, kredensial tidak
+        terbaca lagi dan harus diisi ulang. Ekspor dulu sebelum update, lalu impor lagi
+        setelahnya tanpa perlu membuka dashboard Cloudflare/Firebase.
+      </p>
+
+      <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 flex gap-2 text-xs text-amber-800">
+        <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+        <span>
+          File ekspor berisi kredensial dalam bentuk asli (tidak terenkripsi) supaya bisa
+          diimpor ke server dengan kunci berbeda. Simpan di tempat aman, jangan dibagikan.
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={exportCredentials} disabled={exLoading}>
+          {exLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+          Ekspor Kredensial
+        </Button>
+      </div>
+
+      <div
+        className="rounded-md border-2 border-dashed border-muted-foreground/25 p-4 text-center cursor-pointer hover:border-primary/40 hover:bg-muted/20 transition-colors"
+        onClick={() => fileRef.current?.click()}
+      >
+        {file ? (
+          <p className="text-xs"><span className="font-medium">{file.name}</span> <span className="text-muted-foreground">({(file.size / 1024).toFixed(1)} KB)</span></p>
+        ) : (
+          <p className="text-xs text-muted-foreground">Klik pilih file .json hasil ekspor untuk impor</p>
+        )}
+        <input ref={fileRef} type="file" accept=".json,application/json" className="hidden"
+          onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setError(null) }} />
+      </div>
+
+      {error && (
+        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 flex gap-2 text-xs text-red-700">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />{error}
+        </div>
+      )}
+
+      {result && (
+        <div className="rounded border border-green-200 bg-green-50 px-3 py-2 flex gap-2 text-xs text-green-800">
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />{result}
+        </div>
+      )}
+
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!file || importMut.isPending}
+        onClick={() => {
+          if (window.confirm('Impor akan MENIMPA kredensial R2/Push/Kalender yang tersimpan sekarang dengan isi file. Lanjutkan?')) {
+            importMut.mutate()
+          }
+        }}
+      >
+        {importMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
+        Impor Kredensial
+      </Button>
     </div>
   )
 }
