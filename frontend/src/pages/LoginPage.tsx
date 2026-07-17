@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import BrandLogo from '@/components/layout/BrandLogo'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -54,8 +55,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-primary-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary-600 mb-4">
-            <span className="text-xl font-bold text-white">AP</span>
+          <div className="mb-4 flex justify-center">
+            <BrandLogo size="lg" />
           </div>
           <h1 className="text-2xl font-bold text-primary-600">Agenda Pembelajaran</h1>
           <p className="text-sm text-muted-foreground mt-1">SMKN 2 Cimahi</p>

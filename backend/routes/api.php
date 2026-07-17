@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\EffectiveDayController;
 use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\DailyAttendanceController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\CharacterManualNoteController;
 use App\Http\Controllers\Api\EwsController;
@@ -68,6 +69,9 @@ Route::prefix('auth')->middleware('throttle:10,1')->group(function () {
 
 // Daftar semester untuk dropdown di form login (publik, dibutuhkan sebelum auth)
 Route::get('academic-years/pilihan', [AcademicYearSelectionController::class, 'pilihan']);
+
+// Logo aplikasi (publik — halaman login perlu tampilkan logo sebelum auth)
+Route::get('branding', [BrandingController::class, 'show']);
 
 // ── Protected ─────────────────────────────────────────────────────────────────
 Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
@@ -298,6 +302,10 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
 
         // Tujuan Pembelajaran — admin revert
         Route::post('learning-objectives/revert/{uuid}',        [LearningObjectiveController::class, 'adminRevert']);
+
+        // Logo aplikasi — ganti/reset (klik logo di sidebar)
+        Route::post('branding/logo',                            [BrandingController::class, 'updateLogo']);
+        Route::delete('branding/logo',                          [BrandingController::class, 'destroyLogo']);
 
         // Penyimpanan R2 (Cloudflare object storage) — admin
         Route::get('r2/settings',                               [R2SettingController::class, 'show']);

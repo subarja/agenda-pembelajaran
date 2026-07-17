@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import NotificationBell from './NotificationBell'
 import AcademicYearBadge from './AcademicYearBadge'
+import BrandLogo from './BrandLogo'
 import { useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { adminApi } from '@/features/admin/api'
@@ -59,9 +60,7 @@ export default function Sidebar() {
     <aside className="hidden md:flex h-screen w-64 flex-col border-r border-border bg-background fixed left-0 top-0">
       {/* Brand */}
       <div className="flex items-center gap-3 px-6 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-600">
-          <span className="text-xs font-bold text-white">AP</span>
-        </div>
+        <BrandLogo editable />
         <div className="leading-tight">
           <p className="text-sm font-semibold text-foreground">Agenda Pembelajaran</p>
           <p className="text-xs text-muted-foreground">SMKN 2 Cimahi</p>
