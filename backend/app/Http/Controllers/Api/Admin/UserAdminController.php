@@ -210,6 +210,11 @@ class UserAdminController extends Controller
                     : null;
             }
 
+            // Nama pengguna untuk login = kredensial yang dipakai (bukan selalu NIP/NISN;
+            // guru tanpa NIP tetap perlu tahu username-nya). Urutannya sama dengan
+            // AuthController::resolveUser: NIP → NISN → email → nama.
+            $row['username'] = self::usernameFor($u);
+
             return $row;
         });
 
@@ -223,12 +228,48 @@ class UserAdminController extends Controller
     public function resetPassword(Request $request, string $uuid): JsonResponse
     {
         $user = User::where('uuid', $uuid)->firstOrFail();
-        $data = $request->validate(['password' => ['required', 'string', 'min:8']]);
+        // Password boleh KOSONG → pakai password default sesuai peran. Admin sering
+        // hanya ingin mengembalikan akun ke default tanpa mengetik apa pun.
+        $data = $request->validate(['password' => ['nullable', 'string', 'min:8']]);
+
+        $isDefault = empty($data['password']);
+        if ($isDefault) {
+            $plain = self::defaultPasswordFor($user);
+            if (! $plain) {
+                return response()->json([
+                    'message' => 'Password default belum dikonfigurasi di .env server (DEFAULT_TEACHER_PASSWORD / DEFAULT_STUDENT_PASSWORD). Isi dulu, atau ketik password baru secara manual.',
+                ], 422);
+            }
+        } else {
+            $plain = $data['password'];
+        }
+
         // Password yang di-set admin selalu bersifat sementara — pemilik akun
         // wajib menggantinya sendiri saat login berikutnya.
-        $user->update(['password' => Hash::make($data['password']), 'must_change_password' => true]);
+        $user->update(['password' => Hash::make($plain), 'must_change_password' => true]);
 
-        return response()->json(['message' => 'Password berhasil direset. Pengguna wajib mengganti password saat login berikutnya.']);
+        return response()->json([
+            'message'    => 'Password berhasil direset. Pengguna wajib mengganti password saat login berikutnya.',
+            'is_default' => $isDefault,
+            'target'     => $user->nama,
+            'username'   => self::usernameFor($user),
+            'password'   => $plain,
+        ]);
+    }
+
+    /** Nama pengguna (kredensial login) sebuah user: NIP → NISN → email → nama. */
+    private static function usernameFor(User $u): string
+    {
+        return $u->teacher?->nip
+            ?: $u->student?->nisn
+            ?: ($u->email ?: $u->nama);
+    }
+
+    /** Password default (plain) menurut peran; null bila belum dikonfigurasi. */
+    private static function defaultPasswordFor(User $u): ?string
+    {
+        $isSiswa = $u->role === UserRole::Siswa;
+        return config($isSiswa ? 'accounts.default_student_password' : 'accounts.default_teacher_password');
     }
 
     // PUT /admin/users/{uuid}/toggle-status
@@ -283,8 +324,11 @@ class UserAdminController extends Controller
         $username = $type === 'guru' ? 'NIP' : 'NISN';
 
         return response()->json([
-            'message' => "Password default {$type} berhasil di-set untuk {$count} akun. Username = {$username}; password sesuai {$envKey} di .env. Semua akun wajib mengganti password saat login pertama.",
-            'count' => $count,
+            'message'  => "Password default berhasil di-set untuk {$count} akun {$type}.",
+            'count'    => $count,
+            'target'   => "Semua {$type} ({$count} akun)",
+            'username' => "{$username} masing-masing",
+            'password' => $plain,
         ]);
     }
 

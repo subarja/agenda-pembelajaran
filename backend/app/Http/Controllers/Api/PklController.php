@@ -19,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use OpenSpout\Common\Entity\Cell\NumericCell;
 use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
@@ -81,109 +82,123 @@ class PklController extends Controller
         return response()->json(['data' => $placements->map(fn ($p) => $this->placementRow($p))->values()]);
     }
 
-    // ── Agenda PKL mingguan ────────────────────────────────────────────────────
+    // ── Agenda PKL mingguan (AGREGAT lintas kelas) ─────────────────────────────
+    //
+    // Pembimbingan PKL dilakukan sekaligus untuk seluruh kelas bimbingan, jadi agenda
+    // diisi SEKALI per minggu dan otomatis terdistribusi ke tiap kelas (satu rekaman
+    // PklAgenda per kelas, catatan/TP sama, presensi ikut kelas siswanya). Hanya bisa
+    // diisi mulai HARI JUMAT minggu itu sampai batas waktu yang ditetapkan admin.
 
-    /** GET /pkl/weeks?class_id= — daftar minggu dalam rentang PKL kelas + status pengisian. */
+    /** GET /pkl/weeks — daftar minggu agenda PKL (agregat semua kelas bimbingan). */
     public function weeks(Request $request): JsonResponse
     {
-        $request->validate(['class_id' => ['required', 'string']]);
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403);
 
-        [$class, $students] = $this->authorizeClass($teacher->id, $request->class_id);
-
-        $range = $this->pklRange($students->pluck('student_id'), $class->id);
-        if (! $range) {
-            return response()->json(['data' => ['class' => $this->classInfo($class), 'weeks' => []]]);
+        $placements = $this->myPlacements($teacher->id)->load(['schoolClass']);
+        if ($placements->isEmpty()) {
+            return response()->json(['data' => ['weeks' => []]]);
         }
 
-        $agendas = PklAgenda::where('pembimbing_teacher_id', $teacher->id)
-            ->where('class_id', $class->id)
-            ->get()->keyBy(fn ($a) => $a->minggu_mulai->toDateString());
+        // class_id → set minggu (string) yang sudah terisi agendanya.
+        $filledByClass = PklAgenda::where('pembimbing_teacher_id', $teacher->id)
+            ->get(['class_id', 'minggu_mulai'])
+            ->groupBy('class_id')
+            ->map(fn ($g) => $g->map(fn ($a) => substr((string) $a->minggu_mulai, 0, 10))->flip());
 
-        // Hanya minggu yang beririsan dengan periode semester aktif yang jadi tagihan —
-        // periode PKL bisa menembus batas semester (mis. Jan–Nov), sisanya urusan
-        // semester berikutnya.
-        $ay         = \App\Support\TahunAjaran::current();
-        $semMulai   = $ay?->tanggal_mulai->toDateString();
-        $semSelesai = $ay?->tanggal_selesai->toDateString();
+        [$min, $max] = $this->aggregateRange($placements);
+        $ay          = \App\Support\TahunAjaran::current();
+        $semMulai    = $ay?->tanggal_mulai->toDateString();
+        $semSelesai  = $ay?->tanggal_selesai->toDateString();
+        $now         = Carbon::now(config('app.school_timezone'));
 
-        $now   = Carbon::now(config('app.school_timezone'));
         $weeks = [];
-        foreach ($this->mondays($range[0], $range[1]) as $senin) {
-            $key      = $senin->toDateString();
-            $jumat    = $senin->copy()->addDays(4)->toDateString();
-            if ($semMulai && ($key > $semSelesai || $jumat < $semMulai)) {
+        foreach ($this->mondays($min, $max) as $senin) {
+            $key   = $senin->toDateString();
+            $jumat = $senin->copy()->addDays(4);
+            if ($semMulai && ($key > $semSelesai || $jumat->toDateString() < $semMulai)) {
                 continue;
             }
-            $agenda   = $agendas->get($key);
-            $deadline = PklMode::fillDeadline($senin->copy());
+
+            $activeClasses = $this->classesActiveInWeek($placements, $senin);
+            if ($activeClasses->isEmpty()) {
+                continue;
+            }
+
+            // Terisi bila SEMUA kelas aktif minggu ini sudah punya rekaman agenda.
+            $terisi = $activeClasses->every(fn ($c) => ($filledByClass[$c['class_db_id']] ?? collect())->has($key));
+
+            $deadline  = PklMode::fillDeadline($senin->copy());
+            $bisaMulai = $now->gte($jumat->copy()->startOfDay());  // baru boleh diisi mulai Jumat
             $weeks[] = [
-                'minggu_mulai' => $key,
-                'label'        => $senin->locale('id')->isoFormat('D MMM') . ' – ' . $senin->copy()->addDays(4)->locale('id')->isoFormat('D MMM YYYY'),
-                'terisi'       => (bool) $agenda,
-                'agenda_id'    => $agenda?->uuid,
-                'sudah_mulai'  => $now->gte($senin),
-                'deadline'     => $deadline->format('Y-m-d H:i'),
-                'lewat_batas'  => $now->gt($deadline),
+                'minggu_mulai'  => $key,
+                'label'         => $senin->locale('id')->isoFormat('D MMM') . ' – ' . $jumat->locale('id')->isoFormat('D MMM YYYY'),
+                'classes'       => $activeClasses->map(fn ($c) => ['label' => $c['label'], 'jumlah_siswa' => $c['jumlah']])->values(),
+                'total_siswa'   => $activeClasses->sum('jumlah'),
+                'terisi'        => $terisi,
+                'bisa_diisi'    => $bisaMulai && $now->lte($deadline),
+                'sebelum_jumat' => ! $bisaMulai,
+                'lewat_batas'   => $bisaMulai && $now->gt($deadline),
+                'deadline'      => $deadline->format('Y-m-d H:i'),
             ];
         }
 
-        return response()->json(['data' => ['class' => $this->classInfo($class), 'weeks' => $weeks]]);
+        return response()->json(['data' => ['weeks' => $weeks]]);
     }
 
-    /** GET /pkl/agenda?class_id=&minggu=YYYY-MM-DD — form agenda (data existing atau kosong). */
+    /** GET /pkl/agenda?minggu=YYYY-MM-DD — form agenda agregat (semua siswa bimbingan). */
     public function showAgenda(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'class_id' => ['required', 'string'],
-            'minggu'   => ['required', 'date'],
-        ]);
+        $data = $request->validate(['minggu' => ['required', 'date']]);
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403);
 
-        [$class, $students] = $this->authorizeClass($teacher->id, $data['class_id']);
-        $senin = $this->normalizeMonday($data['minggu']);
+        $senin      = $this->normalizeMonday($data['minggu']);
+        $placements = $this->myPlacements($teacher->id)->load(['student.user', 'schoolClass']);
+        abort_if($placements->isEmpty(), 403, 'Anda belum menjadi pembimbing PKL.');
 
-        $agenda = PklAgenda::where('pembimbing_teacher_id', $teacher->id)
-            ->where('class_id', $class->id)
+        $active = $this->placementsActiveInWeek($placements, $senin);
+        abort_if($active->isEmpty(), 404, 'Tidak ada siswa bimbingan yang PKL pada minggu ini.');
+
+        // Rekaman agenda per-kelas untuk minggu ini (bisa >1 kelas) — catatan & TP dibagi.
+        $agendas = PklAgenda::where('pembimbing_teacher_id', $teacher->id)
             ->whereDate('minggu_mulai', $senin->toDateString())
             ->with(['objectives', 'attendances'])
-            ->first();
+            ->get();
 
-        $selectedObjectives = $agenda ? $agenda->objectives->pluck('uuid')->all() : [];
-        $absensi = $agenda
-            ? $agenda->attendances->mapWithKeys(fn ($a) => [$a->student_id.'|'.$a->tanggal->toDateString() => $a->status->value])
-            : collect();
+        $catatan  = $agendas->pluck('catatan')->first(fn ($c) => filled($c)) ?? '';
+        $selected = $agendas->flatMap(fn ($a) => $a->objectives->pluck('uuid'))->unique()->values()->all();
+        $absensi  = $agendas->flatMap(fn ($a) => $a->attendances)
+            ->mapWithKeys(fn ($a) => [$a->student_id.'|'.$a->tanggal->toDateString() => $a->status->value]);
+
+        $hari = $this->weekdays($senin);
 
         return response()->json([
             'data' => [
-                'class'       => $this->classInfo($class),
-                'minggu'      => $senin->toDateString(),
-                'hari'        => $this->weekdays($senin),
-                'objectives'  => $this->objectivesForClass($class),
-                'agenda'      => [
-                    'id'         => $agenda?->uuid,
-                    'catatan'    => $agenda?->catatan ?? '',
-                    'objectives' => $selectedObjectives,
-                ],
-                'students' => $students->map(fn ($p) => [
-                    'id'   => $p->student->uuid,
-                    'nis'  => $p->student->nis,
-                    'nama' => $p->student->user->nama,
-                    'telpon' => $p->telpon_siswa,
-                    'presensi' => collect($this->weekdays($senin))->mapWithKeys(fn ($d) =>
-                        [$d['tanggal'] => $absensi->get($p->student->id.'|'.$d['tanggal'])])->all(),
-                ])->values(),
+                'minggu'     => $senin->toDateString(),
+                'hari'       => $hari,
+                'objectives' => $this->objectivesForJurusans($active->map(fn ($p) => $p->schoolClass?->jurusan)->filter()->unique()->values()->all()),
+                'agenda'     => ['catatan' => $catatan, 'objectives' => $selected],
+                // Siswa dikelompokkan agar FE bisa tampilkan per kelas, tapi tetap satu tabel.
+                'students'   => $active
+                    ->sortBy(fn ($p) => [$p->schoolClass?->label(), $p->student->user->nama])
+                    ->map(fn ($p) => [
+                        'id'       => $p->student->uuid,
+                        'nis'      => $p->student->nis,
+                        'nama'     => $p->student->user->nama,
+                        'kelas'    => $p->schoolClass?->label(),
+                        'telpon'   => $p->telpon_siswa,
+                        'presensi' => collect($hari)->mapWithKeys(fn ($d) =>
+                            [$d['tanggal'] => $absensi->get($p->student->id.'|'.$d['tanggal'])])->all(),
+                    ])->values(),
             ],
         ]);
     }
 
-    /** POST /pkl/agenda — buat/perbarui agenda mingguan + presensi harian. */
+    /** POST /pkl/agenda — simpan agenda agregat; terdistribusi ke tiap kelas bimbingan. */
     public function storeAgenda(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'class_id'          => ['required', 'string'],
             'minggu'            => ['required', 'date'],
             'catatan'           => ['nullable', 'string', 'max:2000'],
             'objective_ids'     => ['array'],
@@ -197,48 +212,75 @@ class PklController extends Controller
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403);
 
-        [$class, $students] = $this->authorizeClass($teacher->id, $data['class_id']);
-        $senin = $this->normalizeMonday($data['minggu']);
+        $senin      = $this->normalizeMonday($data['minggu']);
+        $jumat      = $senin->copy()->addDays(4);
+        $placements = $this->myPlacements($teacher->id)->load(['student.user', 'schoolClass']);
+        abort_if($placements->isEmpty(), 403, 'Anda belum menjadi pembimbing PKL.');
+        $active     = $this->placementsActiveInWeek($placements, $senin);
+        abort_if($active->isEmpty(), 404, 'Tidak ada siswa bimbingan yang PKL pada minggu ini.');
 
-        // Jendela: minggu belum boleh diisi kalau belum mulai; ditolak kalau lewat deadline.
+        // Jendela: baru boleh diisi mulai Jumat; ditolak kalau lewat deadline.
         $now = Carbon::now(config('app.school_timezone'));
-        abort_if($now->lt($senin), 422, 'Minggu ini belum berjalan — agenda PKL belum bisa diisi.');
+        abort_if($now->lt($jumat->copy()->startOfDay()), 422,
+            'Agenda PKL minggu ini baru bisa diisi mulai hari Jumat.');
         abort_if($now->gt(PklMode::fillDeadline($senin->copy())), 422,
             'Batas waktu pengisian agenda PKL untuk minggu ini sudah lewat.');
 
-        $ayId = PklMode::activeAcademicYearId();
+        $ayId       = PklMode::activeAcademicYearId();
+        $validDates = collect($this->weekdays($senin))->pluck('tanggal');
+        $today      = $now->toDateString();
 
-        $agenda = PklAgenda::updateOrCreate(
-            ['pembimbing_teacher_id' => $teacher->id, 'class_id' => $class->id, 'minggu_mulai' => $senin->toDateString()],
-            ['academic_year_id' => $ayId, 'catatan' => $data['catatan'] ?? null],
-        );
+        // Presensi masuk yang di-key per uuid siswa (validasi tanggal & masa depan).
+        $presensiByStudent = collect($data['presensi'] ?? [])
+            ->filter(fn ($p) => $validDates->contains($p['tanggal']) && $p['tanggal'] <= $today)
+            ->groupBy('student_id');
 
-        // TP: hanya yang valid untuk jurusan kelas ini.
-        $allowedObjectiveIds = PklObjective::forJurusan($class->jurusan)
-            ->where('aktif', true)
-            ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
-            ->whereIn('uuid', $data['objective_ids'] ?? [])
-            ->pluck('id');
-        $agenda->objectives()->sync($allowedObjectiveIds);
+        // Distribusi: satu rekaman agenda per kelas aktif, catatan/TP sama.
+        DB::transaction(function () use ($active, $teacher, $senin, $ayId, $data, $presensiByStudent) {
+            foreach ($active->groupBy('class_id') as $classGroup) {
+                $class = $classGroup->first()->schoolClass;
 
-        // Presensi: hanya siswa bimbingan di kelas ini, tanggal Sen–Jum minggu ini, tidak masa depan.
-        $studentIdByUuid = $students->mapWithKeys(fn ($p) => [$p->student->uuid => $p->student->id]);
-        $validDates      = collect($this->weekdays($senin))->pluck('tanggal');
-        $today           = $now->toDateString();
+                // Upsert eksplisit lewat whereDate + withTrashed: kolom minggu_mulai
+                // bertipe `date` (updateOrCreate dgn string tanggal bisa gagal cocok →
+                // duplikat) DAN PklAgenda pakai SoftDeletes sehingga baris terhapus tetap
+                // menahan slot unique — cari termasuk yang trashed lalu pulihkan.
+                $agenda = PklAgenda::withTrashed()
+                    ->where('pembimbing_teacher_id', $teacher->id)
+                    ->where('class_id', $class->id)
+                    ->whereDate('minggu_mulai', $senin->toDateString())
+                    ->first()
+                    ?? new PklAgenda([
+                        'pembimbing_teacher_id' => $teacher->id,
+                        'class_id'              => $class->id,
+                        'minggu_mulai'          => $senin->toDateString(),
+                    ]);
+                if ($agenda->trashed()) {
+                    $agenda->restore();
+                }
+                $agenda->academic_year_id = $ayId;
+                $agenda->catatan          = $data['catatan'] ?? null;
+                $agenda->save();
 
-        foreach ($data['presensi'] ?? [] as $p) {
-            $sid = $studentIdByUuid->get($p['student_id']);
-            if (! $sid) continue;                                   // bukan siswa bimbingan → abaikan
-            if (! $validDates->contains($p['tanggal'])) continue;   // di luar Sen–Jum minggu ini
-            if ($p['tanggal'] > $today) continue;                   // tolak tanggal masa depan
+                // TP: hanya yang valid untuk jurusan kelas ini (dari daftar yang dikirim).
+                $objIds = PklObjective::forJurusan($class->jurusan)
+                    ->where('aktif', true)
+                    ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
+                    ->whereIn('uuid', $data['objective_ids'] ?? [])
+                    ->pluck('id');
+                $agenda->objectives()->sync($objIds);
 
-            PklAttendance::updateOrCreate(
-                ['pkl_agenda_id' => $agenda->id, 'student_id' => $sid, 'tanggal' => $p['tanggal']],
-                ['status' => $p['status']],
-            );
-        }
+                foreach ($classGroup as $p) {
+                    foreach ($presensiByStudent->get($p->student->uuid, collect()) as $pr) {
+                        PklAttendance::updateOrCreate(
+                            ['pkl_agenda_id' => $agenda->id, 'student_id' => $p->student->id, 'tanggal' => $pr['tanggal']],
+                            ['status' => $pr['status']],
+                        );
+                    }
+                }
+            }
+        });
 
-        return response()->json(['message' => 'Agenda PKL tersimpan.', 'data' => ['id' => $agenda->uuid]]);
+        return response()->json(['message' => 'Agenda PKL tersimpan untuk semua kelas bimbingan.']);
     }
 
     // ── Ekspor ─────────────────────────────────────────────────────────────────
@@ -475,13 +517,14 @@ class PklController extends Controller
         return [$class, $placements];
     }
 
-    private function objectivesForClass(SchoolClass $class): array
+    /** TP PKL gabungan untuk beberapa jurusan (bimbingan bisa lintas jurusan). */
+    private function objectivesForJurusans(array $jurusans): array
     {
         $ayId = PklMode::activeAcademicYearId();
 
-        return PklObjective::forJurusan($class->jurusan)
-            ->where('aktif', true)
+        return PklObjective::where('aktif', true)
             ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
+            ->where(fn ($q) => $q->whereNull('jurusan')->orWhereIn('jurusan', $jurusans))
             ->orderByRaw('jurusan IS NOT NULL')
             ->orderBy('id')
             ->get()
@@ -493,22 +536,38 @@ class PklController extends Controller
             ])->all();
     }
 
-    /** Rentang tanggal PKL sebuah kelas = min(mulai)..max(selesai) placement di kelas itu. */
-    private function pklRange(Collection $studentIds, int $classId): ?array
+    /** Rentang tanggal PKL agregat pembimbing = min(mulai)..max(selesai) seluruh placement. */
+    private function aggregateRange(Collection $placements): array
     {
-        $ayId = PklMode::activeAcademicYearId();
-        $q = PklPlacement::where('class_id', $classId)
-            ->when($ayId, fn ($qq) => $qq->where('academic_year_id', $ayId))
-            ->whereIn('student_id', $studentIds);
+        return [
+            Carbon::parse($placements->min('tanggal_mulai')),
+            Carbon::parse($placements->max('tanggal_selesai')),
+        ];
+    }
 
-        $mulai   = $q->clone()->min('tanggal_mulai');
-        $selesai = $q->clone()->max('tanggal_selesai');
+    /** Placement yang periodenya beririsan dengan minggu (Sen–Jum) yang mulai $senin. */
+    private function placementsActiveInWeek(Collection $placements, Carbon $senin): Collection
+    {
+        $jumat = $senin->copy()->addDays(4);
 
-        if (! $mulai || ! $selesai) {
-            return null;
-        }
+        return $placements->filter(fn ($p) =>
+            $p->tanggal_mulai && $p->tanggal_selesai
+            && $p->tanggal_mulai->lte($jumat) && $p->tanggal_selesai->gte($senin)
+        )->values();
+    }
 
-        return [Carbon::parse($mulai), Carbon::parse($selesai)];
+    /** Ringkasan kelas (label + jumlah siswa) yang aktif PKL pada minggu $senin. */
+    private function classesActiveInWeek(Collection $placements, Carbon $senin): Collection
+    {
+        return $this->placementsActiveInWeek($placements, $senin)
+            ->groupBy('class_id')
+            ->map(fn ($g) => [
+                'class_db_id' => $g->first()->class_id,
+                'label'       => $g->first()->schoolClass?->label(),
+                'jumlah'      => $g->count(),
+            ])
+            ->sortBy('label')
+            ->values();
     }
 
     /** Semua Senin dari minggu yang memuat $start s/d $end. */

@@ -23,14 +23,13 @@ export default function PklAgendaFormPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const classId = params.get('class_id') ?? ''
   const minggu  = params.get('minggu') ?? ''
   const today   = toLocalDateStr(new Date())
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['pkl-agenda', classId, minggu],
-    queryFn: () => pklApi.agenda(classId, minggu),
-    enabled: !!classId && !!minggu,
+    queryKey: ['pkl-agenda', minggu],
+    queryFn: () => pklApi.agenda(minggu),
+    enabled: !!minggu,
   })
   const form = data?.data.data as PklAgendaForm | undefined
 
@@ -71,7 +70,7 @@ export default function PklAgendaFormPage() {
         for (const [tgl, st] of Object.entries(days))
           if (st) presensiArr.push({ student_id: sid, tanggal: tgl, status: st })
 
-      return pklApi.saveAgenda({ class_id: classId, minggu, catatan, objective_ids: objIds, presensi: presensiArr })
+      return pklApi.saveAgenda({ minggu, catatan, objective_ids: objIds, presensi: presensiArr })
     },
     onSuccess: () => {
       setSaved(true); setErrMsg(null)
@@ -91,8 +90,10 @@ export default function PklAgendaFormPage() {
       </button>
 
       <div>
-        <h1 className="text-xl font-bold">Agenda PKL — {form.class.label}</h1>
-        <p className="text-xs text-muted-foreground">Minggu {form.hari[0]?.tanggal} s/d {form.hari[form.hari.length - 1]?.tanggal}</p>
+        <h1 className="text-xl font-bold">Agenda PKL Mingguan</h1>
+        <p className="text-xs text-muted-foreground">
+          Minggu {form.hari[0]?.tanggal} s/d {form.hari[form.hari.length - 1]?.tanggal} · {form.students.length} siswa bimbingan (semua kelas)
+        </p>
       </div>
 
       {/* Desktop lebar: TP + catatan di kolom kiri, presensi (butuh lebar) di kanan. */}
@@ -148,7 +149,7 @@ export default function PklAgendaFormPage() {
             <thead>
               <tr className="border-b">
                 {/* sticky: nama siswa tetap terlihat saat tabel digulir horizontal di HP */}
-                <th className="text-left py-2 pr-2 font-medium sticky left-0 bg-card min-w-[8rem] max-w-[11rem]">Nama</th>
+                <th className="text-left py-2 pr-2 font-medium sticky left-0 bg-card min-w-[9rem] max-w-[12rem]">Nama · Kelas</th>
                 {form.hari.map((h) => (
                   <th key={h.tanggal} className="px-1.5 py-2 font-medium text-center whitespace-nowrap">
                     {h.nama}
@@ -160,8 +161,9 @@ export default function PklAgendaFormPage() {
             <tbody>
               {form.students.map((s) => (
                 <tr key={s.id} className="border-b last:border-0">
-                  <td className="py-1.5 pr-2 sticky left-0 bg-card min-w-[8rem] max-w-[11rem]">
-                    <span className="inline-flex items-center gap-1.5">{s.nama}<WhatsAppLink telpon={s.telpon} iconOnly /></span>
+                  <td className="py-1.5 pr-2 sticky left-0 bg-card min-w-[9rem] max-w-[12rem]">
+                    <span className="flex items-center gap-1.5"><span className="truncate">{s.nama}</span><WhatsAppLink telpon={s.telpon} iconOnly /></span>
+                    {s.kelas && <span className="block text-[11px] text-muted-foreground">{s.kelas}</span>}
                   </td>
                   {form.hari.map((h) => {
                     const future = h.tanggal > today

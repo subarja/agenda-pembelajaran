@@ -340,6 +340,8 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
 
         // ── Jam & Bel (bel per hari, mode Apel/Tanpa Apel, pengecualian tanggal) ───
         Route::get('bell-schedule',                             [BellScheduleController::class, 'show']);
+        Route::get('bell-schedule/template',                    [BellScheduleController::class, 'template']);
+        Route::post('bell-schedule/import',                     [BellScheduleController::class, 'import']);
         Route::put('bell-schedule/periods',                     [BellScheduleController::class, 'updatePeriods']);
         Route::post('bell-schedule/modes',                      [BellScheduleController::class, 'storeMode']);
         Route::put('bell-schedule/modes/{mode}',                [BellScheduleController::class, 'updateMode']);

@@ -50,7 +50,7 @@ export function AgendaPerluDiisiList({
             onClick={() => isKokurikuler
               ? navigate('/kokurikuler')
               : isPkl
-                ? navigate(`/pkl/agenda?class_id=${s.class_id}&minggu=${s.minggu ?? s.tanggal}`)
+                ? navigate(`/pkl/agenda?minggu=${s.minggu ?? s.tanggal}`)
                 : onSelect(s)}
             className={cn(
               'w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',

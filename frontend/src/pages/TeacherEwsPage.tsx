@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileSpreadsheet, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileSpreadsheet, FileText, Loader2, RefreshCw, Users, BarChart3 } from 'lucide-react'
 import api from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +27,124 @@ interface TeacherEws {
 
 const PER_PAGE_OPTIONS = [25, 50, 100, 'semua'] as const
 type PerPage = 25 | 50 | 100 | 'semua'
+
+// Warna status agenda. STATUS PALETTE (bukan kategorikal): selalu berlabel teks +
+// angka + urutan tetap → warna tak pernah jadi satu-satunya pembeda (aman CVD).
+const HEX = {
+  hijau: '#22c55e', kuning: '#eab308', oranye: '#f97316', merah: '#ef4444',
+  submit: '#22c55e', draft: '#f59e0b', kosong: '#cbd5e1',
+}
+
+function pctStr(n: number, total: number): string {
+  if (total <= 0) return '0%'
+  const v = (n / total) * 100
+  return `${v >= 9.95 ? Math.round(v) : Math.round(v * 10) / 10}%`
+}
+
+/**
+ * Grafik ringkas pengisian agenda se-sekolah (CSS murni, tanpa dependensi chart).
+ * Dua panel: komposisi sesi (Tersubmit/Draft/Kosong) dgn angka headline, dan sebaran
+ * status guru (Merah→Hijau). Responsif: berdampingan di desktop, bertumpuk di HP.
+ * Agregat dihitung dari daftar guru penuh (bukan yang terfilter) = potret sekolah.
+ */
+function PengisianAgendaChart({ teachers }: { teachers: TeacherEws[] }) {
+  const agg = useMemo(() => {
+    let jadwal = 0, submit = 0, draft = 0, kosong = 0
+    const lv: Record<string, number> = { merah: 0, oranye: 0, kuning: 0, hijau: 0 }
+    for (const t of teachers) {
+      jadwal += t.total_jadwal; submit += t.total_tersubmit; draft += t.total_draft; kosong += t.total_kosong
+      if (t.level in lv) lv[t.level]++
+    }
+    const diisi = submit + draft
+    const guruTerjadwal = lv.merah + lv.oranye + lv.kuning + lv.hijau
+    return { jadwal, submit, draft, kosong, diisi, lv, guruTerjadwal, pct: jadwal > 0 ? diisi / jadwal * 100 : null }
+  }, [teachers])
+
+  const sesi = [
+    { key: 'submit', label: 'Tersubmit', val: agg.submit, hex: HEX.submit },
+    { key: 'draft',  label: 'Draft',     val: agg.draft,  hex: HEX.draft },
+    { key: 'kosong', label: 'Kosong',    val: agg.kosong, hex: HEX.kosong },
+  ]
+  const status = (['merah', 'oranye', 'kuning', 'hijau'] as const).map(k => ({
+    key: k, label: LEVEL_CONFIG[k].label, val: agg.lv[k], hex: HEX[k],
+  }))
+
+  // Warnai headline % sesuai ambang level yang sama dengan tabel (≥90 hijau, dst).
+  const pctColor = agg.pct === null ? 'text-muted-foreground'
+    : agg.pct >= 90 ? 'text-green-600' : agg.pct >= 75 ? 'text-yellow-600'
+    : agg.pct >= 50 ? 'text-orange-600' : 'text-red-600'
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-2">
+      {/* Panel 1 — Komposisi sesi + headline % */}
+      <div className="rounded-xl border bg-card p-4">
+        <p className="text-sm font-semibold flex items-center gap-1.5 mb-3"><BarChart3 className="h-4 w-4" /> Pengisian Agenda Sekolah</p>
+        {agg.jadwal === 0 ? (
+          <p className="text-xs text-muted-foreground py-8 text-center">Belum ada sesi terjadwal pada periode ini.</p>
+        ) : (
+          <>
+            <div className="flex items-baseline gap-2 mb-3">
+              <span className={cn('text-4xl font-bold tabular-nums', pctColor)}>{pctStr(agg.diisi, agg.jadwal)}</span>
+              <span className="text-xs text-muted-foreground">
+                {agg.diisi.toLocaleString('id-ID')} dari {agg.jadwal.toLocaleString('id-ID')} sesi terisi
+              </span>
+            </div>
+            {/* Stacked bar — gap 2px antar-segmen, ujung membulat */}
+            <div className="flex h-7 w-full gap-0.5 overflow-hidden rounded-md" role="img"
+              aria-label={`Komposisi sesi: tersubmit ${agg.submit}, draft ${agg.draft}, kosong ${agg.kosong}`}>
+              {sesi.map(s => s.val > 0 && (
+                <div key={s.key} title={`${s.label}: ${s.val} (${pctStr(s.val, agg.jadwal)})`}
+                  style={{ width: `${(s.val / agg.jadwal) * 100}%`, background: s.hex }}
+                  className="first:rounded-l-md last:rounded-r-md min-w-[3px]" />
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {sesi.map(s => (
+                <div key={s.key} className="flex items-center gap-1.5 text-xs min-w-0">
+                  <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: s.hex }} />
+                  <span className="text-muted-foreground truncate">{s.label}</span>
+                  <span className="ml-auto font-semibold tabular-nums">{s.val.toLocaleString('id-ID')}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Panel 2 — Sebaran status guru */}
+      <div className="rounded-xl border bg-card p-4">
+        <p className="text-sm font-semibold flex items-center gap-1.5 mb-3"><Users className="h-4 w-4" /> Sebaran Status Guru</p>
+        {agg.guruTerjadwal === 0 ? (
+          <p className="text-xs text-muted-foreground py-8 text-center">Belum ada guru dengan jadwal pada periode ini.</p>
+        ) : (
+          <>
+            <div className="flex items-baseline gap-2 mb-3">
+              <span className="text-4xl font-bold tabular-nums">{agg.guruTerjadwal}</span>
+              <span className="text-xs text-muted-foreground">guru terjadwal · {agg.lv.hijau} sudah tertib (Hijau)</span>
+            </div>
+            <div className="flex h-7 w-full gap-0.5 overflow-hidden rounded-md" role="img"
+              aria-label={`Sebaran status guru: merah ${agg.lv.merah}, oranye ${agg.lv.oranye}, kuning ${agg.lv.kuning}, hijau ${agg.lv.hijau}`}>
+              {status.map(s => s.val > 0 && (
+                <div key={s.key} title={`${s.label}: ${s.val} guru (${pctStr(s.val, agg.guruTerjadwal)})`}
+                  style={{ width: `${(s.val / agg.guruTerjadwal) * 100}%`, background: s.hex }}
+                  className="first:rounded-l-md last:rounded-r-md min-w-[3px]" />
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4">
+              {status.map(s => (
+                <div key={s.key} className="flex items-center gap-1.5 text-xs min-w-0">
+                  <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: s.hex }} />
+                  <span className="text-muted-foreground truncate">{s.label}</span>
+                  <span className="ml-auto font-semibold tabular-nums">{s.val}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function TeacherEwsPage() {
   const navigate  = useNavigate()
@@ -148,7 +266,10 @@ export default function TeacherEwsPage() {
         </div>
       </div>
 
-      {/* Distribusi level */}
+      {/* Grafik ringkas pengisian agenda (potret sekolah, tak terpengaruh filter/cari) */}
+      {data && !isLoading && <PengisianAgendaChart teachers={teachers} />}
+
+      {/* Distribusi level — kartu angka juga berfungsi sebagai filter klik */}
       {data && (
         <div className="grid grid-cols-4 gap-2">
           {(['merah', 'oranye', 'kuning', 'hijau'] as const).map(level => {
