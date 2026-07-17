@@ -266,12 +266,57 @@ class PklScheduleAccessTest extends TestCase
 
     public function test_isagendaexempt_membaca_periode_placement(): void
     {
+        // Hari ini dibekukan Jumat 13 Mar. Saklar OFF → hanya tanggal LAMPAU yang bebas.
         PklSetting::instance()->update(['aktif' => false]);
         PklMode::flush();
 
-        $this->assertTrue(PklMode::isAgendaExempt($this->kelasXII->id, '2026-03-11'));  // dalam periode
-        $this->assertFalse(PklMode::isAgendaExempt($this->kelasXII->id, '2026-06-03')); // di luar periode
+        $this->assertTrue(PklMode::isAgendaExempt($this->kelasXII->id, '2026-03-11'));   // lampau, dalam periode
+        $this->assertFalse(PklMode::isAgendaExempt($this->kelasXII->id, '2026-03-13'));  // HARI INI → ditagih reguler
+        $this->assertFalse(PklMode::isAgendaExempt($this->kelasXII->id, '2026-03-20'));  // ke depan → ditagih reguler
+        $this->assertFalse(PklMode::isAgendaExempt($this->kelasXII->id, '2026-06-03'));  // di luar periode
         $this->assertFalse(PklMode::isAgendaExempt(null, '2026-03-11'));
+
+        // Saklar ON → semua tanggal dalam periode bebas (termasuk hari ini & ke depan).
+        PklSetting::instance()->update(['aktif' => true]);
+        PklMode::flush();
+        $this->assertTrue(PklMode::isAgendaExempt($this->kelasXII->id, '2026-03-13'));
+        $this->assertTrue(PklMode::isAgendaExempt($this->kelasXII->id, '2026-03-20'));
+    }
+
+    public function test_mode_off_menagih_sesi_hari_ini_bukan_masa_lalu(): void
+    {
+        // Jadwal Jumat (hari ini 13 Mar) di kelas XII yang sedang PKL.
+        Schedule::create([
+            'class_id' => $this->kelasXII->id, 'subject_id' => $this->subject->id,
+            'teacher_id' => $this->guruPloting->teacher->id,
+            'hari' => 'jumat', 'jam_mulai' => '07:00', 'jam_selesai' => '08:30', 'aktif' => true,
+        ]);
+
+        PklSetting::instance()->update(['aktif' => false]);
+        PklMode::flush();
+
+        Sanctum::actingAs($this->guruPloting);
+        $rows = $this->getJson('/api/v1/agendas/perlu-diisi')->assertOk()->json('data');
+        $tanggal = array_column($rows, 'tanggal');
+
+        // Sesi Jumat hari ini (13 Mar) DITAGIH reguler; sesi Rabu lampau (11 Mar) tetap bebas.
+        $this->assertContains('2026-03-13', $tanggal);
+        $this->assertNotContains('2026-03-11', $tanggal);
+    }
+
+    public function test_mode_off_tagihan_pkl_hanya_masa_lalu(): void
+    {
+        PklSetting::instance()->update(['aktif' => false]);
+        PklMode::flush();
+
+        Sanctum::actingAs($this->pembimbing);
+        $minggu = collect($this->getJson('/api/v1/agendas/perlu-diisi')->assertOk()->json('data'))
+            ->where('jenis', 'pkl')->pluck('minggu');
+
+        // Minggu lampau (Senin 2 Mar, Jumat 6 Mar < hari ini) tetap muncul sbg backlog;
+        // minggu berjalan (Senin 9 Mar, Jumat 13 = hari ini) TIDAK muncul saat mode off.
+        $this->assertContains('2026-03-02', $minggu->all());
+        $this->assertNotContains('2026-03-09', $minggu->all());
     }
 
     // ── Beban Mengajar ───────────────────────────────────────────────────────

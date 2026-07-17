@@ -87,13 +87,15 @@ class PklMode
     /**
      * Sesi reguler (kelas, tanggal) ini dibebaskan dari tagihan agenda?
      *
-     * Murni berbasis PERIODE PENEMPATAN kelas (min mulai..max selesai placement),
-     * BUKAN saklar:
+     * Berbasis PERIODE PENEMPATAN kelas (min mulai..max selesai placement), dengan
+     * batas saklar yang berlaku KE DEPAN:
      *  - Saklar ON tanpa penempatan TIDAK membebaskan apa pun — dulu seluruh kelas XII
      *    langsung bebas begitu saklar dinyalakan, padahal tanpa penempatan guru juga tak
      *    bisa mengisi agenda PKL mingguan → kewajibannya lenyap dua-duanya.
-     *  - Tanggal dalam periode tetap bebas WALAU saklar sudah OFF — mematikan saklar
-     *    tidak menagih retroaktif sesi semasa PKL (rekamannya ada di agenda PKL).
+     *  - Saklar ON: semua tanggal dalam periode bebas.
+     *  - Saklar OFF: hanya tanggal LAMPAU (sebelum hari ini) yang tetap bebas —
+     *    mematikan saklar tidak menagih retroaktif sesi semasa PKL, TAPI hari ini &
+     *    ke depan kembali ditagih agenda reguler karena PKL sudah tidak berjalan.
      */
     public static function isAgendaExempt(?int $classId, string $tanggal): bool
     {
@@ -110,8 +112,19 @@ class PklMode
             ->all();
 
         $range = self::$placementRanges[$classId] ?? null;
+        $inRange = $range !== null && $tanggal >= $range[0] && $tanggal <= $range[1];
+        if (! $inRange) {
+            return false;
+        }
 
-        return $range !== null && $tanggal >= $range[0] && $tanggal <= $range[1];
+        if (self::isActive()) {
+            return true;
+        }
+
+        // Saklar OFF → cuma bebaskan tanggal sebelum hari ini (lampau).
+        $today = Carbon::now(config('app.school_timezone'))->toDateString();
+
+        return $tanggal < $today;
     }
 
     /** Reset cache statis — dipakai test & setelah import/hapus placement. */
@@ -156,6 +169,12 @@ class PklMode
             ->groupBy('class_id')
             ->map(fn ($g) => $g->map(fn ($a) => substr((string) $a->minggu_mulai, 0, 10))->flip());
 
+        // Saklar OFF: hanya tagih PKL minggu LAMPAU (Jumat-nya sudah lewat sebelum hari
+        // ini) sebagai backlog — minggu berjalan & mendatang tidak lagi ditagih karena
+        // PKL sudah dihentikan. Saklar ON: minggu berjalan (Jumat tercapai) ikut ditagih.
+        $modeAktif = self::isActive();
+        $today     = Carbon::now(config('app.school_timezone'))->toDateString();
+
         $now   = Carbon::now(config('app.school_timezone'));
         $senin = Carbon::parse($placements->min('tanggal_mulai'))->startOfWeek(Carbon::MONDAY);
         $akhir = Carbon::parse($placements->max('tanggal_selesai'));
@@ -165,6 +184,9 @@ class PklMode
             $jumat = $senin->copy()->addDays(4);
             if ($now->lt($jumat->copy()->startOfDay())) {
                 break;                                          // belum masuk Jumat minggu ini
+            }
+            if (! $modeAktif && $jumat->toDateString() >= $today) {
+                continue;                                       // OFF: lewati minggu berjalan/mendatang
             }
             $key = $senin->toDateString();
             if ($semMulai && ($key > $semSelesai || $jumat->toDateString() < $semMulai)) {
