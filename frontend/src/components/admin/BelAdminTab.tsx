@@ -1,10 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, Trash2, Star } from 'lucide-react'
+import { Loader2, Plus, Trash2, Star, Download, Upload, AlertCircle, Check } from 'lucide-react'
 import api from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+
+async function downloadBlob(url: string, filename: string) {
+  const res = await api.get(url, { responseType: 'blob' })
+  const href = URL.createObjectURL(new Blob([res.data]))
+  const a = document.createElement('a')
+  a.href = href; a.download = filename
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(href), 60_000)
+}
 
 const HARI = ['senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'] as const
 
@@ -19,6 +28,9 @@ interface BelData {
 }
 
 const inputCls = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
+// Varian tanpa w-full untuk input berukuran tetap (baris jam bel) — supaya lebar
+// eksplisit (w-16/w-28) tidak dikalahkan w-full.
+const belInputCls = 'rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
 
 function useBel() {
   return useQuery<BelData>({
@@ -55,6 +67,30 @@ function BelHariSection({ data }: { data: BelData }) {
   const [rows, setRows] = useState<BelPeriodRow[]>([])
   const [msg, setMsg] = useState<string | null>(null)
 
+  // ── Import Excel (semua hari sekaligus) ──
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{ ok: boolean; message: string; errors?: string[] } | null>(null)
+
+  async function onImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (fileRef.current) fileRef.current.value = ''
+    if (!file) return
+    setImporting(true); setImportResult(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await api.post('/admin/bell-schedule/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      setImportResult({ ok: true, message: r.data.message, errors: r.data.errors })
+      qc.invalidateQueries({ queryKey: ['admin-bell-schedule'] })
+    } catch (err: any) {
+      const d = err?.response?.data
+      setImportResult({ ok: false, message: d?.message ?? 'Import gagal.', errors: d?.errors })
+    } finally {
+      setImporting(false)
+    }
+  }
+
   useEffect(() => {
     setRows((data.periods[hari] ?? []).map(r => ({ ...r })))
     setMsg(null)
@@ -87,6 +123,32 @@ function BelHariSection({ data }: { data: BelData }) {
         </select>
       </div>
 
+      {/* Import Excel — mengisi banyak hari sekaligus (kolom: hari, jam_ke, jam_mulai, jam_selesai) */}
+      <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Impor semua hari sekaligus dari Excel. Kolom: <code>hari</code>, <code>jam_ke</code>, <code>jam_mulai</code>, <code>jam_selesai</code> (satu baris = satu jam bel). Setiap hari yang ada di file <b>menggantikan</b> bel hari itu; hari yang tak ada di file tidak berubah.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadBlob('/admin/bell-schedule/template', 'template_jam_bel.xlsx')}>
+            <Download className="h-4 w-4 mr-1" /> Unduh Template
+          </Button>
+          <Button size="sm" variant="outline" disabled={importing} onClick={() => fileRef.current?.click()}>
+            {importing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />} Import Excel
+          </Button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onImport} />
+        </div>
+        {importResult && (
+          <div className={`rounded-md border p-2 text-xs ${importResult.ok ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+            <p className="flex items-center gap-1 font-medium">
+              {importResult.ok ? <Check className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />} {importResult.message}
+            </p>
+            {importResult.errors && importResult.errors.length > 0 && (
+              <ul className="list-disc ml-5 mt-1 text-red-600">{importResult.errors.slice(0, 8).map((er, i) => <li key={i}>{er}</li>)}</ul>
+            )}
+          </div>
+        )}
+      </div>
+
       {rows.length === 0 && (
         <p className="text-xs text-muted-foreground">
           Belum ada bel untuk hari ini. Import XML akan mengisinya otomatis, atau tambahkan manual.
@@ -95,14 +157,14 @@ function BelHariSection({ data }: { data: BelData }) {
 
       <div className="space-y-2">
         {rows.map((r, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground w-14 shrink-0">Jam ke-</span>
-            <input type="number" min={0} max={20} className={inputCls + ' w-20'} value={r.jam_ke}
+          <div key={i} className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground shrink-0">Jam ke-</span>
+            <input type="number" min={0} max={20} className={`${belInputCls} w-16`} value={r.jam_ke}
               onChange={e => set(i, 'jam_ke', Number(e.target.value))} />
-            <input type="time" className={inputCls + ' w-32'} value={r.jam_mulai}
+            <input type="time" className={`${belInputCls} w-28`} value={r.jam_mulai}
               onChange={e => set(i, 'jam_mulai', e.target.value)} />
             <span className="text-xs text-muted-foreground">s.d.</span>
-            <input type="time" className={inputCls + ' w-32'} value={r.jam_selesai}
+            <input type="time" className={`${belInputCls} w-28`} value={r.jam_selesai}
               onChange={e => set(i, 'jam_selesai', e.target.value)} />
             <Button size="icon" variant="ghost" className="shrink-0" onClick={() => setRows(rs => rs.filter((_, idx) => idx !== i))}>
               <Trash2 className="h-4 w-4 text-red-500" />
