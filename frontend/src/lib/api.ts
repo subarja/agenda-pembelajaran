@@ -22,7 +22,28 @@ api.interceptors.request.use((config) => {
 })
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // Proteksi bot hosting (Imunify360 di cPanel produksi) mencegat request XHR dari
+    // IP bereputasi buruk (VPN/datacenter) dan membalas HTTP 200 berisi
+    // {"message":"Access denied by Imunify360 ..."} atau halaman HTML — BUKAN data
+    // endpoint. Tanpa pemeriksaan ini respons tersebut dianggap sukses: React Query
+    // menyimpannya di cache (staleTime 5 menit) dan UI diam dengan data kosong tanpa
+    // pesan apa pun. Diubah jadi rejection agar jalur error normal (retry React Query
+    // + pesan di UI) yang menangani. Respons blob/JSON valid tidak tersentuh.
+    const body = res.data
+    const isBotBlock  = typeof body?.message === 'string' && body.message.includes('Imunify360')
+    const isHtmlPage  = typeof body === 'string'
+      && String(res.headers?.['content-type'] ?? '').includes('text/html')
+    if (isBotBlock || isHtmlPage) {
+      const message = isBotBlock
+        ? 'Akses dicegat proteksi bot server (Imunify360). Matikan VPN lalu coba lagi.'
+        : 'Server tidak membalas data yang diharapkan. Coba lagi.'
+      const err = new Error(message) as Error & { response: typeof res }
+      err.response = { ...res, data: { message } }
+      return Promise.reject(err)
+    }
+    return res
+  },
   (err) => {
     // `POST /auth/login` sendiri membalas 401 utk "identifier/password salah" —
     // itu error normal yang harus ditangani inline oleh LoginPage (setError), BUKAN

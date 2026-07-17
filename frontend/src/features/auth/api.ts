@@ -43,8 +43,17 @@ export const authApi = {
 }
 
 export const academicYearApi = {
-  pilihan: () =>
-    api.get<ApiResponse<AcademicYearOption[]>>('/academic-years/pilihan'),
+  // Bentuk respons divalidasi: proteksi bot hosting pernah membalas HTTP 200 tanpa
+  // field `data` (lihat interceptor lib/api.ts). Kalau ada varian lain yang lolos
+  // sampai sini, lempar error supaya React Query retry + UI menampilkan pesan —
+  // bukan sukses diam-diam dengan dropdown semester kosong.
+  pilihan: async (): Promise<AcademicYearOption[]> => {
+    const res = await api.get<ApiResponse<AcademicYearOption[]>>('/academic-years/pilihan')
+    if (!Array.isArray(res.data?.data)) {
+      throw new Error('Daftar semester tidak dapat dimuat. Coba lagi.')
+    }
+    return res.data.data
+  },
 
   pilih: (academic_year_id: string) =>
     api.post<ApiResponse<User>>('/academic-years/pilih', { academic_year_id }),

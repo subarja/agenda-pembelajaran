@@ -18,7 +18,7 @@ export default function PilihTahunAjaranPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['academic-years-pilihan'],
-    queryFn: () => academicYearApi.pilihan().then((r) => r.data.data),
+    queryFn: () => academicYearApi.pilihan(),
   })
 
   useEffect(() => {
