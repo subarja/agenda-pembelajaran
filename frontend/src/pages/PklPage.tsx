@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
-import { Briefcase, Download, FileText, CheckCircle2, Circle, Loader2, ChevronRight, ChevronDown, Pencil, Plus, X } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Briefcase, Download, FileText, CheckCircle2, Circle, Loader2, ChevronRight, ChevronDown, Pencil, Plus, X, Users } from 'lucide-react'
 import { pklApi, type PklStudentRow, type PklWeek } from '@/features/pkl/api'
 import { usePdfPreview } from '@/hooks/usePdfPreview'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,8 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { WhatsAppLink } from '@/components/ui/whatsapp-link'
-
-type WeekRow = PklWeek & { classId: string; classLabel: string }
 
 export default function PklPage() {
   const navigate = useNavigate()
@@ -31,32 +29,19 @@ export default function PklPage() {
   })
   const students = studentsRes?.data.data ?? []
 
-  // Minggu agenda per kelas bimbingan, digabung jadi satu daftar prioritas.
-  const weekQueries = useQueries({
-    queries: classes.map((c) => ({
-      queryKey: ['pkl-weeks', c.id],
-      queryFn: () => pklApi.weeks(c.id),
-    })),
+  // Agenda PKL kini AGREGAT: satu daftar minggu untuk semua kelas bimbingan.
+  const { data: weeksRes, isLoading: loadingWeeks } = useQuery({
+    queryKey: ['pkl-weeks'],
+    queryFn: () => pklApi.weeks(),
   })
-  const loadingWeeks = weekQueries.some((q) => q.isLoading)
-  // Kunci dependency berupa string stabil (bukan array dinamis — ukurannya bisa
-  // berubah antar-render saat query datang bertahap dan memicu warning React).
-  const weeksSig = weekQueries.map((q) => q.dataUpdatedAt).join(',')
-  const allWeeks: WeekRow[] = useMemo(() =>
-    weekQueries.flatMap((q, i) => {
-      const cls = classes[i]
-      const weeks = q.data?.data.data.weeks ?? []
-      return cls ? weeks.map((w) => ({ ...w, classId: cls.id, classLabel: cls.label })) : []
-    }),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [weeksSig])
+  const allWeeks: PklWeek[] = weeksRes?.data.data.weeks ?? []
 
-  // Prioritas: (1) minggu berjalan yang harus segera diisi, (2) yang telat (lewat batas,
-  // belum diisi), lalu riwayat terisi di balik toggle. Minggu yang belum mulai
-  // disembunyikan total — tidak ada gunanya memenuhi layar.
-  const perluIsi = allWeeks.filter((w) => w.sudah_mulai && !w.terisi && !w.lewat_batas)
+  // Prioritas: (1) minggu yang harus segera diisi (sudah Jumat, belum diisi, belum
+  // lewat batas), (2) yang lewat batas & belum diisi, lalu riwayat terisi di balik
+  // toggle. Minggu yang belum masuk hari Jumat disembunyikan total.
+  const perluIsi = allWeeks.filter((w) => w.bisa_diisi && !w.terisi)
     .sort((a, b) => a.minggu_mulai.localeCompare(b.minggu_mulai))
-  const telat = allWeeks.filter((w) => w.sudah_mulai && !w.terisi && w.lewat_batas)
+  const telat = allWeeks.filter((w) => !w.terisi && w.lewat_batas)
     .sort((a, b) => b.minggu_mulai.localeCompare(a.minggu_mulai))
   const riwayat = allWeeks.filter((w) => w.terisi)
     .sort((a, b) => b.minggu_mulai.localeCompare(a.minggu_mulai))
@@ -197,9 +182,9 @@ export default function PklPage() {
                   <p className="flex items-center gap-1.5 text-sm text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Semua agenda PKL sampai minggu ini sudah diisi.</p>
                 )}
 
-                {perluIsi.map((w) => <WeekButton key={w.classId + w.minggu_mulai} w={w} multiClass={classes.length > 1} onClick={() => navigate(`/pkl/agenda?class_id=${w.classId}&minggu=${w.minggu_mulai}`)} />)}
+                {perluIsi.map((w) => <WeekButton key={w.minggu_mulai} w={w} onClick={() => navigate(`/pkl/agenda?minggu=${w.minggu_mulai}`)} />)}
 
-                {telatShown.map((w) => <WeekButton key={w.classId + w.minggu_mulai} w={w} multiClass={classes.length > 1} onClick={() => navigate(`/pkl/agenda?class_id=${w.classId}&minggu=${w.minggu_mulai}`)} />)}
+                {telatShown.map((w) => <WeekButton key={w.minggu_mulai} w={w} onClick={() => navigate(`/pkl/agenda?minggu=${w.minggu_mulai}`)} />)}
                 {telat.length > telatShown.length && (
                   <button onClick={() => setShowAllTelat(true)} className="w-full rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground hover:bg-accent">
                     Tampilkan semua yang lewat batas ({telat.length})
@@ -213,7 +198,7 @@ export default function PklPage() {
                     Riwayat terisi ({riwayat.length})
                   </button>
                 )}
-                {showRiwayat && riwayat.map((w) => <WeekButton key={w.classId + w.minggu_mulai} w={w} multiClass={classes.length > 1} onClick={() => navigate(`/pkl/agenda?class_id=${w.classId}&minggu=${w.minggu_mulai}`)} />)}
+                {showRiwayat && riwayat.map((w) => <WeekButton key={w.minggu_mulai} w={w} onClick={() => navigate(`/pkl/agenda?minggu=${w.minggu_mulai}`)} />)}
               </div>
             )}
           </div>
@@ -312,27 +297,40 @@ export default function PklPage() {
   )
 }
 
-/** Satu baris minggu agenda — dipakai daftar "perlu diisi", "telat", dan riwayat. */
-function WeekButton({ w, multiClass, onClick }: { w: WeekRow; multiClass: boolean; onClick: () => void }) {
+/**
+ * Satu baris minggu agenda (AGREGAT semua kelas). Menampilkan rentang tanggal, badge
+ * status, daftar kelas + jumlah siswa. Satu tombol menampung semua kelas bimbingan.
+ */
+function WeekButton({ w, onClick }: { w: PklWeek; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className={cn('w-full flex items-center justify-between gap-2 rounded-lg border px-3 sm:px-4 py-2.5 text-left text-sm transition-colors hover:bg-accent',
+      className={cn('w-full flex items-start justify-between gap-2 rounded-lg border px-3 sm:px-4 py-2.5 text-left text-sm transition-colors hover:bg-accent',
         !w.terisi && w.lewat_batas ? 'border-red-200 bg-red-50/40'
           : !w.terisi ? 'border-orange-200 bg-orange-50/40'
           : 'border-border')}>
-      <span className="flex items-center gap-2 min-w-0">
+      <span className="flex items-start gap-2 min-w-0">
         {w.terisi
-          ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-          : <Circle className={cn('h-4 w-4 shrink-0', w.lewat_batas ? 'text-red-500' : 'text-orange-500')} />}
-        <span className="truncate">{w.label}{multiClass && <span className="text-muted-foreground"> · {w.classLabel}</span>}</span>
+          ? <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />
+          : <Circle className={cn('h-4 w-4 shrink-0 mt-0.5', w.lewat_batas ? 'text-red-500' : 'text-orange-500')} />}
+        <span className="min-w-0">
+          <span className="block font-medium">{w.label}</span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-1">
+            <Users className="h-3 w-3 text-muted-foreground" />
+            {w.classes.map((c) => (
+              <span key={c.label} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                {c.label} <span className="font-semibold text-foreground">{c.jumlah_siswa}</span>
+              </span>
+            ))}
+          </span>
+        </span>
       </span>
       <span className="flex items-center gap-2 shrink-0">
         {w.terisi
           ? <Badge variant="secondary" className="text-emerald-700">Terisi</Badge>
           : w.lewat_batas
             ? <Badge variant="destructive">Lewat batas</Badge>
-            : <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Isi minggu ini</Badge>}
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            : <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Isi sekarang</Badge>}
+        <ChevronRight className="h-4 w-4 text-muted-foreground mt-0.5" />
       </span>
     </button>
   )

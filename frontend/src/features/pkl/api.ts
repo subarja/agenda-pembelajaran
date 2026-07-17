@@ -28,11 +28,13 @@ export interface PklStudentRow {
 export interface PklWeek {
   minggu_mulai: string
   label: string
+  classes: { label: string; jumlah_siswa: number }[]
+  total_siswa: number
   terisi: boolean
-  agenda_id: string | null
-  sudah_mulai: boolean
-  deadline: string
+  bisa_diisi: boolean
+  sebelum_jumat: boolean
   lewat_batas: boolean
+  deadline: string
 }
 
 export interface PklObjectiveOption {
@@ -51,16 +53,16 @@ export interface PklAgendaStudent {
   id: string
   nis: string
   nama: string
+  kelas: string | null
   telpon: string | null
   presensi: Record<string, string | null>
 }
 
 export interface PklAgendaForm {
-  class: { id: string; label: string }
   minggu: string
   hari: PklDay[]
   objectives: PklObjectiveOption[]
-  agenda: { id: string | null; catatan: string; objectives: string[] }
+  agenda: { catatan: string; objectives: string[] }
   students: PklAgendaStudent[]
 }
 
@@ -146,21 +148,19 @@ export const pklApi = {
   myStudents: (classId?: string) =>
     api.get<ApiResponse<PklStudentRow[]>>('/pkl/my-students', { params: classId ? { class_id: classId } : {} }),
 
-  weeks: (classId: string) =>
-    api.get<ApiResponse<{ class: { id: string; label: string }; weeks: PklWeek[] }>>('/pkl/weeks', {
-      params: { class_id: classId },
-    }),
+  // Agenda PKL kini AGREGAT: satu daftar minggu untuk semua kelas bimbingan sekaligus.
+  weeks: () =>
+    api.get<ApiResponse<{ weeks: PklWeek[] }>>('/pkl/weeks'),
 
-  agenda: (classId: string, minggu: string) =>
-    api.get<ApiResponse<PklAgendaForm>>('/pkl/agenda', { params: { class_id: classId, minggu } }),
+  agenda: (minggu: string) =>
+    api.get<ApiResponse<PklAgendaForm>>('/pkl/agenda', { params: { minggu } }),
 
   saveAgenda: (payload: {
-    class_id: string
     minggu: string
     catatan: string
     objective_ids: string[]
     presensi: { student_id: string; tanggal: string; status: string }[]
-  }) => api.post<ApiResponse<{ id: string }>>('/pkl/agenda', payload),
+  }) => api.post<ApiResponse<null>>('/pkl/agenda', payload),
 
   downloadStudents: (classId: string | null, filename: string) =>
     downloadBlob(`/pkl/students/export?${classId ? `class_id=${classId}&` : ''}format=excel`, filename),

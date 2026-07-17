@@ -43,7 +43,7 @@ class PklModeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Carbon::setTestNow(Carbon::parse('2026-03-11 10:00', config('app.school_timezone')));
+        Carbon::setTestNow(Carbon::parse('2026-03-13 10:00', config('app.school_timezone')));
 
         $ay = AcademicYear::create([
             'tahun' => '2025/2026', 'semester' => Semester::Genap,
@@ -114,7 +114,7 @@ class PklModeTest extends TestCase
     {
         Sanctum::actingAs($this->pembimbing);
 
-        $res = $this->getJson("/api/v1/pkl/agenda?class_id={$this->kelasXII->uuid}&minggu={$this->minggu}")
+        $res = $this->getJson("/api/v1/pkl/agenda?minggu={$this->minggu}")
             ->assertOk();
 
         $deskripsi = collect($res->json('data.objectives'))->pluck('deskripsi')->all();
@@ -131,30 +131,30 @@ class PklModeTest extends TestCase
         $obj = PklObjective::where('jurusan', null)->first();
 
         $this->postJson('/api/v1/pkl/agenda', [
-            'class_id' => $this->kelasXII->uuid,
             'minggu'   => $this->minggu,
             'catatan'  => 'Monitoring oke',
             'objective_ids' => [$obj->uuid],
             'presensi' => [
                 ['student_id' => $this->siswa->uuid, 'tanggal' => '2026-03-09', 'status' => 'hadir'],
                 ['student_id' => $this->siswa->uuid, 'tanggal' => '2026-03-10', 'status' => 'izin'],
-                // 2026-03-12 = Kamis (masa depan relatif ke Rabu 11) → HARUS diabaikan
-                ['student_id' => $this->siswa->uuid, 'tanggal' => '2026-03-12', 'status' => 'hadir'],
+                // 2026-03-16 = Senin minggu depan (di luar Sen–Jum minggu ini) → diabaikan.
+                ['student_id' => $this->siswa->uuid, 'tanggal' => '2026-03-16', 'status' => 'hadir'],
             ],
         ])->assertOk();
 
         $this->assertDatabaseCount('pkl_attendances', 2);
         $this->assertDatabaseHas('pkl_attendances', ['student_id' => $this->siswa->id, 'tanggal' => '2026-03-09 00:00:00', 'status' => 'hadir']);
-        $this->assertFalse(PklAttendance::where('tanggal', '2026-03-12')->exists(), 'tanggal masa depan tidak boleh tersimpan');
+        $this->assertFalse(PklAttendance::where('tanggal', '2026-03-16')->exists(), 'tanggal di luar minggu ini tidak boleh tersimpan');
     }
 
     public function test_agenda_minggu_masa_depan_ditolak(): void
     {
         Sanctum::actingAs($this->pembimbing);
 
-        // Minggu depan (Senin 16 Mar) belum berjalan pada Rabu 11 Mar.
+        // Minggu depan (Senin 16 Mar) baru boleh diisi mulai Jumat 20 Mar — pada Jumat
+        // 13 Mar masih ditolak (belum masuk Jumat minggu itu).
         $this->postJson('/api/v1/pkl/agenda', [
-            'class_id' => $this->kelasXII->uuid, 'minggu' => '2026-03-16', 'catatan' => 'x',
+            'minggu' => '2026-03-16', 'catatan' => 'x',
         ])->assertStatus(422);
     }
 
@@ -165,7 +165,7 @@ class PklModeTest extends TestCase
         Sanctum::actingAs($this->guruLain);
 
         $this->getJson('/api/v1/pkl/overview')->assertOk()->assertJsonCount(0, 'data.classes');
-        $this->getJson("/api/v1/pkl/agenda?class_id={$this->kelasXII->uuid}&minggu={$this->minggu}")->assertForbidden();
+        $this->getJson("/api/v1/pkl/agenda?minggu={$this->minggu}")->assertForbidden();
         $this->getJson("/api/v1/pkl/rekap-absen/export?class_id={$this->kelasXII->uuid}&format=excel")->assertForbidden();
     }
 
