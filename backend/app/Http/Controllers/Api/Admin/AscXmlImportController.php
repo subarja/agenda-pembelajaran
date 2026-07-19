@@ -12,6 +12,7 @@ use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\Teacher;
+use App\Models\PasswordDefaultSetting;
 use App\Models\User;
 use App\Support\BellSchedule;
 use Illuminate\Http\JsonResponse;
@@ -190,6 +191,10 @@ class AscXmlImportController extends Controller
     {
         $created = $updated = $skipped = 0;
 
+        // Diambil sekali di luar loop: gagal di awal dengan pesan jelas lebih baik
+        // daripada berhenti di tengah setelah puluhan guru terlanjur dibuat.
+        $defaultPassword = Hash::make(PasswordDefaultSetting::resolveOrFail('guru'));
+
         // Kode singkat mapel (mis. "MTK", "ING") → nama lengkap, dari daftar <subjects> di
         // XML yang sama. Fallback untuk guru yang tidak punya jadwal mengajar sama sekali
         // (mis. BK) — short guru "BPK-..." memang match langsung ke subject short "BPK".
@@ -277,9 +282,12 @@ class AscXmlImportController extends Controller
                 $user = User::create([
                     'nama' => $parsed['nama'],
                     'email' => $email,
-                    'password' => Hash::make('password'),
+                    // Password default dari panel admin/.env, TIDAK di-hardcode; wajib
+                    // diganti pemilik akun saat login pertama.
+                    'password' => $defaultPassword,
                     'role' => UserRole::Guru,
                     'status' => UserStatus::Aktif,
+                    'must_change_password' => true,
                 ]);
                 $teacher = Teacher::create([
                     'user_id' => $user->id,

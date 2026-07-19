@@ -122,7 +122,10 @@ XML;
         // Beban Mengajar guru T1 menampilkan ploting L1 DAN penugasan belum-diplot L2.
         $guru = User::where('nama', 'Budi Hartono Nugraha')->firstOrFail();
         $ay = AcademicYear::where('aktif', true)->first();
-        $guru->update(['current_academic_year_id' => $ay->id]);
+        // Guru hasil import wajib mengganti password default dulu — selama flag itu
+        // menyala seluruh endpoint lain memang ditolak 403. Yang diuji di sini adalah
+        // beban mengajar, jadi pakai keadaan setelah guru mengganti passwordnya.
+        $guru->update(['current_academic_year_id' => $ay->id, 'must_change_password' => false]);
         Sanctum::actingAs($guru->fresh());
 
         $data = $this->getJson('/api/v1/beban-mengajar')->assertOk()->json('data');

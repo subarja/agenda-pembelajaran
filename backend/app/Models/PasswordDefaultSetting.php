@@ -44,6 +44,24 @@ class PasswordDefaultSetting extends Model
     }
 
     /**
+     * Sama seperti resolve(), tapi menghentikan request dengan 422 bila password
+     * default belum diatur. Dipakai alur import massal: lebih baik gagal di awal
+     * dengan pesan jelas daripada terlanjur membuat ratusan akun berpassword
+     * asal-asalan yang tidak bisa dipakai login.
+     *
+     * @param  'guru'|'siswa'  $type
+     */
+    public static function resolveOrFail(string $type): string
+    {
+        $plain = static::resolve($type);
+
+        abort_unless($plain, 422, 'Password default akun '.$type.' belum diatur. Isi lewat Panel Admin > Pengguna > Password Default (atau '
+            .($type === 'siswa' ? 'DEFAULT_STUDENT_PASSWORD' : 'DEFAULT_TEACHER_PASSWORD').' di .env server) sebelum menjalankan import.');
+
+        return $plain;
+    }
+
+    /**
      * Baca satu kolom rahasia TANPA melempar exception — kalau APP_KEY server
      * pernah berubah sejak nilai disimpan, DecryptException ditangkap di sini
      * dan pemanggil jatuh ke fallback .env (bukan seluruh app ikut down).
