@@ -24,6 +24,10 @@ class PklSettingController extends Controller
         $setting = PklSetting::instance();
         $setting->update(['aktif' => $data['aktif']]);
 
+        // Saklarnya di-memoize per request di PklMode — tanpa flush, respons ini masih
+        // bisa memakai nilai lama saat menghitung sesuatu setelah update.
+        \App\Support\PklMode::flush();
+
         return response()->json([
             'message' => $data['aktif'] ? 'Mode PKL diaktifkan.' : 'Mode PKL dinonaktifkan.',
             'data'    => ['aktif' => $setting->aktif],

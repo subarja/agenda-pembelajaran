@@ -30,6 +30,39 @@ class ReportController extends Controller
     use HandlesPdfPreview;
     use BuildsXlsxReports;
 
+    /**
+     * Ambil kelas dari `class_id` request DAN pastikan pemanggil berhak atasnya.
+     *
+     * Sebelumnya tiap endpoint laporan hanya `firstOrFail()` tanpa otorisasi apa pun —
+     * akun siswa terbukti bisa mengunduh rekap kehadiran kelas mana pun lengkap dengan
+     * nama & NIS seluruh penghuninya (audit 2026-07-19). Penjaga di classes() hanya
+     * menyaring dropdown-nya, bukan datanya.
+     *
+     * Batasnya mengikuti pembagian yang sudah ada di ClassAccess:
+     * - 'ajar' (DIAJAR ∪ perwalian) untuk data operasional kelas — kehadiran, karakter,
+     *   nilai tambah. Guru mapel memang perlu rekap kelas yang ia ajar.
+     * - 'bina' (perwalian ∪ BK) untuk data pembinaan — EWS. Guru mapel tidak berhak.
+     *
+     * Siswa & orang tua tidak punya kelas ampuan sama sekali, jadi keduanya otomatis
+     * tertolak tanpa perlu cabang khusus.
+     */
+    private function authorizedClass(Request $request, array $with = [], string $batas = 'ajar'): SchoolClass
+    {
+        $class = SchoolClass::where('uuid', $request->class_id)->with($with)->firstOrFail();
+
+        $allowed = $batas === 'bina'
+            ? ClassAccess::pastoralClassIds($request->user())
+            : ClassAccess::teachingClassIds($request->user());
+
+        abort_unless(
+            ClassAccess::allows($allowed, $class->id),
+            403,
+            'Anda tidak memiliki akses ke laporan kelas ini.'
+        );
+
+        return $class;
+    }
+
     public function classes(Request $request)
     {
         // Dropdown kelas untuk halaman Laporan. Bukan data pribadi, tapi tidak ada alasan
@@ -63,7 +96,7 @@ class ReportController extends Controller
             $teacher->load('user');
         }
 
-        $class    = SchoolClass::where('uuid', $request->class_id)->with('students.user')->firstOrFail();
+        $class    = $this->authorizedClass($request, ['students.user']);
         $students = $class->students()->with('user')->orderBy('nis')->get();
         $periode  = date('d/m/Y', strtotime($request->tanggal_mulai)) . ' – ' . date('d/m/Y', strtotime($request->tanggal_akhir));
         $totalSesi = Agenda::whereHas('schedule', fn ($q) => $q->where('class_id', $class->id))
@@ -173,7 +206,7 @@ class ReportController extends Controller
             $teacher->load('user');
         }
 
-        $class    = SchoolClass::where('uuid', $request->class_id)->with('students.user')->firstOrFail();
+        $class    = $this->authorizedClass($request, ['students.user']);
         $students = $class->students()->with('user')->orderBy('nis')->get();
         $kategori = \App\Models\CharacterCategory::where('aktif', true)->pluck('nama')->toArray();
         $periode  = now('Asia/Jakarta')->format('M Y');
@@ -270,7 +303,7 @@ class ReportController extends Controller
             $teacher->load('user');
         }
 
-        $class    = SchoolClass::where('uuid', $request->class_id)->firstOrFail();
+        $class    = $this->authorizedClass($request);
         $students = $class->students()->with('user')->orderBy('nis')->get();
 
         $notes = CharacterManualNote::tahunAjaran($class->academic_year_id)
@@ -352,8 +385,8 @@ class ReportController extends Controller
     {
         $request->validate(['class_id'=>['required','string'],'format'=>['required','in:pdf,excel']]);
 
-        $class    = SchoolClass::where('uuid', $request->class_id)->with('students.user')->firstOrFail();
-        $this->authorizeEwsExport($request->user(), $class);
+        // 'bina': EWS adalah data pembinaan — wali & BK pengampu, bukan guru mapel.
+        $class    = $this->authorizedClass($request, ['students.user'], 'bina');
         $students = $class->students()->with('user')->orderBy('nis')->get();
         $periode  = now('Asia/Jakarta')->format('M Y');
 
@@ -417,24 +450,6 @@ class ReportController extends Controller
     // EWS BEDA dari laporan lain — guru biasa (bukan wali kelas kelas ini/BK) TIDAK
     // boleh export EWS sama sekali, walau laporan lain (agenda/jurnal/kehadiran/karakter)
     // tetap terbuka untuk guru manapun. Lihat Isu GK3 & pola sama di EwsController::index().
-    private function authorizeEwsExport(\App\Models\User $user, SchoolClass $class): void
-    {
-        if (in_array($user->role->value, ['admin', 'wakasek'], true)) return;
-
-        $teacher = $user->teacher;
-        abort_if(! $teacher, 403, 'Anda tidak memiliki akses ke laporan EWS.');
-
-        if ($class->wali_kelas_id === $user->id) return;
-
-        if ($teacher->is_bk) {
-            $mengajarDiKelas = \App\Models\Schedule::where('teacher_id', $teacher->id)
-                ->where('class_id', $class->id)->where('aktif', true)->exists();
-            if ($mengajarDiKelas) return;
-        }
-
-        abort(403, 'Anda tidak memiliki akses ke laporan EWS kelas ini.');
-    }
-
     public function agenda(Request $request)
     {
         $request->validate([

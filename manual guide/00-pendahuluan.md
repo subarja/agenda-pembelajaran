@@ -26,9 +26,11 @@ Aplikasi mengenal tujuh peran. Menu yang tampil di sisi kiri layar berbeda untuk
 |---|---|
 | **Admin** | Mengelola seluruh data master, tahun ajaran, integrasi, backup, dan pemeliharaan sistem |
 | **Wakasek Kurikulum** | Memantau EWS siswa & guru, laporan, rekap perkembangan lintas semester |
-| **Guru** | Mengisi agenda, presensi sesi, menilai karakter, mengajukan guru inval, mencetak laporan |
+| **Guru** | Mengisi agenda, presensi sesi, menilai karakter, mengajukan guru inval, mencetak laporan, beban mengajar |
 | **Wali Kelas** | Semua wewenang Guru + presensi harian, EWS kelas perwalian, data siswa, penanganan, refleksi mingguan |
 | **Guru BK** | EWS murid yang diampu, konseling, riwayat dokumen penanganan |
+| **Pembimbing PKL** | (saat Mode PKL aktif) agenda PKL mingguan & absen siswa bimbingan lintas kelas |
+| **Fasilitator Kokurikuler** | (saat ada projek berjalan) absen peserta, laporan fasilitasi, nilai dimensi |
 | **Siswa** | Melihat dashboard pribadi dan jadwal pelajaran |
 | **Orang Tua** | Melihat dashboard perkembangan anak |
 
@@ -41,6 +43,21 @@ menempel pada akun berperan *Guru*.
 
 Seorang guru bisa memegang keduanya sekaligus. Dalam kasus itu, sidebar akan menampilkan dua
 kelompok menu terpisah: *Menu Wali Kelas* dan *Menu BK*.
+
+Dengan cara yang sama, dua kapabilitas berbasis kegiatan bisa muncul sementara:
+
+- Menu **PKL** muncul untuk guru **pembimbing PKL** saat Admin mengaktifkan *Mode PKL* (khusus
+  kelas XII yang sedang praktik kerja lapangan). Lihat *Modul Guru → PKL*.
+- Menu **Kokurikuler** muncul untuk guru **fasilitator** selama ada projek kokurikuler yang
+  berjalan. Lihat *Modul Guru → Kokurikuler*.
+
+## Cara Kelas Ditulis
+
+Di seluruh aplikasi dan dokumen, nama kelas ditulis dengan format **`TINGKAT KODE ROMBEL`**,
+misalnya **`XII RPL A`**, **`XI MEKA B`**, atau **`X ANIMASI C`**. Kode diambil dari singkatan
+Program Keahlian (RPL, DKV, MEKA, ANIMASI, TKI, TP). Saat mengimpor data yang memuat kolom kelas,
+Anda boleh menuliskan kode (mis. `XII RPL A`) maupun nama jurusan lengkap (`XII Rekayasa
+Perangkat Lunak A`) — keduanya dikenali.
 
 ## Konvensi Penulisan
 

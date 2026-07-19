@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\Semester;
 use App\Enums\UserRole;
 use App\Models\AcademicYear;
+use App\Models\PasswordDefaultSetting;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
@@ -47,7 +48,66 @@ class PasswordHardeningTest extends TestCase
 
         $this->postJson('/api/v1/admin/generate-accounts?type=guru')
             ->assertStatus(422)
-            ->assertJsonFragment(['message' => 'Password default belum dikonfigurasi. Isi DEFAULT_TEACHER_PASSWORD di file .env server, lalu coba lagi.']);
+            ->assertJsonFragment(['message' => 'Password default belum diatur. Isi lewat Panel Admin > Pengguna > Password Default, atau DEFAULT_TEACHER_PASSWORD di file .env server, lalu coba lagi.']);
+    }
+
+    public function test_password_default_dari_panel_admin_mengalahkan_env(): void
+    {
+        config(['accounts.default_teacher_password' => 'DariEnv#2026']);
+        Sanctum::actingAs($this->admin);
+
+        $this->putJson('/api/v1/admin/password-defaults', ['teacher_password' => 'DariPanel#2026'])->assertOk();
+        $this->postJson('/api/v1/admin/generate-accounts?type=guru')->assertOk();
+
+        $this->assertTrue(Hash::check('DariPanel#2026', $this->guru->fresh()->password));
+    }
+
+    public function test_endpoint_password_default_tidak_pernah_mengembalikan_nilai_asli(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $this->putJson('/api/v1/admin/password-defaults', ['student_password' => 'RahasiaSiswa#2026'])->assertOk();
+
+        $res = $this->getJson('/api/v1/admin/password-defaults')->assertOk();
+
+        $this->assertStringNotContainsString('RahasiaSiswa#2026', $res->getContent());
+        $this->assertSame('panel', $res->json('data.siswa.sumber'));
+        $this->assertTrue($res->json('data.siswa.is_set'));
+    }
+
+    /**
+     * Kelas bug "konfigurasi gagal senyap": kalau APP_KEY server berganti setelah
+     * password default disimpan, nilai panel jadi tidak terbaca dan sistem diam-diam
+     * memakai .env — admin mengira yang berlaku nilai panel. Keadaan itu WAJIB
+     * terlihat, bukan menyaru jadi "belum pernah diisi".
+     */
+    public function test_password_panel_yang_tidak_bisa_didekripsi_dilaporkan_rusak(): void
+    {
+        config(['accounts.default_teacher_password' => 'DariEnv#2026']);
+        Sanctum::actingAs($this->admin);
+
+        $this->putJson('/api/v1/admin/password-defaults', ['teacher_password' => 'DariPanel#2026'])->assertOk();
+
+        // Simulasi APP_KEY berganti: ciphertext ditulis ulang dengan kunci lain.
+        $lain = new \Illuminate\Encryption\Encrypter(random_bytes(32), 'AES-256-CBC');
+        \Illuminate\Support\Facades\DB::table('password_default_settings')
+            ->update(['teacher_password' => $lain->encrypt('nilai-kunci-lama')]);
+
+        $res = $this->getJson('/api/v1/admin/password-defaults')->assertOk();
+
+        $this->assertTrue($res->json('data.guru.rusak'), 'keadaan rusak harus dilaporkan');
+        $this->assertSame('env', $res->json('data.guru.sumber'), 'sementara jatuh ke .env');
+        // Aplikasi tetap jalan — tidak 500, dan nilai .env yang dipakai.
+        $this->assertSame('DariEnv#2026', PasswordDefaultSetting::resolve('guru'));
+        // Kolom yang memang belum pernah diisi TIDAK boleh ikut ditandai rusak.
+        $this->assertFalse($res->json('data.siswa.rusak'));
+    }
+
+    public function test_password_default_hanya_bisa_diakses_admin(): void
+    {
+        Sanctum::actingAs($this->guru);
+
+        $this->getJson('/api/v1/admin/password-defaults')->assertForbidden();
+        $this->putJson('/api/v1/admin/password-defaults', ['teacher_password' => 'CobaTembus#2026'])->assertForbidden();
     }
 
     public function test_generate_akun_memakai_config_menandai_wajib_ganti_dan_tidak_membocorkan_password(): void

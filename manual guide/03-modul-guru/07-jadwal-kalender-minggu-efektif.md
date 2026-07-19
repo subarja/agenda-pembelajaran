@@ -69,3 +69,14 @@ surat. Pratinjau langsung ditampilkan sebelum berkas diunduh.
 
 💡 Bila Anda perlu mencetak rekap untuk banyak kelas sekaligus, gunakan Excel. Ekspor PDF dengan
 puluhan lembar sengaja dibatasi agar tidak membebani peladen.
+
+## Beban Mengajar
+
+**Menu:** Beban Mengajar
+
+Halaman ini merekap total beban mengajar Anda: daftar **kelas, mata pelajaran, hari, jam ke-, dan
+jumlah jam pelajaran (JP)** beserta totalnya. JP dihitung dari rentang jam-ke bila tersedia, atau
+dari durasi dibagi 45 menit (minimal 1).
+
+Bila Anda juga menjadi **pembimbing PKL**, penugasan PKL yang lepas dari ploting jadwal ditampilkan
+terpisah (jumlah siswa bimbingan + periode), sehingga beban tetap terlihat utuh.

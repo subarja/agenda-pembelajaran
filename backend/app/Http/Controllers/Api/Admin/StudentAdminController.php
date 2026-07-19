@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Enums\EwsLevel;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
@@ -102,7 +103,7 @@ class StudentAdminController extends Controller
             if ($ay) {
                 EwsStatus::firstOrCreate(
                     ['student_id' => $student->id, 'academic_year_id' => $ay->id],
-                    ['level' => 'hijau', 'kehadiran_score' => 100, 'karakter_score' => 0]
+                    ['level' => EwsLevel::Hijau, 'kehadiran_score' => 100, 'karakter_score' => 0]
                 );
             }
 

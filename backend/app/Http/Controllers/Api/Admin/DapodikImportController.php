@@ -8,6 +8,7 @@ use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
 use App\Models\ProgramKeahlian;
+use App\Models\PasswordDefaultSetting;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Teacher;
@@ -72,7 +73,9 @@ class DapodikImportController extends Controller
         ]);
 
         $actor = $request->user();
-        $defaultPassword = Hash::make('password');
+        // Password default akun guru — dari panel admin/.env, TIDAK di-hardcode:
+        // nilai lama 'password' sudah tercatat di riwayat git.
+        $defaultPassword = Hash::make(PasswordDefaultSetting::resolveOrFail('guru'));
         $errors = [];
         $pendingMatches = [];
 
@@ -308,6 +311,9 @@ class DapodikImportController extends Controller
                             'role' => UserRole::Guru,
                             'status' => UserStatus::Aktif,
                             'nomor_hp' => $hp ?: null,
+                            // Password default dipakai bersama seluruh guru hasil import —
+                            // wajib diganti sendiri saat login pertama.
+                            'must_change_password' => true,
                         ]);
 
                         Teacher::create($teacherFields + [
@@ -440,7 +446,8 @@ class DapodikImportController extends Controller
         $kelasCache = SchoolClass::where('academic_year_id', $ay->id)->get();
 
         set_time_limit(300); // 1700+ siswa butuh waktu lebih
-        $defaultPassword = Hash::make('password');
+        // Password default akun siswa — dari panel admin/.env, TIDAK di-hardcode.
+        $defaultPassword = Hash::make(PasswordDefaultSetting::resolveOrFail('siswa'));
 
         $stats = DB::transaction(function () use ($rows, $actor, $ay, $kelasCache, $defaultPassword) {
             $created = $updated = $skipped = 0;
@@ -535,6 +542,7 @@ class DapodikImportController extends Controller
                         'role' => UserRole::Siswa,
                         'status' => UserStatus::Aktif,
                         'nomor_hp' => $hp ?: null,
+                        'must_change_password' => true,
                     ]);
 
                     Student::create([

@@ -135,7 +135,7 @@ class ScheduleController extends Controller
         if ($user->role->value === 'guru') {
             $teacher = $user->teacher;
             if (! $teacher || ! $teacher->jadwal_pdf) {
-                abort(404, 'Jadwal PDF belum diunggah admin.');
+                return $this->jadwalBelumAda($request);
             }
             $filename = 'Jadwal - '.Str::slug($teacher->user->nama).'.pdf';
             return $this->storedPdfResponse($teacher->jadwal_pdf, $filename, $request);
@@ -145,13 +145,33 @@ class ScheduleController extends Controller
             $student = $user->student;
             $class   = $student?->schoolClass;
             if (! $class || ! $class->jadwal_pdf) {
-                abort(404, 'Jadwal PDF belum diunggah admin.');
+                return $this->jadwalBelumAda($request);
             }
             $filename = 'Jadwal - '.Str::slug($class->label()).'.pdf';
             return $this->storedPdfResponse($class->jadwal_pdf, $filename, $request);
         }
 
         abort(403, 'Hanya guru dan siswa yang punya jadwal PDF pribadi.');
+    }
+
+    /**
+     * "Admin belum mengunggah jadwal" adalah keadaan kosong yang wajar, bukan kegagalan.
+     * Pada jalur preview (JSON) balas 200 ber-`available:false` supaya halaman tidak
+     * memuntahkan 404 + stack trace ke konsol tiap kali dibuka. Jalur unduh mentah tetap
+     * 404 — di sana memang tidak ada berkas yang bisa dikirim.
+     */
+    private function jadwalBelumAda(Request $request)
+    {
+        if (! $request->boolean('preview')) {
+            abort(404, 'Jadwal PDF belum diunggah admin.');
+        }
+
+        return response()->json([
+            'available' => false,
+            'base64'    => null,
+            'filename'  => null,
+            'message'   => 'Jadwal PDF belum diunggah admin.',
+        ]);
     }
 
     public function today(Request $request): JsonResponse

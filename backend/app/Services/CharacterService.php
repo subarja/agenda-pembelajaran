@@ -2,16 +2,19 @@
 
 namespace App\Services;
 
+use App\Enums\CharacterSign;
 use App\Enums\EwsLevel; // @phpstan-ignore-line
-use App\Models\ActionThreshold;
 use App\Models\AcademicYear;
+use App\Models\ActionThreshold;
 use App\Models\CharacterInput;
 use App\Models\EwsStatus;
 use App\Models\Recommendation;
 use App\Models\Student;
 use App\Models\StudentAttendance;
+use App\Models\User;
 use App\Notifications\EwsEscalationNotification;
 use App\Notifications\RecommendationCreatedNotification;
+use App\Support\TahunAjaran;
 
 class CharacterService
 {
@@ -21,8 +24,10 @@ class CharacterService
      */
     public function processAfterInput(Student $student): void
     {
-        $ay = \App\Support\TahunAjaran::current();
-        if (! $ay) return;
+        $ay = TahunAjaran::current();
+        if (! $ay) {
+            return;
+        }
 
         $netScore = $this->calculateNetScore($student);
 
@@ -37,14 +42,13 @@ class CharacterService
      */
     public function calculateNetScore(Student $student, ?int $academicYearId = null): int
     {
-        $ayId = $academicYearId ?? \App\Support\TahunAjaran::id();
+        $ayId = $academicYearId ?? TahunAjaran::id();
 
         return CharacterInput::where('student_id', $student->id)
             ->when($ayId !== null, fn ($q) => $q->where('academic_year_id', $ayId))
             ->with('subitem')
             ->get()
-            ->sum(fn ($inp) =>
-                $inp->sign->value === 'positif'
+            ->sum(fn ($inp) => $inp->sign->value === 'positif'
                     ? abs($inp->subitem?->bobot ?? 0)
                     : -abs($inp->subitem?->bobot ?? 0)
             );
@@ -58,7 +62,17 @@ class CharacterService
             $inRange = $netScore >= $threshold->min_point
                 && ($threshold->max_point === null || $netScore <= $threshold->max_point);
 
-            if (! $inRange) continue;
+            // Rentang saja tidak cukup: `max_point` boleh null dan `min_point` tidak dibatasi
+            // tandanya, jadi ambang bersifat negatif tanpa batas atas akan ikut terpicu oleh
+            // siswa berpoin tinggi — persis kebalikan maksud fiturnya. Tanda poin harus
+            // sejalan dengan sifat ambang. Skor 0 netral: tidak memicu apa pun.
+            $sesuaiSifat = $threshold->sifat === CharacterSign::Negatif
+                ? $netScore < 0
+                : $netScore > 0;
+
+            if (! $inRange || ! $sesuaiSifat) {
+                continue;
+            }
 
             $exists = Recommendation::where('student_id', $student->id)
                 ->where('threshold_id', $threshold->id)
@@ -67,11 +81,11 @@ class CharacterService
 
             if (! $exists) {
                 Recommendation::create([
-                    'student_id'             => $student->id,
-                    'threshold_id'           => $threshold->id,
+                    'student_id' => $student->id,
+                    'threshold_id' => $threshold->id,
                     'akumulasi_saat_trigger' => $netScore,
-                    'status'                 => 'pending',
-                    'ditugaskan_ke'          => $student->schoolClass?->wali_kelas_id,
+                    'status' => 'pending',
+                    'ditugaskan_ke' => $student->schoolClass?->wali_kelas_id,
                 ]);
 
                 // Notifikasi in-app ke wali kelas
@@ -94,23 +108,32 @@ class CharacterService
             ->whereHas('agenda.schedule.schoolClass', fn ($q) => $q->where('academic_year_id', $ay->id));
 
         $totalAbsensi = (clone $absensiTa)->count();
-        $hadir        = (clone $absensiTa)->where('status', 'hadir')->count();
+        $hadir = (clone $absensiTa)->where('status', 'hadir')->count();
         $kehadiranPct = $totalAbsensi > 0 ? round(($hadir / $totalAbsensi) * 100, 2) : 100.0;
 
-        $levelBaru = $this->resolveLevel($netScore, $kehadiranPct);
-
-        $ews = EwsStatus::where('student_id', $student->id)
+        // Catatan & nilai tidak dihitung ulang di alur karakter — diambil dari baris EWS
+        // yang sudah ada supaya rumusnya tetap 4 indikator dan hasilnya sama dengan
+        // halaman EWS. Dulu di sini dipakai ambang absolut sendiri (85/75/50) yang
+        // memberi jawaban berbeda untuk kondisi yang sama.
+        $ewsLama = EwsStatus::where('student_id', $student->id)
             ->where('academic_year_id', $ay->id)
             ->first();
 
-        $levelLama = $ews?->level?->value ?? 'hijau';
+        $levelBaru = EwsLevel::dariKomponen(
+            $kehadiranPct,
+            $netScore,
+            (int) ($ewsLama->catatan_count ?? 0),
+            $ewsLama?->nilai_score !== null ? (float) $ewsLama->nilai_score : null,
+        );
+
+        $levelLama = $ewsLama?->level?->value ?? 'hijau';
 
         EwsStatus::updateOrCreate(
             ['student_id' => $student->id, 'academic_year_id' => $ay->id],
             [
-                'karakter_score'     => $netScore,
-                'kehadiran_score'    => $kehadiranPct,
-                'level'              => $levelBaru,
+                'karakter_score' => $netScore,
+                'kehadiran_score' => $kehadiranPct,
+                'level' => $levelBaru,
                 'last_calculated_at' => now(),
             ]
         );
@@ -129,17 +152,11 @@ class CharacterService
     private function notifyWaliKelas(Student $student, $notification): void
     {
         $waliId = $student->schoolClass?->wali_kelas_id;
-        if (! $waliId) return;
+        if (! $waliId) {
+            return;
+        }
 
-        $wali = \App\Models\User::find($waliId);
+        $wali = User::find($waliId);
         $wali?->notify($notification);
-    }
-
-    private function resolveLevel(int $karakterScore, float $kehadiranPct): EwsLevel
-    {
-        if ($karakterScore <= -50 || $kehadiranPct < 50) return EwsLevel::Merah;
-        if ($karakterScore <= -20 || $kehadiranPct < 75) return EwsLevel::Oranye;
-        if ($karakterScore <= -10 || $kehadiranPct < 85) return EwsLevel::Kuning;
-        return EwsLevel::Hijau;
     }
 }
