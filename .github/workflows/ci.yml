@@ -74,6 +74,18 @@ jobs:
             echo "DB_DATABASE=agenda_test"
             echo "DB_USERNAME=root"
             echo "DB_PASSWORD=secret"
+            # .env.example memakai UTC, tapi dev memakai Asia/Jakarta dan
+            # NilaiTambahInvalTest bergantung padanya. CI menyamai dev supaya tidak
+            # menguji konfigurasi yang tidak dipakai siapa pun.
+            # CATATAN: perlu dipastikan nilai APP_TIMEZONE di server produksi —
+            # kalau produksi ternyata UTC, test itu menunjuk bug nyata, bukan
+            # sekadar selisih konfigurasi.
+            echo "APP_TIMEZONE=Asia/Jakarta"
+            # Impor guru (AscXmlImportScheduleTest) membuat akun, jadi butuh
+            # password default terisi. Sengaja DUMMY dan hanya hidup di runner —
+            # .env.example tetap kosong supaya nilai asli tidak pernah ter-commit.
+            echo "DEFAULT_TEACHER_PASSWORD=ci-dummy-teacher-pass"
+            echo "DEFAULT_STUDENT_PASSWORD=ci-dummy-student-pass"
           } >> .env
 
       # Tidak perlu menunggu manual: `options: --health-cmd` pada service membuat
