@@ -343,6 +343,10 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         // ── Pengaturan Waktu Pengisian Agenda (batas hari/jam pasca jadwal) ────────
         Route::get('agenda-fill-settings',                      [AgendaFillSettingController::class, 'show']);
         Route::put('agenda-fill-settings',                      [AgendaFillSettingController::class, 'update']);
+        // ── Password default akun guru & siswa (dipakai Generate Akun / reset) ────
+        Route::get('password-defaults',                         [\App\Http\Controllers\Api\Admin\PasswordDefaultSettingController::class, 'show']);
+        Route::put('password-defaults',                         [\App\Http\Controllers\Api\Admin\PasswordDefaultSettingController::class, 'update']);
+
         Route::get('archive-write-settings',                    [\App\Http\Controllers\Api\Admin\ArchiveWriteSettingController::class, 'show']);
         Route::put('archive-write-settings',                    [\App\Http\Controllers\Api\Admin\ArchiveWriteSettingController::class, 'update']);
 

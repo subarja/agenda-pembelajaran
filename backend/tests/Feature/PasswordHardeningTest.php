@@ -47,7 +47,38 @@ class PasswordHardeningTest extends TestCase
 
         $this->postJson('/api/v1/admin/generate-accounts?type=guru')
             ->assertStatus(422)
-            ->assertJsonFragment(['message' => 'Password default belum dikonfigurasi. Isi DEFAULT_TEACHER_PASSWORD di file .env server, lalu coba lagi.']);
+            ->assertJsonFragment(['message' => 'Password default belum diatur. Isi lewat Panel Admin > Pengguna > Password Default, atau DEFAULT_TEACHER_PASSWORD di file .env server, lalu coba lagi.']);
+    }
+
+    public function test_password_default_dari_panel_admin_mengalahkan_env(): void
+    {
+        config(['accounts.default_teacher_password' => 'DariEnv#2026']);
+        Sanctum::actingAs($this->admin);
+
+        $this->putJson('/api/v1/admin/password-defaults', ['teacher_password' => 'DariPanel#2026'])->assertOk();
+        $this->postJson('/api/v1/admin/generate-accounts?type=guru')->assertOk();
+
+        $this->assertTrue(Hash::check('DariPanel#2026', $this->guru->fresh()->password));
+    }
+
+    public function test_endpoint_password_default_tidak_pernah_mengembalikan_nilai_asli(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $this->putJson('/api/v1/admin/password-defaults', ['student_password' => 'RahasiaSiswa#2026'])->assertOk();
+
+        $res = $this->getJson('/api/v1/admin/password-defaults')->assertOk();
+
+        $this->assertStringNotContainsString('RahasiaSiswa#2026', $res->getContent());
+        $this->assertSame('panel', $res->json('data.siswa.sumber'));
+        $this->assertTrue($res->json('data.siswa.is_set'));
+    }
+
+    public function test_password_default_hanya_bisa_diakses_admin(): void
+    {
+        Sanctum::actingAs($this->guru);
+
+        $this->getJson('/api/v1/admin/password-defaults')->assertForbidden();
+        $this->putJson('/api/v1/admin/password-defaults', ['teacher_password' => 'CobaTembus#2026'])->assertForbidden();
     }
 
     public function test_generate_akun_memakai_config_menandai_wajib_ganti_dan_tidak_membocorkan_password(): void

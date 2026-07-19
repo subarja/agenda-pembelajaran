@@ -2298,6 +2298,130 @@ function BulkScheduleUploadSection({ title, description, endpoint, renderBerhasi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PANEL: PASSWORD DEFAULT GURU & SISWA
+// Dipakai oleh tombol "Generate Akun" dan reset password per-akun. Ditempatkan
+// di tab Pengguna (bukan tab Sistem sendiri) supaya sebaris dengan aksi yang
+// memakainya. Nilai lama tidak pernah dikirim balik dari server — hanya bentuk
+// tersamar — jadi input kosong berarti "jangan diubah".
+// ─────────────────────────────────────────────────────────────────────────────
+interface PasswordDefaultInfo {
+  masked: string | null
+  is_set: boolean
+  sumber: 'panel' | 'env' | null
+  env_key: string
+  env_is_set: boolean
+}
+
+function PasswordDefaultPanel() {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [guruPw, setGuruPw] = useState('')
+  const [siswaPw, setSiswaPw] = useState('')
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
+  const { data, isLoading } = useQuery<{ guru: PasswordDefaultInfo; siswa: PasswordDefaultInfo }>({
+    queryKey: ['admin-password-defaults'],
+    queryFn: () => api.get('/admin/password-defaults').then(r => r.data.data),
+    enabled: open,
+  })
+
+  const save = useMutation({
+    mutationFn: () => api.put('/admin/password-defaults', {
+      ...(guruPw ? { teacher_password: guruPw } : {}),
+      ...(siswaPw ? { student_password: siswaPw } : {}),
+    }).then(r => r.data),
+    onSuccess: (d: any) => {
+      setGuruPw(''); setSiswaPw('')
+      setMsg({ type: 'ok', text: d.message })
+      qc.invalidateQueries({ queryKey: ['admin-password-defaults'] })
+    },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal menyimpan.' }),
+  })
+
+  const clear = useMutation({
+    mutationFn: (which: 'guru' | 'siswa') => api.put('/admin/password-defaults',
+      which === 'guru' ? { clear_teacher: true } : { clear_student: true }).then(r => r.data),
+    onSuccess: () => {
+      setMsg({ type: 'ok', text: 'Password default dari panel dihapus — sistem kembali memakai nilai di .env server (bila ada).' })
+      qc.invalidateQueries({ queryKey: ['admin-password-defaults'] })
+    },
+    onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal menghapus.' }),
+  })
+
+  function row(label: string, info: PasswordDefaultInfo | undefined, which: 'guru' | 'siswa',
+    value: string, onChange: (v: string) => void) {
+    return (
+      <div className="space-y-1.5">
+        <Field label={`Password Default ${label}`}>
+          <PasswordInput
+            className={inputCls}
+            placeholder={info?.is_set ? `${info.masked} (sudah diisi — kosongkan bila tidak diubah)` : 'Belum diatur — min. 8 karakter'}
+            value={value} onChange={e => onChange(e.target.value)}
+          />
+        </Field>
+        <p className="text-xs text-muted-foreground">
+          {info?.sumber === 'panel' && (
+            <>Sumber: <strong>panel admin</strong> ·{' '}
+              <button type="button" className="underline hover:text-foreground"
+                onClick={() => { setMsg(null); if (window.confirm(`Hapus password default ${label} dari panel?`)) clear.mutate(which) }}>
+                hapus &amp; kembali ke .env
+              </button>
+            </>
+          )}
+          {info?.sumber === 'env' && <>Sumber: <code>{info.env_key}</code> di .env server. Mengisi kolom ini akan menggantikannya.</>}
+          {info && !info.sumber && <>Belum diatur di panel maupun <code>{info.env_key}</code> — Generate Akun &amp; reset ke default akan ditolak.</>}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-muted/50">
+        <Key className="h-4 w-4 text-muted-foreground" />
+        Password Default Guru &amp; Siswa
+        <span className="ml-auto text-xs font-normal text-muted-foreground">
+          {open ? 'Tutup' : 'Atur'}
+        </span>
+      </button>
+
+      {open && (
+        <div className="border-t px-3 py-3 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Password ini dipakai saat tombol <strong>Generate Akun</strong> ditekan dan saat reset password
+            per-akun dikosongkan. Mengubahnya <strong>tidak</strong> mengubah password akun yang sudah ada —
+            jalankan Generate Akun bila ingin menerapkannya ke semua. Semua akun tetap wajib ganti password
+            saat login pertama.
+          </p>
+
+          {isLoading ? <div className="h-24 rounded-lg bg-muted animate-pulse" /> : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {row('Guru', data?.guru, 'guru', guruPw, setGuruPw)}
+              {row('Siswa', data?.siswa, 'siswa', siswaPw, setSiswaPw)}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button size="sm" disabled={save.isPending || (!guruPw && !siswaPw)}
+              onClick={() => { setMsg(null); save.mutate() }}>
+              {save.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+              Simpan
+            </Button>
+          </div>
+
+          {msg && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${msg.type === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+              {msg.text}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB: PENGGUNA (Admin, BK, Orang Tua)
 // ─────────────────────────────────────────────────────────────────────────────
 function PenggunaTab() {
@@ -2482,11 +2606,12 @@ function PenggunaTab() {
       {/* ── Guru / Siswa sub-tabs ─────────────────────────────────────────────── */}
       {(subTab === 'guru' || subTab === 'siswa') && (
         <>
+          <PasswordDefaultPanel />
           {subTab === 'guru' && (
-            <p className="text-xs text-muted-foreground">Username login guru = <strong>NIP</strong> · Password default mengikuti <code>DEFAULT_TEACHER_PASSWORD</code> di .env server — akun wajib ganti password saat login pertama</p>
+            <p className="text-xs text-muted-foreground">Username login guru = <strong>NIP</strong> · Password default diatur di panel di atas — akun wajib ganti password saat login pertama</p>
           )}
           {subTab === 'siswa' && (
-            <p className="text-xs text-muted-foreground">Username login siswa = <strong>NISN</strong> · Password default mengikuti <code>DEFAULT_STUDENT_PASSWORD</code> di .env server — akun wajib ganti password saat login pertama</p>
+            <p className="text-xs text-muted-foreground">Username login siswa = <strong>NISN</strong> · Password default diatur di panel di atas — akun wajib ganti password saat login pertama</p>
           )}
           {detailLoading ? <TableSkeleton cols={[16, 140, 90, 120, 80, 70, 90, 80, 40]} rows={8} /> : (
             <div className="overflow-x-auto rounded-lg border">

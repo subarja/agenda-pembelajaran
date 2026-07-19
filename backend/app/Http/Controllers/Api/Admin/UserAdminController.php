@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\PasswordDefaultSetting;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
@@ -237,7 +238,7 @@ class UserAdminController extends Controller
             $plain = self::defaultPasswordFor($user);
             if (! $plain) {
                 return response()->json([
-                    'message' => 'Password default belum dikonfigurasi di .env server (DEFAULT_TEACHER_PASSWORD / DEFAULT_STUDENT_PASSWORD). Isi dulu, atau ketik password baru secara manual.',
+                    'message' => 'Password default belum diatur. Isi di Panel Admin > Pengguna > Password Default (atau DEFAULT_TEACHER_PASSWORD / DEFAULT_STUDENT_PASSWORD di .env server), atau ketik password baru secara manual.',
                 ], 422);
             }
         } else {
@@ -268,8 +269,7 @@ class UserAdminController extends Controller
     /** Password default (plain) menurut peran; null bila belum dikonfigurasi. */
     private static function defaultPasswordFor(User $u): ?string
     {
-        $isSiswa = $u->role === UserRole::Siswa;
-        return config($isSiswa ? 'accounts.default_student_password' : 'accounts.default_teacher_password');
+        return PasswordDefaultSetting::resolve($u->role === UserRole::Siswa ? 'siswa' : 'guru');
     }
 
     // PUT /admin/users/{uuid}/toggle-status
@@ -291,14 +291,14 @@ class UserAdminController extends Controller
             return response()->json(['message' => 'Tipe tidak dikenal.'], 422);
         }
 
-        // Password default tidak lagi di-hardcode — nilai lama sudah tercatat di
-        // riwayat git sehingga wajib dirotasi dan hanya hidup di .env server.
+        // Password default tidak pernah di-hardcode — nilai lama sudah tercatat di
+        // riwayat git. Sumbernya: panel admin (terenkripsi di DB) → fallback .env.
         $envKey = $type === 'guru' ? 'DEFAULT_TEACHER_PASSWORD' : 'DEFAULT_STUDENT_PASSWORD';
-        $plain  = config($type === 'guru' ? 'accounts.default_teacher_password' : 'accounts.default_student_password');
+        $plain  = PasswordDefaultSetting::resolve($type);
 
         if (! $plain) {
             return response()->json([
-                'message' => "Password default belum dikonfigurasi. Isi {$envKey} di file .env server, lalu coba lagi.",
+                'message' => "Password default belum diatur. Isi lewat Panel Admin > Pengguna > Password Default, atau {$envKey} di file .env server, lalu coba lagi.",
             ], 422);
         }
 
