@@ -93,11 +93,23 @@ export default function KokurikulerAdminTab() {
               absen, laporan harian, refleksi siswa, penilaian, dan dokumen tim.
             </p>
           </div>
-          {!form && (
-            <Button size="sm" onClick={() => setForm(EMPTY_FORM)}>
-              <Plus className="h-4 w-4 mr-1" /> Buat Projek
+          <div className="flex flex-wrap gap-1 shrink-0">
+            {/* Rekap seluruh program — tombol Absen/Nilai di tiap kartu hanya satu projek. */}
+            <Button size="sm" variant="outline" disabled={projects.length === 0}
+              title="Unduh seluruh program kokurikuler (Excel)"
+              onClick={() => {
+                setUnduhErr(null)
+                kokurikulerAdminApi.downloadProjects('program_kokurikuler.xlsx')
+                  .catch((e: Error) => setUnduhErr(e.message || 'Gagal mengunduh.'))
+              }}>
+              <Download className="h-4 w-4 mr-1" /> Unduh Semua Program
             </Button>
-          )}
+            {!form && (
+              <Button size="sm" onClick={() => setForm(EMPTY_FORM)}>
+                <Plus className="h-4 w-4 mr-1" /> Buat Projek
+              </Button>
+            )}
+          </div>
         </div>
       </CardContent></Card>
 

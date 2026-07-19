@@ -512,6 +512,139 @@ class KokurikulerAdminController extends Controller
         });
     }
 
+    /**
+     * GET /admin/kokurikuler/projects/export — seluruh program kokurikuler dalam satu
+     * workbook. Berbeda dari export-absen/export-nilai yang isinya satu projek: ini
+     * dokumen program itu sendiri (untuk arsip kurikulum & lampiran laporan), dipecah
+     * jadi 3 sheet supaya tiap baris tetap satu entitas — projek, penugasan kelas,
+     * dan dimensi — bukan sel bertumpuk yang sulit difilter di Excel.
+     *
+     * Ikut urutan daftar di layar (index()): semua tahun ajaran, terbaru dulu, dengan
+     * kolom Tahun Ajaran sebagai pembeda.
+     */
+    public function exportProjects()
+    {
+        $projects = KokurikulerProject::with([...$this->projectRelations(), 'projectClasses.fasilitator.teacher'])
+            ->orderByDesc('tanggal_mulai')
+            ->get();
+
+        // Jumlah siswa & tim per kelas dihitung sekali di luar loop (hindari N+1).
+        $siswaPerKelas = Student::query()
+            ->whereIn('class_id', $projects->flatMap->projectClasses->pluck('class_id')->unique())
+            ->groupBy('class_id')
+            ->selectRaw('class_id, count(*) as jml')
+            ->pluck('jml', 'class_id');
+
+        $timPerKelas = KokurikulerTeam::query()
+            ->whereIn('project_id', $projects->pluck('id'))
+            ->groupBy('project_id', 'class_id')
+            ->selectRaw('project_id, class_id, count(*) as jml')
+            ->get()
+            ->mapWithKeys(fn ($r) => [$r->project_id.'-'.$r->class_id => (int) $r->jml]);
+
+        $tanggal = now('Asia/Jakarta')->locale('id')->isoFormat('D MMMM YYYY');
+
+        return $this->streamXlsx('program_kokurikuler.xlsx', function (Writer $w) use ($projects, $siswaPerKelas, $timPerKelas, $tanggal) {
+            $header = $this->xlsxHeaderStyle();
+            $text   = $this->xlsxCellStyle();
+            $center = $this->xlsxCellCenterStyle();
+
+            // ── Sheet 1: satu baris per projek ────────────────────────────────
+            $w->getCurrentSheet()->setName('Daftar Program');
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 32, 3 => 24, 4 => 10, 5 => 20, 6 => 12, 7 => 12, 8 => 10, 9 => 8, 10 => 8, 11 => 8, 12 => 40, 13 => 40]);
+
+            $w->addRow(Row::fromValuesWithStyle(['DAFTAR PROGRAM KOKURIKULER'], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValues(['Dicetak: '.$tanggal]));
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValuesWithStyle([
+                'No', 'Judul', 'Tema', 'Tingkat', 'Tahun Ajaran', 'Mulai', 'Selesai',
+                'Status', 'Kelas', 'Siswa', 'Dimensi', 'Tujuan', 'Deskripsi',
+            ], $header));
+
+            foreach ($projects as $i => $p) {
+                $jmlSiswa = $p->projectClasses->sum(fn ($pc) => (int) $siswaPerKelas->get($pc->class_id, 0));
+
+                $w->addRow(new Row([
+                    new NumericCell($i + 1, $center),
+                    new StringCell($p->judul, $text),
+                    new StringCell($p->tema ?: '—', $text),
+                    // tingkat disimpan gabungan koma ("X,XI"); kosong = semua tingkat.
+                    new StringCell($p->tingkat ?: 'Semua', $center),
+                    new StringCell($p->academicYear ? $p->academicYear->tahun.' '.ucfirst($p->academicYear->semester->value) : '—', $center),
+                    new StringCell($p->tanggal_mulai->format('d/m/Y'), $center),
+                    new StringCell($p->tanggal_selesai->format('d/m/Y'), $center),
+                    new StringCell(ucfirst($p->status), $center),
+                    new NumericCell($p->projectClasses->count(), $center),
+                    new NumericCell($jmlSiswa, $center),
+                    new NumericCell($p->projectDimensions->count(), $center),
+                    new StringCell($p->tujuan ?: '—', $text),
+                    new StringCell($p->deskripsi ?: '—', $text),
+                ]));
+            }
+
+            if ($projects->isEmpty()) {
+                $w->addRow(Row::fromValuesWithStyle(['Belum ada program kokurikuler.'], $text));
+            }
+
+            // ── Sheet 2: satu baris per kelas peserta ─────────────────────────
+            $w->addNewSheetAndMakeItCurrent()->setName('Kelas & Fasilitator');
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 32, 3 => 16, 4 => 28, 5 => 22, 6 => 8, 7 => 8]);
+
+            $w->addRow(Row::fromValuesWithStyle(['KELAS PESERTA & FASILITATOR'], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValues(['Dicetak: '.$tanggal]));
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValuesWithStyle(
+                ['No', 'Program', 'Kelas', 'Fasilitator', 'NIP', 'Siswa', 'Tim'],
+                $header
+            ));
+
+            $no = 0;
+            foreach ($projects as $p) {
+                foreach ($p->projectClasses as $pc) {
+                    $w->addRow(new Row([
+                        new NumericCell(++$no, $center),
+                        new StringCell($p->judul, $text),
+                        new StringCell($pc->schoolClass?->label() ?: '—', $center),
+                        new StringCell($pc->fasilitator?->nama ?: 'Belum ditentukan', $text),
+                        new StringCell((string) ($pc->fasilitator?->teacher?->nip ?: '—'), $center),
+                        new NumericCell((int) $siswaPerKelas->get($pc->class_id, 0), $center),
+                        new NumericCell($timPerKelas->get($p->id.'-'.$pc->class_id, 0), $center),
+                    ]));
+                }
+            }
+
+            if ($no === 0) {
+                $w->addRow(Row::fromValuesWithStyle(['Belum ada kelas peserta.'], $text));
+            }
+
+            // ── Sheet 3: satu baris per dimensi yang dinilai ──────────────────
+            $w->addNewSheetAndMakeItCurrent()->setName('Dimensi & Aspek');
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 32, 3 => 28, 4 => 40, 5 => 50]);
+
+            $w->addRow(Row::fromValuesWithStyle(['DIMENSI PROFIL LULUSAN PER PROGRAM'], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValues(['Dicetak: '.$tanggal]));
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValuesWithStyle(['No', 'Program', 'Dimensi', 'Aspek', 'Sub-dimensi'], $header));
+
+            $no = 0;
+            foreach ($projects as $p) {
+                foreach ($p->projectDimensions as $pd) {
+                    $w->addRow(new Row([
+                        new NumericCell(++$no, $center),
+                        new StringCell($p->judul, $text),
+                        new StringCell($pd->dimension?->nama ?: '—', $text),
+                        new StringCell($pd->aspek ?: '—', $text),
+                        new StringCell($pd->subdimensions->pluck('nama')->implode(', ') ?: '—', $text),
+                    ]));
+                }
+            }
+
+            if ($no === 0) {
+                $w->addRow(Row::fromValuesWithStyle(['Belum ada dimensi yang dipilih.'], $text));
+            }
+        });
+    }
+
     // ── Helper internal ────────────────────────────────────────────────────────
 
     /**

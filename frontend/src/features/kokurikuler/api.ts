@@ -294,6 +294,11 @@ export const kokurikulerApi = {
 export const kokurikulerAdminApi = {
   projects: () => api.get<ApiResponse<KkAdminProject[]>>('/admin/kokurikuler/projects'),
 
+  // Seluruh program (semua tahun ajaran) dalam 1 workbook 3 sheet — beda dari
+  // downloadAbsen/downloadNilaiExcel yang isinya satu projek saja.
+  downloadProjects: (filename: string) =>
+    downloadBlob('/admin/kokurikuler/projects/export', filename),
+
   createProject: (d: KkAdminProjectPayload) => api.post('/admin/kokurikuler/projects', d),
 
   updateProject: (id: string, d: KkAdminProjectPayload) => api.put(`/admin/kokurikuler/projects/${id}`, d),

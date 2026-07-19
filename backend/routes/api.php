@@ -385,6 +385,8 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::put('kokurikuler/dimensions/{id}',              [KokurikulerAdminController::class, 'updateDimension']);
         Route::delete('kokurikuler/dimensions/{id}',           [KokurikulerAdminController::class, 'destroyDimension']);
         Route::get('kokurikuler/teacher-options',              [KokurikulerAdminController::class, 'teacherOptions']);
+        // Sebelum 'projects/{uuid}' agar 'export' tidak tertangkap sebagai uuid.
+        Route::get('kokurikuler/projects/export',              [KokurikulerAdminController::class, 'exportProjects']);
         Route::get('kokurikuler/projects',                     [KokurikulerAdminController::class, 'index']);
         Route::post('kokurikuler/projects',                    [KokurikulerAdminController::class, 'store']);
         Route::put('kokurikuler/projects/{uuid}',              [KokurikulerAdminController::class, 'update']);
