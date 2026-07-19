@@ -25,8 +25,10 @@ manual guide/
 │   ├── 04-penilaian-karakter.md
 │   ├── 05-nilai-tambah.md
 │   ├── 06-guru-inval.md
-│   ├── 07-jadwal-kalender-minggu-efektif.md
-│   └── 08-laporan.md
+│   ├── 07-jadwal-kalender-minggu-efektif.md   (termasuk Beban Mengajar)
+│   ├── 08-laporan.md
+│   ├── 09-pkl.md                      PKL untuk guru pembimbing (Mode PKL)
+│   └── 10-kokurikuler.md              Kokurikuler untuk fasilitator
 │
 ├── 04-modul-wali-kelas/               Panduan untuk Wali Kelas
 │   ├── 01-presensi-harian.md
@@ -45,9 +47,10 @@ manual guide/
 │   ├── 03-karakter-dan-ambang.md
 │   ├── 04-tahun-ajaran-dan-backup.md
 │   ├── 05-kalender-dan-minggu-efektif.md
-│   ├── 06-ews-guru.md
+│   ├── 06-ews-guru.md                 (termasuk grafik pengisian agenda)
 │   ├── 07-integrasi-penyimpanan-dan-notifikasi.md
-│   └── 08-deploy-dan-maintenance.md
+│   ├── 08-deploy-dan-maintenance.md
+│   └── 09-jam-dan-bel.md              Jam bel per hari, mode Apel, impor Excel
 │
 ├── 07-modul-siswa-orang-tua.md        Panduan untuk Siswa & Orang Tua
 ├── 08-lampiran.md                     FAQ, istilah, pemecahan masalah

@@ -27,6 +27,8 @@ const CHAPTERS = [
   '03-modul-guru/06-guru-inval.md',
   '03-modul-guru/07-jadwal-kalender-minggu-efektif.md',
   '03-modul-guru/08-laporan.md',
+  '03-modul-guru/09-pkl.md',
+  '03-modul-guru/10-kokurikuler.md',
   '04-modul-wali-kelas/01-presensi-harian.md',
   '04-modul-wali-kelas/02-ews-siswa.md',
   '04-modul-wali-kelas/03-data-siswa.md',
@@ -42,6 +44,7 @@ const CHAPTERS = [
   '06-modul-admin/06-ews-guru.md',
   '06-modul-admin/07-integrasi-penyimpanan-dan-notifikasi.md',
   '06-modul-admin/08-deploy-dan-maintenance.md',
+  '06-modul-admin/09-jam-dan-bel.md',
   '07-modul-siswa-orang-tua.md',
   '08-lampiran.md',
 ]

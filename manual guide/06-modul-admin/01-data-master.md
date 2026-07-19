@@ -83,10 +83,27 @@ bukan miliknya. Periksa jadwal terlebih dahulu bila ada keluhan semacam itu.
 
 ![Tab Pengguna](../gambar/admin/tab/pengguna.png)
 
-Mengelola akun yang bukan guru maupun siswa: Admin, Wakasek, dan Orang Tua. Akun orang tua
-ditautkan ke satu siswa.
+Tab **Pengguna** memiliki tiga sub-tab: **Administrator** (akun admin/wakasek/orang tua),
+**Guru / Staf**, dan **Siswa**. Akun orang tua ditautkan ke satu siswa.
 
-Dari tab ini Admin dapat menyetel ulang kata sandi pengguna yang lupa.
+Pada daftar Guru/Staf dan Siswa terdapat kolom **Nama Pengguna** — yaitu kredensial yang dipakai
+untuk login (NIP untuk guru, NISN untuk siswa, atau email bila keduanya tidak ada). Jadi seorang
+guru yang belum memiliki NIP tetap terlihat nama penggunanya.
+
+### Generate Akun & Reset Kata Sandi
+
+- **Generate Akun** (sub-tab Guru/Siswa) menyetel kata sandi default untuk seluruh akun guru atau
+  siswa sekaligus (nilainya diatur di berkas `.env` server).
+- **Reset Kata Sandi** (ikon kunci pada satu baris) menyetel ulang kata sandi satu akun. Bila
+  kolom dikosongkan, sistem memakai **kata sandi default** sesuai peran.
+
+Setiap kali Anda menekan Generate atau Reset, muncul **kotak pemberitahuan** yang menampilkan
+**untuk siapa**, **nama pengguna**, dan **kata sandi**-nya, lengkap dengan tombol **Salin Username
+& Password**. Kotak ini baru tertutup setelah Anda menekan **OK, Sudah Dicatat**. Semua akun
+tersebut **wajib mengganti kata sandi saat login pertama**.
+
+💡 Catat/salin kredensial itu sebelum menutup kotak, karena kata sandi tidak ditampilkan lagi
+setelahnya.
 
 ## Paginasi dan Pencarian
 

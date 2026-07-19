@@ -48,6 +48,16 @@ satunya, karena agenda dan poin karakter bisa telanjur menempel pada akun yang s
 Kode program keahlian harus sesuai daftar yang dipakai sekolah. Kode yang tidak dikenali membuat
 kelas gagal terbentuk.
 
+### Penulisan kolom kelas
+
+Pada berkas yang memuat kolom **kelas** (siswa, jadwal, wali kelas, PKL), Anda boleh menuliskan
+**kode** (mis. `XII RPL A`) maupun **nama jurusan lengkap** (`XII Rekayasa Perangkat Lunak A`) —
+keduanya dikenali. Bila kelas tidak ditemukan, aplikasi menyarankan penulisan yang mirip agar Anda
+tahu harus menulis apa; ejaan tetap harus **persis** seperti pada menu Kelas.
+
+> Impor **Jam & Bel** memakai alurnya sendiri di menu *Jam & Bel* (grup Akademik), bukan di tab
+> Import Data ini. Lihat *Jam & Bel*.
+
 ## Setelah Impor
 
 Periksa hasilnya:
