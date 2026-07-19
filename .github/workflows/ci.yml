@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — PHPUnit
+    runs-on: ubuntu-latest
+
+    # Test WAJIB MySQL: sebagian migrasi memakai DDL khas MySQL (generated column,
+    # emulasi index parsial) yang tidak jalan di SQLite. Lihat komentar di phpunit.xml.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: secret
+          MYSQL_DATABASE: agenda_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -psecret"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: agenda_test
+      DB_USERNAME: root
+      DB_PASSWORD: secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Siapkan PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_mysql, gd, zip, bcmath, intl
+          coverage: none
+
+      - name: Cache dependensi Composer
+        uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Pasang dependensi
+        working-directory: backend
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      # .env.example memakai DB_CONNECTION=sqlite untuk kemudahan setup lokal.
+      # Nilai MySQL ditulis eksplisit ke .env di sini alih-alih hanya mengandalkan
+      # `env:` job — Dotenv Laravel memang tidak menimpa variabel yang sudah ada,
+      # tapi menggantungkan CI pada perilaku halus itu membuatnya rapuh.
+      - name: Siapkan environment
+        working-directory: backend
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          {
+            echo "DB_CONNECTION=mysql"
+            echo "DB_HOST=127.0.0.1"
+            echo "DB_PORT=3306"
+            echo "DB_DATABASE=agenda_test"
+            echo "DB_USERNAME=root"
+            echo "DB_PASSWORD=secret"
+          } >> .env
+
+      # Tidak perlu menunggu manual: `options: --health-cmd` pada service membuat
+      # job baru mulai setelah MySQL sehat.
+      - name: Jalankan test
+        working-directory: backend
+        run: php artisan test
+
+  frontend:
+    name: Frontend — tsc + Vitest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Siapkan Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Pasang dependensi
+        working-directory: frontend
+        run: npm ci
+
+      # `tsc --noEmit` TIDAK mengetik-cek apa pun di repo ini: tsconfig-nya
+      # solution-style (hanya references). Wajib `tsc -b`.
+      - name: Ketik-cek
+        working-directory: frontend
+        run: npx tsc -b
+
+      - name: Jalankan test
+        working-directory: frontend
+        env:
+          TZ: Asia/Jakarta
+        run: npm test
+
+  lint-berubah:
+    name: Lint (berkas yang berubah saja)
+    runs-on: ubuntu-latest
+    # Repo punya utang gaya warisan: 188 berkas menurut Pint, 255 galat menurut
+    # ESLint — semuanya sudah ada sebelum gerbang ini dipasang. Melint seluruh repo
+    # akan merah selamanya dan tidak berguna. Yang dijaga hanya berkas yang DIUBAH,
+    # supaya utangnya menyusut alami tanpa satu commit reformat raksasa.
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Kumpulkan berkas yang berubah
+        id: diff
+        run: |
+          BASE="origin/${{ github.base_ref }}"
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          echo "php=$(git diff --name-only --diff-filter=ACM "$BASE"...HEAD -- 'backend/**/*.php' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          echo "ts=$(git diff --name-only --diff-filter=ACM "$BASE"...HEAD -- 'frontend/src/**/*.ts' 'frontend/src/**/*.tsx' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Siapkan PHP
+        if: steps.diff.outputs.php != ''
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Pint pada berkas PHP yang berubah
+        if: steps.diff.outputs.php != ''
+        working-directory: backend
+        run: |
+          composer install --prefer-dist --no-interaction --no-progress --quiet
+          FILES=$(echo "${{ steps.diff.outputs.php }}" | sed 's|backend/||g')
+          ./vendor/bin/pint --test $FILES
+
+      - name: Siapkan Node
+        if: steps.diff.outputs.ts != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: ESLint pada berkas TS yang berubah
+        if: steps.diff.outputs.ts != ''
+        working-directory: frontend
+        run: |
+          npm ci
+          FILES=$(echo "${{ steps.diff.outputs.ts }}" | sed 's|frontend/||g')
+          npx eslint $FILES
