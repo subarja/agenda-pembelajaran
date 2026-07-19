@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\UserRole;
+use App\Support\ClassAccess;
+use App\Support\SemesterLock;
+use App\Support\TahunAjaran;
 use App\Http\Controllers\Controller;
 use App\Models\DailyAttendance;
 use App\Models\SchoolClass;
@@ -79,7 +81,7 @@ class DailyAttendanceController extends Controller
         if (! $kelas) {
             return response()->json(['message' => 'Kelas tidak ditemukan atau akses ditolak.'], 403);
         }
-        \App\Support\SemesterLock::assertClassWritable($kelas->id);
+        SemesterLock::assertClassWritable($kelas->id);
 
         // Build student UUID → DB id map for this class
         $studentMap = Student::where('class_id', $kelas->id)
@@ -167,32 +169,39 @@ class DailyAttendanceController extends Controller
 
     // ── Resolve class ─────────────────────────────────────────────────────────
 
+    /**
+     * Kelas yang boleh dipresensi pengguna ini, atau null kalau tidak berhak.
+     *
+     * Dulu bercabang pada role literal dan salah di tiga hal sekaligus (audit 2026-07-19):
+     *
+     * 1. Cabang `UserRole::WaliKelas` adalah DEAD CODE — wali kelas adalah *kapabilitas*
+     *    di atas `guru`, rolenya tetap `guru`. Wali jatuh ke cabang Guru yang hanya
+     *    mengizinkan kelas yang ia AJAR, sehingga 19 dari 35 wali (yang tidak mengajar
+     *    di kelas perwaliannya) tertolak dari presensi kelasnya sendiri.
+     * 2. `UserRole::BK` disamakan dengan admin/wakasek — lintas sekolah, padahal BK hanya
+     *    berhak atas kelas yang ia ampu.
+     * 3. Tidak ada scope tahun ajaran, sehingga default-nya bisa mengembalikan kelas TA
+     *    lama yang rosternya sudah kosong.
+     *
+     * Sekarang satu sumber kebenaran: ClassAccess::teachingClassIds (DIAJAR ∪ perwalian),
+     * batas yang memang ditujukan untuk data operasional kelas seperti presensi.
+     */
     private function resolveClass($user, ?string $classUuid): ?SchoolClass
     {
-        $role = $user->role;
+        $allowed = ClassAccess::teachingClassIds($user); // null = lintas sekolah
 
-        if (in_array($role, [UserRole::Admin, UserRole::Wakasek, UserRole::BK])) {
-            if ($classUuid) {
-                return SchoolClass::where('uuid', $classUuid)->first();
-            }
-            return SchoolClass::first(); // fallback
+        $dalamTahunAjaran = SchoolClass::query()
+            ->where('academic_year_id', TahunAjaran::id())
+            ->when($allowed !== null, fn ($q) => $q->whereIn('id', $allowed ?? collect()));
+
+        if ($classUuid) {
+            return (clone $dalamTahunAjaran)->where('uuid', $classUuid)->first();
         }
 
-        if ($role === UserRole::WaliKelas) {
-            $q = SchoolClass::where('wali_kelas_id', $user->id);
-            if ($classUuid) $q->where('uuid', $classUuid);
-            return $q->first();
-        }
+        // Tanpa class_id: dahulukan kelas perwalian — itu yang dicari wali kelas saat
+        // membuka halaman presensi harian, bukan kelas pertama yang kebetulan ia ajar.
+        $perwalian = (clone $dalamTahunAjaran)->where('wali_kelas_id', $user->id)->first();
 
-        if ($role === UserRole::Guru) {
-            // Guru hanya bisa lihat kelas yang ia mengajar
-            $q = SchoolClass::whereHas('schedules', fn ($sq) =>
-                $sq->whereHas('teacher', fn ($tq) => $tq->where('user_id', $user->id))
-            );
-            if ($classUuid) $q->where('uuid', $classUuid);
-            return $q->first();
-        }
-
-        return null;
+        return $perwalian ?: (clone $dalamTahunAjaran)->orderBy('tingkat')->orderBy('jurusan')->orderBy('rombel')->first();
     }
 }

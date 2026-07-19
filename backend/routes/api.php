@@ -307,18 +307,22 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::post('branding/logo',                            [BrandingController::class, 'updateLogo']);
         Route::delete('branding/logo',                          [BrandingController::class, 'destroyLogo']);
 
-        // Penyimpanan R2 (Cloudflare object storage) — admin
-        Route::get('r2/settings',                               [R2SettingController::class, 'show']);
-        Route::put('r2/settings',                               [R2SettingController::class, 'update']);
-        Route::post('r2/test',                                  [R2SettingController::class, 'test']);
+        // Penyimpanan R2 (Cloudflare object storage) — ADMIN SAJA
+        Route::middleware('role:admin')->group(function () {
+            Route::get('r2/settings',                           [R2SettingController::class, 'show']);
+            Route::put('r2/settings',                           [R2SettingController::class, 'update']);
+            Route::post('r2/test',                              [R2SettingController::class, 'test']);
+        });
 
         // Guru Inval — pemantauan kurikulum
         Route::get('inval', [SubstitutionAdminController::class, 'index']);
 
-        // Push Notification (Firebase Cloud Messaging) — admin
-        Route::get('fcm/settings',                              [FcmSettingController::class, 'show']);
-        Route::put('fcm/settings',                              [FcmSettingController::class, 'update']);
-        Route::post('fcm/test',                                 [FcmSettingController::class, 'test']);
+        // Push Notification (Firebase Cloud Messaging) — ADMIN SAJA
+        Route::middleware('role:admin')->group(function () {
+            Route::get('fcm/settings',                          [FcmSettingController::class, 'show']);
+            Route::put('fcm/settings',                          [FcmSettingController::class, 'update']);
+            Route::post('fcm/test',                             [FcmSettingController::class, 'test']);
+        });
 
         // Kalender Google + Hari Efektif — admin
         Route::get('calendar/settings',                         [CalendarController::class, 'getSettings']);
@@ -344,8 +348,10 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::get('agenda-fill-settings',                      [AgendaFillSettingController::class, 'show']);
         Route::put('agenda-fill-settings',                      [AgendaFillSettingController::class, 'update']);
         // ── Password default akun guru & siswa (dipakai Generate Akun / reset) ────
-        Route::get('password-defaults',                         [\App\Http\Controllers\Api\Admin\PasswordDefaultSettingController::class, 'show']);
-        Route::put('password-defaults',                         [\App\Http\Controllers\Api\Admin\PasswordDefaultSettingController::class, 'update']);
+        Route::middleware('role:admin')->group(function () {
+            Route::get('password-defaults',                     [\App\Http\Controllers\Api\Admin\PasswordDefaultSettingController::class, 'show']);
+            Route::put('password-defaults',                     [\App\Http\Controllers\Api\Admin\PasswordDefaultSettingController::class, 'update']);
+        });
 
         Route::get('archive-write-settings',                    [\App\Http\Controllers\Api\Admin\ArchiveWriteSettingController::class, 'show']);
         Route::put('archive-write-settings',                    [\App\Http\Controllers\Api\Admin\ArchiveWriteSettingController::class, 'update']);
@@ -422,21 +428,23 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::get('promotion/preview',           [PromotionController::class, 'preview']);
         Route::post('promotion/execute',          [PromotionController::class, 'execute']);
 
-        // Backup & Restore (admin-only, dijaga lagi di dalam controller)
-        Route::get('backup/download',             [DatabaseBackupController::class, 'download']);
-        Route::post('backup/restore',             [DatabaseBackupController::class, 'restore']);
+        // Backup, kredensial, deploy — ADMIN SAJA (penjaga di controller dipertahankan
+        // sebagai lapis kedua; yang di rute ini lapis pertama yang tidak bisa terlewat
+        // saat ada endpoint baru ditambahkan ke grupnya).
+        Route::middleware('role:admin')->group(function () {
+            Route::get('backup/download',         [DatabaseBackupController::class, 'download']);
+            Route::post('backup/restore',         [DatabaseBackupController::class, 'restore']);
 
-        // Ekspor/Impor kredensial R2 + FCM + Kalender (admin-only, dijaga di controller)
-        Route::get('credentials/export',          [\App\Http\Controllers\Api\Admin\CredentialTransferController::class, 'export']);
-        Route::post('credentials/import',         [\App\Http\Controllers\Api\Admin\CredentialTransferController::class, 'import']);
+            Route::get('credentials/export',      [\App\Http\Controllers\Api\Admin\CredentialTransferController::class, 'export']);
+            Route::post('credentials/import',     [\App\Http\Controllers\Api\Admin\CredentialTransferController::class, 'import']);
 
-        // Tools Deploy & Maintenance — cPanel tanpa Terminal (admin-only, dijaga di controller)
-        Route::get('deploy-tools/status',         [DeployToolController::class, 'status']);
-        Route::post('deploy-tools/migrate',       [DeployToolController::class, 'migrate']);
-        Route::post('deploy-tools/build-vendor',  [DeployToolController::class, 'buildVendor']);
-        Route::post('deploy-tools/build-dist',    [DeployToolController::class, 'buildDist']);
-        Route::post('deploy-tools/seed',          [DeployToolController::class, 'seed']);
-        Route::post('deploy-tools/deploy',        [DeployToolController::class, 'deploy']);
+            Route::get('deploy-tools/status',     [DeployToolController::class, 'status']);
+            Route::post('deploy-tools/migrate',   [DeployToolController::class, 'migrate']);
+            Route::post('deploy-tools/build-vendor', [DeployToolController::class, 'buildVendor']);
+            Route::post('deploy-tools/build-dist',   [DeployToolController::class, 'buildDist']);
+            Route::post('deploy-tools/seed',      [DeployToolController::class, 'seed']);
+            Route::post('deploy-tools/deploy',    [DeployToolController::class, 'deploy']);
+        });
 
         // Guru
         Route::get('teachers',                    [TeacherAdminController::class, 'index']);
@@ -494,16 +502,19 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::put('action-thresholds/{uuid}',    [CharacterAdminController::class, 'updateThreshold']);
         Route::delete('action-thresholds/{uuid}', [CharacterAdminController::class, 'destroyThreshold']);
 
-        // Pengguna (admin, bk, orang_tua)
-        Route::get('users',                          [UserAdminController::class, 'index']);
-        Route::post('users',                         [UserAdminController::class, 'store']);
-        Route::put('users/{uuid}',                   [UserAdminController::class, 'update']);
-        Route::delete('users/{uuid}',                [UserAdminController::class, 'destroy']);
-        // Pengguna — sub-menu detail (semua role)
-        Route::get('users-detail',                   [UserAdminController::class, 'detail']);
-        Route::put('users/{uuid}/reset-password',    [UserAdminController::class, 'resetPassword']);
-        Route::put('users/{uuid}/toggle-status',     [UserAdminController::class, 'toggleStatus']);
-        Route::post('generate-accounts',             [UserAdminController::class, 'generateAccounts']);
+        // Pengguna — ADMIN SAJA. Inilah rantai eskalasi hak yang ditemukan audit
+        // 2026-07-19: wakasek membuat akun ber-role admin lalu memakai akun itu untuk
+        // backup DB & ekspor kredensial. Pengelolaan akun bukan ranah kurikulum.
+        Route::middleware('role:admin')->group(function () {
+            Route::get('users',                      [UserAdminController::class, 'index']);
+            Route::post('users',                     [UserAdminController::class, 'store']);
+            Route::put('users/{uuid}',               [UserAdminController::class, 'update']);
+            Route::delete('users/{uuid}',            [UserAdminController::class, 'destroy']);
+            Route::get('users-detail',               [UserAdminController::class, 'detail']);
+            Route::put('users/{uuid}/reset-password', [UserAdminController::class, 'resetPassword']);
+            Route::put('users/{uuid}/toggle-status', [UserAdminController::class, 'toggleStatus']);
+            Route::post('generate-accounts',         [UserAdminController::class, 'generateAccounts']);
+        });
 
         // Import aSc Timetables XML
         Route::post('import/asc-xml',         [AscXmlImportController::class, 'import']);
