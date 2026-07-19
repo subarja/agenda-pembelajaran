@@ -7,6 +7,7 @@ use App\Models\NonEffectiveDay;
 use App\Models\Schedule;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
+use Illuminate\Database\Eloquent\Collection;
 
 class EffectiveDayService
 {
@@ -46,6 +47,23 @@ class EffectiveDayService
     private array $scheduleCache = [];
 
     /**
+     * Jadwal aktif satu kelas — SATU query per kelas untuk seluruh rekap.
+     *
+     * Sebelumnya kelas yang sama ditembak dua kali: sekali di sini (tanpa subject,
+     * untuk menghitung hari) dan sekali lagi oleh pemanggilnya (dengan subject, untuk
+     * mengenumerasi mapel). `with('subject')` dipasang di satu tempat ini supaya kedua
+     * kebutuhan itu dilayani cache yang sama. Penyaringan per guru dilakukan di memori
+     * — koleksi satu kelas kecil, dan menyaringnya di SQL akan memecah cache lagi.
+     */
+    private function schedulesForClass(int $classId): Collection
+    {
+        return $this->scheduleCache[$classId] ??= Schedule::where('class_id', $classId)
+            ->where('aktif', true)
+            ->with(['subject'])
+            ->get();
+    }
+
+    /**
      * Hitung minggu efektif per bulan untuk satu kombinasi kelas+mapel dalam satu tahun ajaran.
      * Basis: MINGGU KALENDER SUNGGUHAN (Senin-Minggu) yang memuat >=1 hari jadwal mapel ini,
      * BUKAN jumlah kemunculan hari jadwal itu sendiri — mapel dengan 2 hari jadwal/minggu
@@ -60,16 +78,7 @@ class EffectiveDayService
             return $this->emptyMingguResult('Tanggal mulai/selesai semester belum diisi.');
         }
 
-        // Satu query per KELAS, bukan per kelas x mapel: pemanggilnya (rekapMingguByClass /
-        // rekapMingguAllByClass) sudah mengambil jadwal yang sama persis lalu
-        // mengelompokkannya per mapel, jadi tanpa cache ini jadwal kelas yang sama diambil
-        // ulang untuk setiap mapelnya. Filternya identik dengan versi lama.
-        $this->scheduleCache[$classId] ??= Schedule::where('class_id', $classId)
-            ->where('aktif', true)
-            ->get()
-            ->groupBy('subject_id');
-
-        $schedules = $this->scheduleCache[$classId][$subjectId] ?? collect();
+        $schedules = $this->schedulesForClass($classId)->where('subject_id', $subjectId);
 
         if ($schedules->isEmpty()) {
             return $this->emptyMingguResult('Tidak ada jadwal aktif.');
@@ -164,11 +173,8 @@ class EffectiveDayService
      */
     public function rekapMingguByClass(int $classId, int $teacherId, int $academicYearId): array
     {
-        $schedules = Schedule::where('class_id', $classId)
+        $schedules = $this->schedulesForClass($classId)
             ->where('teacher_id', $teacherId)
-            ->where('aktif', true)
-            ->with(['subject'])
-            ->get()
             ->groupBy('subject_id');
 
         $result = [];
@@ -198,11 +204,7 @@ class EffectiveDayService
      */
     public function rekapMingguAllByClass(int $classId, int $academicYearId): array
     {
-        $schedules = Schedule::where('class_id', $classId)
-            ->where('aktif', true)
-            ->with(['subject'])
-            ->get()
-            ->groupBy('subject_id');
+        $schedules = $this->schedulesForClass($classId)->groupBy('subject_id');
 
         $result = [];
         foreach ($schedules as $subjectId => $group) {
@@ -233,16 +235,7 @@ class EffectiveDayService
             return $this->emptyResult('Tanggal mulai/selesai semester belum diisi di pengaturan Tahun Ajaran.');
         }
 
-        // Satu query per KELAS, bukan per kelas x mapel: pemanggilnya (rekapMingguByClass /
-        // rekapMingguAllByClass) sudah mengambil jadwal yang sama persis lalu
-        // mengelompokkannya per mapel, jadi tanpa cache ini jadwal kelas yang sama diambil
-        // ulang untuk setiap mapelnya. Filternya identik dengan versi lama.
-        $this->scheduleCache[$classId] ??= Schedule::where('class_id', $classId)
-            ->where('aktif', true)
-            ->get()
-            ->groupBy('subject_id');
-
-        $schedules = $this->scheduleCache[$classId][$subjectId] ?? collect();
+        $schedules = $this->schedulesForClass($classId)->where('subject_id', $subjectId);
 
         if ($schedules->isEmpty()) {
             return $this->emptyResult('Tidak ada jadwal aktif untuk kelas dan mapel ini.');
@@ -298,11 +291,7 @@ class EffectiveDayService
 
     public function rekapByClass(int $classId, int $academicYearId): array
     {
-        $schedules = Schedule::where('class_id', $classId)
-            ->where('aktif', true)
-            ->with(['subject'])
-            ->get()
-            ->groupBy('subject_id');
+        $schedules = $this->schedulesForClass($classId)->groupBy('subject_id');
 
         $result = [];
         foreach ($schedules as $subjectId => $group) {
