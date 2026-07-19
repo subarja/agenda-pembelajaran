@@ -107,6 +107,15 @@ class CharacterManualNoteController extends Controller
         $request->validate(['student_id' => ['required', 'string']]);
         $student = Student::where('uuid', $request->student_id)->firstOrFail();
 
+        // Penjagaan yang sama seperti CharacterController::indexInputs()/summary(). Tanpa ini
+        // akun siswa/orang tua bisa membaca catatan manual siswa lain — lengkap dengan isi
+        // catatan, nilai, dan nama guru pemberinya. Terlewat saat perbaikan audit 19 Juli
+        // diterapkan ke controller sekelasnya.
+        $user = $request->user();
+        if (ClassAccess::isStudentSide($user)) {
+            abort_unless(ClassAccess::isOwnStudent($user, $student), 403, 'Akses ditolak.');
+        }
+
         $notes = CharacterManualNote::tahunAjaran()
             ->where('student_id', $student->id)
             ->with(['teacher.user', 'atasNamaTeacher.user', 'reviewer'])

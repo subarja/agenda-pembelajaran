@@ -16,9 +16,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Sisa temuan audit 2026-07-19 yang belum ditutup di dua commit sebelumnya:
- * K-03 (ambang tindakan mengabaikan `sifat`), R-01 (500 `Route [login] not defined`),
- * R-02 (placement_id asing dibalas 200), R-03 (404 utk keadaan kosong wajar).
+ * Sisa temuan audit 2026-07-19: K-03 (ambang tindakan mengabaikan `sifat`) dan
+ * R-01 (500 `Route [login] not defined` untuk app API-only).
+ *
+ * R-02 (placement_id asing) & R-03 (keadaan kosong jadwal) diverifikasi manual
+ * lewat HTTP, belum punya pagar regresi otomatis di sini — lihat catatan di
+ * KebocoranOtorisasiTest untuk pola pengujian otorisasi yang dipakai.
  */
 class AuditSisaTemuanTest extends TestCase
 {
