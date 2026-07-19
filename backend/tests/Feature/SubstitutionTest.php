@@ -62,10 +62,15 @@ class SubstitutionTest extends TestCase
         $kelas   = SchoolClass::create(['tingkat' => Tingkat::X, 'jurusan' => 'Mekatronika', 'rombel' => 'A', 'academic_year_id' => AcademicYear::first()->id]);
         $subject = Subject::create(['kode' => 'IND', 'nama' => 'B.Indonesia', 'aktif' => true]);
 
-        // Sesi dipatok pada HARI INI supaya selalu di dalam batas isi agenda, apa pun
+        // Sesi dipatok pada hari sekolah TERDEKAT (hari ini, atau Sabtu bila test
+        // dijalankan hari Minggu) supaya selalu di dalam batas isi agenda, apa pun
         // tanggal test dijalankan. `hari` harus cocok dengan tanggalnya — itu salah satu
-        // aturan kelayakan yang divalidasi backend.
-        $hariIni       = Carbon::now(config('app.school_timezone'));
+        // aturan kelayakan yang divalidasi backend. Enum Hari sengaja tidak punya
+        // Minggu: sekolah tidak pernah berjadwal di hari itu.
+        $hariIni = Carbon::now(config('app.school_timezone'));
+        if ($hariIni->isSunday()) {
+            $hariIni = $hariIni->subDay();
+        }
         $this->tanggal = $hariIni->toDateString();
 
         $this->jadwal = Schedule::create([
@@ -240,7 +245,10 @@ class SubstitutionTest extends TestCase
     public function test_inval_mundur_di_luar_batas_isi_agenda_ditolak(): void
     {
         // Jauh melewati AgendaFillSetting (default 3 hari) — celah "alihkan hutang lama".
-        $lampau = Carbon::now(config('app.school_timezone'))->subDays(28)->toDateString();
+        // Dihitung dari tanggal sesi (bukan dari "sekarang") dengan kelipatan 7 hari
+        // supaya hari-nya tetap cocok dengan jadwal — yang diuji di sini batas waktunya,
+        // bukan ketidakcocokan hari.
+        $lampau = Carbon::parse($this->tanggal)->subDays(28)->toDateString();
 
         Sanctum::actingAs($this->pengaju);
         $this->postJson('/api/v1/inval', [
