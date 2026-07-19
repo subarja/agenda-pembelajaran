@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Enums\EwsLevel;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
@@ -173,7 +174,7 @@ class PromotionController extends Controller
     {
         EwsStatus::firstOrCreate(
             ['student_id' => $studentId, 'academic_year_id' => $ayId],
-            ['level' => 'hijau', 'kehadiran_score' => 100, 'karakter_score' => 0],
+            ['level' => EwsLevel::Hijau, 'kehadiran_score' => 100, 'karakter_score' => 0],
         );
     }
 

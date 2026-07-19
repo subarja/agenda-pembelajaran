@@ -149,7 +149,10 @@ class PklController extends Controller
     /** GET /pkl/agenda?minggu=YYYY-MM-DD — form agenda agregat (semua siswa bimbingan). */
     public function showAgenda(Request $request): JsonResponse
     {
-        $data = $request->validate(['minggu' => ['required', 'date']]);
+        $data = $request->validate([
+            'minggu'       => ['required', 'date'],
+            'placement_id' => ['nullable', 'uuid'],
+        ]);
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403);
 
@@ -158,7 +161,16 @@ class PklController extends Controller
         abort_if($placements->isEmpty(), 403, 'Anda belum menjadi pembimbing PKL.');
 
         $active = $this->placementsActiveInWeek($placements, $senin);
+
         abort_if($active->isEmpty(), 404, 'Tidak ada siswa bimbingan yang PKL pada minggu ini.');
+
+        // Form ini agregat (semua siswa bimbingan), tapi bila pemanggil menyaring ke satu
+        // placement, uuid asing tidak boleh diabaikan diam-diam — kontrak IDOR menuntut 404,
+        // bukan 200 berisi data placement lain.
+        if (! empty($data['placement_id'])) {
+            $active = $active->where('uuid', $data['placement_id'])->values();
+            abort_if($active->isEmpty(), 404, 'Penempatan PKL tidak ditemukan.');
+        }
 
         // Rekaman agenda per-kelas untuk minggu ini (bisa >1 kelas) — catatan & TP dibagi.
         $agendas = PklAgenda::where('pembimbing_teacher_id', $teacher->id)

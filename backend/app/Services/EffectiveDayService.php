@@ -41,6 +41,8 @@ class EffectiveDayService
 
     private array $nedCache = [];
 
+    private array $nedSetCache = [];
+
     private array $scheduleCache = [];
 
     /**
@@ -225,7 +227,7 @@ class EffectiveDayService
 
     public function calculate(int $classId, int $subjectId, int $academicYearId): array
     {
-        $ay = AcademicYear::findOrFail($academicYearId);
+        $ay = $this->ayCache[$academicYearId] ??= AcademicYear::findOrFail($academicYearId);
 
         if (! $ay->tanggal_mulai || ! $ay->tanggal_selesai) {
             return $this->emptyResult('Tanggal mulai/selesai semester belum diisi di pengaturan Tahun Ajaran.');
@@ -258,7 +260,9 @@ class EffectiveDayService
             }
         }
 
-        $nonEffectiveSet = NonEffectiveDay::whereBetween('tanggal', [
+        // Cache terpisah dari $nedCache: bentuknya beda (set tanggal=>index di sini, koleksi
+        // model ber-key tanggal di calculateMinggu). Satu key dua bentuk = sumber bug.
+        $nonEffectiveSet = $this->nedSetCache[$academicYearId] ??= NonEffectiveDay::whereBetween('tanggal', [
             $ay->tanggal_mulai->format('Y-m-d'),
             $ay->tanggal_selesai->format('Y-m-d'),
         ])->pluck('tanggal')

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\CharacterSign;
 use App\Enums\EwsLevel; // @phpstan-ignore-line
 use App\Models\AcademicYear;
 use App\Models\ActionThreshold;
@@ -61,7 +62,15 @@ class CharacterService
             $inRange = $netScore >= $threshold->min_point
                 && ($threshold->max_point === null || $netScore <= $threshold->max_point);
 
-            if (! $inRange) {
+            // Rentang saja tidak cukup: `max_point` boleh null dan `min_point` tidak dibatasi
+            // tandanya, jadi ambang bersifat negatif tanpa batas atas akan ikut terpicu oleh
+            // siswa berpoin tinggi — persis kebalikan maksud fiturnya. Tanda poin harus
+            // sejalan dengan sifat ambang. Skor 0 netral: tidak memicu apa pun.
+            $sesuaiSifat = $threshold->sifat === CharacterSign::Negatif
+                ? $netScore < 0
+                : $netScore > 0;
+
+            if (! $inRange || ! $sesuaiSifat) {
                 continue;
             }
 

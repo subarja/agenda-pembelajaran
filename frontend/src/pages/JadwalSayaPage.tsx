@@ -26,6 +26,12 @@ export default function JadwalSayaPage() {
     setError('')
     api.get('/schedules/my-pdf?preview=1')
       .then(resp => {
+        // Keadaan kosong wajar: admin belum mengunggah. BE balas 200 `available:false`
+        // (bukan 404) supaya konsol bersih — lihat ScheduleController::jadwalBelumAda().
+        if (resp.data.available === false || !resp.data.base64) {
+          setError(resp.data.message ?? 'Jadwal PDF belum tersedia.')
+          return
+        }
         const blob = base64ToBlob(resp.data.base64, 'application/pdf')
         currentUrl = URL.createObjectURL(blob)
         setBlobUrl(currentUrl)
