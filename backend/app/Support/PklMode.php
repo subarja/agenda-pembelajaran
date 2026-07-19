@@ -25,9 +25,18 @@ class PklMode
 {
     public const SUBJECT_LABEL = 'Praktek Kerja Lapangan';
 
+    /**
+     * Saklar Mode PKL, di-memoize per request.
+     *
+     * Tanpa cache ini `PklSetting::instance()` (firstOrCreate) dijalankan sekali untuk
+     * SETIAP kombinasi kelas × tanggal — EWS Guru satu semester memicu 1627 query
+     * identik `select * from pkl_settings limit 1` dari total 2043 (audit 2026-07-19).
+     * Pola cache-nya sama dengan self::$placementRanges di bawah, dan ikut direset
+     * lewat flush().
+     */
     public static function isActive(): bool
     {
-        return PklSetting::isActive();
+        return self::$aktif ??= PklSetting::isActive();
     }
 
     /** Tahun ajaran yang aktif secara global — dipakai konsisten dgn ClassAccess. */
@@ -84,6 +93,8 @@ class PklMode
     /** @var array<int, array{0:string,1:string}>|null cache periode PKL per kelas (TA aktif) */
     private static ?array $placementRanges = null;
 
+    private static ?bool $aktif = null;
+
     /**
      * Sesi reguler (kelas, tanggal) ini dibebaskan dari tagihan agenda?
      *
@@ -131,6 +142,7 @@ class PklMode
     public static function flush(): void
     {
         self::$placementRanges = null;
+        self::$aktif = null;
     }
 
     /**

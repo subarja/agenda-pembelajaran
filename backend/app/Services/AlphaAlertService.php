@@ -4,13 +4,16 @@ namespace App\Services;
 
 use App\Enums\EwsLevel;
 use App\Enums\NoteKategori;
-use App\Models\AcademicYear;
+use App\Models\Agenda;
 use App\Models\EwsStatus;
 use App\Models\Note;
 use App\Models\Student;
 use App\Models\StudentAttendance;
+use App\Models\User;
 use App\Notifications\AlphaAlertNotification;
 use App\Notifications\EwsEscalationNotification;
+use App\Support\TahunAjaran;
+use Carbon\Carbon;
 
 class AlphaAlertService
 {
@@ -23,7 +26,7 @@ class AlphaAlertService
     public function checkClass(int $classId): array
     {
         $students = Student::where('class_id', $classId)->get();
-        $alerts   = [];
+        $alerts = [];
 
         foreach ($students as $student) {
             $streak = $this->currentAlphaStreak($student->id);
@@ -31,9 +34,9 @@ class AlphaAlertService
                 $this->recordAlert($student, $streak);
                 $alerts[] = [
                     'student_id' => $student->uuid,
-                    'nama'       => $student->user?->nama ?? '—',
-                    'streak'     => $streak,
-                    'pesan'      => "Alpha {$streak} sesi berturut-turut",
+                    'nama' => $student->user?->nama ?? '—',
+                    'streak' => $streak,
+                    'pesan' => "Alpha {$streak} sesi berturut-turut",
                 ];
             }
         }
@@ -48,13 +51,13 @@ class AlphaAlertService
     public function currentAlphaStreak(int $studentId): int
     {
         // Ambil 10 tanggal terakhir yang ada data presensi siswa ini
-        $dates = \App\Models\Agenda::join('student_attendances', 'agendas.id', '=', 'student_attendances.agenda_id')
+        $dates = Agenda::join('student_attendances', 'agendas.id', '=', 'student_attendances.agenda_id')
             ->where('student_attendances.student_id', $studentId)
             ->whereNull('agendas.deleted_at')
             ->orderByDesc('agendas.tanggal')
             ->limit(50)
             ->pluck('agendas.tanggal')
-            ->map(fn ($d) => \Carbon\Carbon::parse($d)->toDateString())
+            ->map(fn ($d) => Carbon::parse($d)->toDateString())
             ->unique()
             ->take(10)
             ->values();
@@ -86,7 +89,7 @@ class AlphaAlertService
 
     private function recordAlert(Student $student, int $streak): void
     {
-        $ay = \App\Support\TahunAjaran::current();
+        $ay = TahunAjaran::current();
 
         // Buat catatan presensi — cek apakah sudah ada catatan alpha hari ini
         $todayNote = Note::where('target_type', Student::class)
@@ -97,11 +100,11 @@ class AlphaAlertService
 
         if (! $todayNote) {
             Note::create([
-                'target_type'   => Student::class,
-                'target_id'     => $student->id,
-                'kategori'      => NoteKategori::Presensi,
-                'isi'           => "Peringatan: siswa tercatat alpha {$streak} sesi berturut-turut. " .
-                                   "Perlu tindak lanjut segera dari wali kelas.",
+                'target_type' => Student::class,
+                'target_id' => $student->id,
+                'kategori' => NoteKategori::Presensi,
+                'isi' => "Peringatan: siswa tercatat alpha {$streak} sesi berturut-turut. ".
+                                   'Perlu tindak lanjut segera dari wali kelas.',
                 'tindak_lanjut' => null,
             ]);
         }
@@ -123,12 +126,20 @@ class AlphaAlertService
             $kehadiranScore = $total > 0 ? round(($hadir / $total) * 100, 2) : 100.0;
 
             $levelLama = $ews->level?->value ?? 'hijau';
-            $levelBaru = $this->resolveLevel($ews->karakter_score, $kehadiranScore, $catatanCount);
+            // Indikator `nilai` tidak dihitung ulang di sini (alur ini dipicu presensi),
+            // jadi diambil dari baris EWS yang sudah ada supaya rumusnya tetap 4 indikator
+            // dan hasilnya konsisten dengan halaman EWS.
+            $levelBaru = EwsLevel::dariKomponen(
+                $kehadiranScore,
+                (int) $ews->karakter_score,
+                $catatanCount,
+                $ews->nilai_score !== null ? (float) $ews->nilai_score : null,
+            );
 
             $ews->update([
-                'catatan_count'      => $catatanCount,
-                'kehadiran_score'    => $kehadiranScore,
-                'level'              => $levelBaru,
+                'catatan_count' => $catatanCount,
+                'kehadiran_score' => $kehadiranScore,
+                'level' => $levelBaru,
                 'last_calculated_at' => now(),
             ]);
 
@@ -136,7 +147,7 @@ class AlphaAlertService
             $student->loadMissing(['schoolClass', 'user']);
             $waliId = $student->schoolClass?->wali_kelas_id;
             if ($waliId) {
-                $wali = \App\Models\User::find($waliId);
+                $wali = User::find($waliId);
                 if ($wali) {
                     $wali->notify(new AlphaAlertNotification($student, $streak));
 
@@ -148,19 +159,5 @@ class AlphaAlertService
                 }
             }
         }
-    }
-
-    private function resolveLevel(int $karakter, float $kehadiran, int $catatan): EwsLevel
-    {
-        $w = ($kehadiran < 80 ? 1 : 0)
-           + ($karakter  < 0  ? 1 : 0)
-           + ($catatan   >= 3 ? 1 : 0);
-
-        return match (true) {
-            $w >= 3  => EwsLevel::Merah,
-            $w === 2 => EwsLevel::Oranye,
-            $w === 1 => EwsLevel::Kuning,
-            default  => EwsLevel::Hijau,
-        };
     }
 }

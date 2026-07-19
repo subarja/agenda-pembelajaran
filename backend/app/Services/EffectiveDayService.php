@@ -29,6 +29,21 @@ class EffectiveDayService
     ];
 
     /**
+     * Cache per-instance untuk data yang SAMA di seluruh pemanggilan dalam satu rekap.
+     *
+     * rekapByClass()/rekapByTeacher() memanggil calculateMinggu() sekali per kombinasi
+     * kelas×mapel — 979 kali pada ekspor seluruh sekolah. Tahun ajaran & daftar hari
+     * tidak efektif tidak berubah di antara pemanggilan itu, tapi dulu diambil ulang
+     * setiap kali: 3140 query dan ~5 detik (audit 2026-07-19). Sengaja instance, bukan
+     * static, supaya tidak bocor antar-request/antar-test dan tidak perlu flush().
+     */
+    private array $ayCache = [];
+
+    private array $nedCache = [];
+
+    private array $scheduleCache = [];
+
+    /**
      * Hitung minggu efektif per bulan untuk satu kombinasi kelas+mapel dalam satu tahun ajaran.
      * Basis: MINGGU KALENDER SUNGGUHAN (Senin-Minggu) yang memuat >=1 hari jadwal mapel ini,
      * BUKAN jumlah kemunculan hari jadwal itu sendiri — mapel dengan 2 hari jadwal/minggu
@@ -37,16 +52,22 @@ class EffectiveDayService
      */
     public function calculateMinggu(int $classId, int $subjectId, int $academicYearId): array
     {
-        $ay = AcademicYear::findOrFail($academicYearId);
+        $ay = $this->ayCache[$academicYearId] ??= AcademicYear::findOrFail($academicYearId);
 
         if (! $ay->tanggal_mulai || ! $ay->tanggal_selesai) {
             return $this->emptyMingguResult('Tanggal mulai/selesai semester belum diisi.');
         }
 
-        $schedules = Schedule::where('class_id', $classId)
-            ->where('subject_id', $subjectId)
+        // Satu query per KELAS, bukan per kelas x mapel: pemanggilnya (rekapMingguByClass /
+        // rekapMingguAllByClass) sudah mengambil jadwal yang sama persis lalu
+        // mengelompokkannya per mapel, jadi tanpa cache ini jadwal kelas yang sama diambil
+        // ulang untuk setiap mapelnya. Filternya identik dengan versi lama.
+        $this->scheduleCache[$classId] ??= Schedule::where('class_id', $classId)
             ->where('aktif', true)
-            ->get();
+            ->get()
+            ->groupBy('subject_id');
+
+        $schedules = $this->scheduleCache[$classId][$subjectId] ?? collect();
 
         if ($schedules->isEmpty()) {
             return $this->emptyMingguResult('Tidak ada jadwal aktif.');
@@ -56,7 +77,7 @@ class EffectiveDayService
             ->unique()->values()->toArray();
 
         // Pre-load semua hari tidak efektif dalam semester (indexed by tanggal)
-        $nedMap = NonEffectiveDay::whereBetween('tanggal', [
+        $nedMap = $this->nedCache[$academicYearId] ??= NonEffectiveDay::whereBetween('tanggal', [
             $ay->tanggal_mulai->format('Y-m-d'),
             $ay->tanggal_selesai->format('Y-m-d'),
         ])->get()->keyBy(fn ($n) => $n->tanggal->format('Y-m-d'));
@@ -210,10 +231,16 @@ class EffectiveDayService
             return $this->emptyResult('Tanggal mulai/selesai semester belum diisi di pengaturan Tahun Ajaran.');
         }
 
-        $schedules = Schedule::where('class_id', $classId)
-            ->where('subject_id', $subjectId)
+        // Satu query per KELAS, bukan per kelas x mapel: pemanggilnya (rekapMingguByClass /
+        // rekapMingguAllByClass) sudah mengambil jadwal yang sama persis lalu
+        // mengelompokkannya per mapel, jadi tanpa cache ini jadwal kelas yang sama diambil
+        // ulang untuk setiap mapelnya. Filternya identik dengan versi lama.
+        $this->scheduleCache[$classId] ??= Schedule::where('class_id', $classId)
             ->where('aktif', true)
-            ->get();
+            ->get()
+            ->groupBy('subject_id');
+
+        $schedules = $this->scheduleCache[$classId][$subjectId] ?? collect();
 
         if ($schedules->isEmpty()) {
             return $this->emptyResult('Tidak ada jadwal aktif untuk kelas dan mapel ini.');

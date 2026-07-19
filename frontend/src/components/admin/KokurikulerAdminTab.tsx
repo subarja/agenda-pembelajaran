@@ -137,7 +137,11 @@ export default function KokurikulerAdminTab() {
                   {p.dimensi.length > 0 && ` · Dimensi: ${p.dimensi.map((d) => d.nama).join(', ')}`}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-1 shrink-0">
+              {/* Di HP baris 5 tombol ini butuh ~428px; `shrink-0` dulu menahannya tetap
+                  selebar itu di dalam induk 324px sehingga dokumen meluap 71px —
+                  `flex-wrap` tak menolong karena yang dibatasi induknya. Turun ke baris
+                  sendiri (w-full) di HP, tetap sebaris di layar lebar. */}
+              <div className="flex flex-wrap gap-1 w-full sm:w-auto sm:shrink-0">
                 <Button size="sm" variant="outline" onClick={() => setRekapFor(rekapFor === p.id ? null : p.id)}>
                   <BarChart3 className="h-4 w-4 mr-1" /> Rekap {rekapFor === p.id ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
                 </Button>

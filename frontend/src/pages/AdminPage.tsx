@@ -3865,7 +3865,7 @@ function KalenderAdminTab() {
 
   const { data: settings, isLoading: settingsLoading } = useQuery<{
     sync_method: 'ics' | 'api_key' | 'service_account'; ics_url: string | null
-    api_key: string | null; calendar_id: string | null; has_credentials: boolean
+    api_key_masked: string | null; api_key_set: boolean; calendar_id: string | null; has_credentials: boolean
     last_synced_at: string | null; sync_months_ahead: number
   }>({
     queryKey: ['admin-calendar-settings'],
@@ -3881,7 +3881,9 @@ function KalenderAdminTab() {
     if (settings) {
       setSyncMethod(settings.sync_method ?? 'ics')
       setIcsUrl(settings.ics_url ?? '')
-      setApiKey(settings.api_key ?? '')
+      // Kunci tidak pernah dikirim balik dari server (dimask). Biarkan kosong:
+      // kosong berarti "jangan diubah", nilai tersimpan tetap dipakai.
+      setApiKey('')
       setCalId(settings.calendar_id ?? '')
       setSyncAhead(settings.sync_months_ahead)
     }
@@ -3978,7 +3980,10 @@ function KalenderAdminTab() {
   }
 
   const canSync = syncMethod === 'ics' ? !!icsUrl
-    : syncMethod === 'api_key' ? (!!apiKey && !!calId)
+    // apiKey selalu kosong saat halaman dimuat (nilainya dimask di server), jadi
+    // kunci yang SUDAH tersimpan harus ikut dihitung — kalau tidak, tombol Sinkronkan
+    // mati padahal konfigurasinya lengkap.
+    : syncMethod === 'api_key' ? ((!!apiKey || !!settings?.api_key_set) && !!calId)
     : settings?.has_credentials
 
   return (
@@ -4061,7 +4066,9 @@ function KalenderAdminTab() {
                   <label className="text-xs font-medium block mb-1">Google Calendar API Key</label>
                   <PasswordInput
                     className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-white"
-                    placeholder="AIzaSy..."
+                    placeholder={settings?.api_key_set
+                      ? `${settings.api_key_masked} (tersimpan — kosongkan bila tidak diubah)`
+                      : 'AIzaSy...'}
                     value={apiKey}
                     onChange={e => setApiKey(e.target.value)}
                   />

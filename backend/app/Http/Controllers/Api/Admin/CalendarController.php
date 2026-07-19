@@ -28,10 +28,15 @@ class CalendarController extends Controller
     {
         $s = CalendarSetting::instance();
 
+        // api_key TIDAK dikirim mentah — pola yang sama dengan R2SettingController &
+        // PasswordDefaultSettingController. Sebelumnya kunci Google dikembalikan apa
+        // adanya, jadi ikut terbaca di devtools/memori browser tiap kali halaman
+        // pengaturan dibuka (temuan audit 2026-07-19).
         return response()->json([
             'sync_method' => $s->sync_method ?? 'ics',
             'ics_url' => $s->ics_url,
-            'api_key' => $s->api_key,
+            'api_key_masked' => $this->mask($s->api_key),
+            'api_key_set' => ! empty($s->api_key),
             'calendar_id' => $s->calendar_id,
             'has_credentials' => ! empty($s->service_account_json),
             'last_synced_at' => $s->last_synced_at?->format('Y-m-d H:i'),
@@ -53,6 +58,13 @@ class CalendarController extends Controller
         // calendar_id is NOT NULL in DB — convert null to empty string
         if (array_key_exists('calendar_id', $data) && $data['calendar_id'] === null) {
             $data['calendar_id'] = '';
+        }
+
+        // Kosong = "jangan diubah", bukan "hapus" — frontend tidak pernah menerima
+        // nilai aslinya lagi sejak dimask, jadi menyimpan form tanpa mengetik ulang
+        // kunci tidak boleh menghapusnya. Pola sama dengan R2SettingController.
+        if (array_key_exists('api_key', $data) && empty($data['api_key'])) {
+            unset($data['api_key']);
         }
 
         CalendarSetting::instance()->update($data);
@@ -598,5 +610,17 @@ class CalendarController extends Controller
         return response()->download($tempFile, "template_hari_tidak_efektif_{$suffix}.xlsx", [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ])->deleteFileAfterSend(true);
+    }
+
+    /** Samarkan kunci — sisakan 4 karakter terakhir, seperti R2SettingController. */
+    private function mask(?string $value): ?string
+    {
+        if (! $value) {
+            return null;
+        }
+
+        return strlen($value) <= 4
+            ? str_repeat('•', strlen($value))
+            : str_repeat('•', strlen($value) - 4).substr($value, -4);
     }
 }

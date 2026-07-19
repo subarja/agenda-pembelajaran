@@ -774,15 +774,19 @@ class EwsController extends Controller
         return compact('score', 'count', 'warning');
     }
 
+    /**
+     * Aturannya kini tinggal di App\Enums\EwsLevel::dariKomponen() supaya AlphaAlertService
+     * & CharacterService memakai rumus yang sama persis — dulu ketiganya berbeda.
+     * Indikator di sini sudah dihitung batch, jadi cukup diteruskan nilainya.
+     */
     private function determineLevel(array $k, array $kar, array $c, array $n): string
     {
-        $warnings = $k['warning'] + $kar['warning'] + $c['warning'] + $n['warning'];
-        return match (true) {
-            $warnings >= 3  => 'merah',
-            $warnings === 2 => 'oranye',
-            $warnings === 1 => 'kuning',
-            default         => 'hijau',
-        };
+        return EwsLevel::dariKomponen(
+            (float) $k['score'],
+            (int) $kar['score'],
+            (int) $c['count'],
+            $n['score'] !== null ? (float) $n['score'] : null,
+        )->value;
     }
 
     /**

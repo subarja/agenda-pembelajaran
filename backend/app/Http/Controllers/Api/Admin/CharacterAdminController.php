@@ -155,7 +155,10 @@ class CharacterAdminController extends Controller
             'aktif'       => ['boolean'],
         ]);
 
-        $catId = $data['category_id']
+        // `nullable` TIDAK menambahkan key ke $validated kalau field-nya tidak dikirim
+        // sama sekali — tanpa ?? null ini 500, bukan 201 (ambang global tanpa kategori
+        // justru pemakaian normalnya). Baris max_point di bawah sudah benar sejak awal.
+        $catId = ($data['category_id'] ?? null)
             ? CharacterCategory::where('uuid', $data['category_id'])->value('id')
             : null;
 

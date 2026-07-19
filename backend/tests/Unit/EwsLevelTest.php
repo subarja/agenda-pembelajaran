@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Enums\EwsLevel;
 use App\Http\Controllers\Api\Admin\TeacherEwsController;
 use App\Http\Controllers\Api\EwsController;
 use App\Services\AlphaAlertService;
@@ -36,7 +37,16 @@ class EwsLevelTest extends TestCase
         $m = new ReflectionMethod(EwsController::class, 'determineLevel');
         $m->setAccessible(true);
 
-        $args = array_map(fn ($w) => ['warning' => $w], $warnings);
+        // determineLevel kini meneruskan KOMPONEN ke EwsLevel::dariKomponen (satu aturan
+        // untuk ketiga penulis), jadi susun array seperti yang dihasilkan calc*Batch:
+        // nyala = di bawah/di atas ambang, mati = nilai aman.
+        [$kh, $kar, $cat, $nil] = $warnings;
+        $args = [
+            ['score' => $kh ? 70.0 : 100.0, 'warning' => $kh],
+            ['score' => $kar ? -5 : 10, 'warning' => $kar],
+            ['count' => $cat ? 3 : 0, 'warning' => $cat],
+            ['score' => $nil ? 60.0 : 90.0, 'warning' => $nil],
+        ];
 
         return $m->invoke((new \ReflectionClass(EwsController::class))->newInstanceWithoutConstructor(), ...$args);
     }
@@ -106,9 +116,14 @@ class EwsLevelTest extends TestCase
      */
     public function test_ambang_indikator_terdokumentasi_di_konstanta(): void
     {
-        $r = new \ReflectionClass(EwsController::class);
-        $c = $r->getConstants();
+        // Ambangnya pindah ke App\Enums\EwsLevel saat ketiga penghitung disatukan;
+        // konstanta di EwsController dipertahankan untuk perhitungan `warning` per baris.
+        $this->assertSame(80.0, \App\Enums\EwsLevel::AMBANG_KEHADIRAN);
+        $this->assertSame(0, \App\Enums\EwsLevel::AMBANG_KARAKTER);
+        $this->assertSame(3, \App\Enums\EwsLevel::AMBANG_CATATAN);
+        $this->assertSame(70.0, \App\Enums\EwsLevel::AMBANG_NILAI);
 
+        $c = (new \ReflectionClass(EwsController::class))->getConstants();
         $this->assertSame(80.0, $c['THRESHOLD_KEHADIRAN']);
         $this->assertSame(0, $c['THRESHOLD_KARAKTER']);
         $this->assertSame(3, $c['THRESHOLD_CATATAN']);
@@ -118,42 +133,33 @@ class EwsLevelTest extends TestCase
     // ── Konsistensi lintas implementasi ──────────────────────────────────────
 
     /**
-     * PENANDA DIVERGENSI (lihat laporan): kolom `ews_status.level` ditulis oleh tiga
-     * penghitung berbeda dengan aturan berbeda — EwsController (4 indikator),
-     * AlphaAlertService (3 indikator, tanpa `nilai`), dan CharacterService (ambang
-     * absolut kehadiran/karakter). Test ini tidak menuntut ketiganya sama; ia
-     * MEMBUKTIKAN bahwa ketiganya berbeda, supaya fakta itu tidak hilang diam-diam.
+     * DULU divergen, KINI tunggal (T-02, diperbaiki 2026-07-19).
      *
-     * Kasus: kehadiran 78% (di bawah 80) + karakter -15 + catatan 0 + nilai null.
+     * Kolom `ews_statuses.level` sempat ditulis tiga penghitung dengan aturan berbeda:
+     * EwsController (4 indikator), AlphaAlertService (3 indikator, membuang `nilai`),
+     * dan CharacterService (ambang absolut kehadiran 85/75/50). Kasus kehadiran 78% +
+     * karakter -15 menghasilkan `oranye` menurut yang satu dan `kuning` menurut yang
+     * lain — tergantung layanan mana yang jalan terakhir.
+     *
+     * Sekarang ketiganya memanggil EwsLevel::dariKomponen(). Test ini menjaga agar
+     * rumus-rumus terpisah itu tidak tumbuh lagi.
      */
-    public function test_tiga_penghitung_level_siswa_memberi_jawaban_berbeda(): void
+    public function test_hanya_ada_satu_penghitung_level_siswa(): void
     {
-        // EwsController: kehadiran(1) + karakter(1) + catatan(0) + nilai(0) = 2 → oranye
+        // Aturan tunggal itu jawabannya oranye untuk kasus divergensi lama.
         $this->assertSame('oranye', $this->levelSiswa([1, 1, 0, 0]));
-
-        // AlphaAlertService: w = kehadiran(1) + karakter(1) + catatan(0) = 2 → Oranye
-        $alpha = new ReflectionMethod(AlphaAlertService::class, 'resolveLevel');
-        $alpha->setAccessible(true);
-        $hasilAlpha = $alpha->invoke(
-            (new \ReflectionClass(AlphaAlertService::class))->newInstanceWithoutConstructor(),
-            -15, 78.0, 0
+        $this->assertSame(
+            EwsLevel::Oranye,
+            EwsLevel::dariKomponen(78.0, -15, 0, null),
+            'EwsController & EwsLevel::dariKomponen wajib sepakat'
         );
 
-        // CharacterService: karakter -15 <= -10 → Kuning (kehadiran 78 >= 75)
-        $char = new ReflectionMethod(CharacterService::class, 'resolveLevel');
-        $char->setAccessible(true);
-        $hasilChar = $char->invoke(
-            (new \ReflectionClass(CharacterService::class))->newInstanceWithoutConstructor(),
-            -15, 78.0
-        );
-
-        $this->assertSame('oranye', $hasilAlpha->value);
-        $this->assertSame('kuning', $hasilChar->value, 'CharacterService memakai tangga ambang absolut, bukan hitung-peringatan');
-
-        $this->assertNotSame(
-            $hasilChar->value,
-            $hasilAlpha->value,
-            'Terdokumentasi: dua layanan menulis kolom ews_status.level yang SAMA dengan aturan berbeda.'
-        );
+        // Rumus tandingan yang dulu ada sudah dihapus — kalau muncul lagi, test ini gagal.
+        foreach ([AlphaAlertService::class, CharacterService::class] as $kelas) {
+            $this->assertFalse(
+                method_exists($kelas, 'resolveLevel'),
+                $kelas.' punya rumus level sendiri lagi — pakai EwsLevel::dariKomponen()'
+            );
+        }
     }
 }
