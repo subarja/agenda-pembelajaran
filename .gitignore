@@ -33,8 +33,13 @@ docker-data/
 # Windows download metadata (alternate data stream artifacts)
 *:Zone.Identifier
 
-# Local Claude Code settings (personal to this machine, not shared)
-.claude/
+# Konfigurasi Claude Code. Agent & skill dibagi ke tim (berisi konvensi proyek:
+# ClassAccess, scope tahunAjaran, pola MySQL/Eloquent kita). Sisanya personal.
+.claude/*
+!.claude/agents/
+!.claude/skills/
+!.claude/commands/
+.claude/settings.local.json
 
 # Data siswa/guru asli (PII) dan contoh jadwal ukuran besar — jangan pernah commit
 docs/Contoh jadwal guru/
