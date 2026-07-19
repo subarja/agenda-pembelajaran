@@ -62,9 +62,37 @@ class PasswordDefaultSetting extends Model
     }
 
     /**
+     * Apakah kolom ini BERISI ciphertext yang tidak bisa didekripsi lagi?
+     *
+     * Terjadi kalau APP_KEY server berganti setelah nilainya disimpan — kejadian
+     * nyata di produksi saat skrip deploy menjalankan `key:generate`. Tanpa
+     * pembeda ini, keadaan "tersimpan tapi rusak" tidak bisa dibedakan dari
+     * "belum pernah diisi": sistem diam-diam memakai nilai .env sementara admin
+     * mengira yang berlaku adalah nilai di panel. Persis pola gagal-senyap yang
+     * dulu bikin dropdown semester kosong tanpa pesan error.
+     */
+    public static function rusak(string $column): bool
+    {
+        $row = static::instance();
+
+        if ($row->getRawOriginal($column) === null) {
+            return false; // memang belum pernah diisi
+        }
+
+        try {
+            $row->{$column};
+
+            return false;
+        } catch (\Throwable $e) {
+            return true;
+        }
+    }
+
+    /**
      * Baca satu kolom rahasia TANPA melempar exception — kalau APP_KEY server
      * pernah berubah sejak nilai disimpan, DecryptException ditangkap di sini
      * dan pemanggil jatuh ke fallback .env (bukan seluruh app ikut down).
+     * Keadaan rusaknya tetap bisa dideteksi lewat rusak().
      */
     public static function stored(string $column): ?string
     {

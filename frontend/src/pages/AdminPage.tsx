@@ -2310,6 +2310,7 @@ interface PasswordDefaultInfo {
   sumber: 'panel' | 'env' | null
   env_key: string
   env_is_set: boolean
+  rusak: boolean
 }
 
 function PasswordDefaultPanel() {
@@ -2322,7 +2323,9 @@ function PasswordDefaultPanel() {
   const { data, isLoading } = useQuery<{ guru: PasswordDefaultInfo; siswa: PasswordDefaultInfo }>({
     queryKey: ['admin-password-defaults'],
     queryFn: () => api.get('/admin/password-defaults').then(r => r.data.data),
-    enabled: open,
+    // Sengaja TIDAK menunggu panel dibuka: lencana peringatan di kepala panel harus
+    // terlihat tanpa admin perlu mengklik apa pun. Kalau baru ketahuan saat Generate
+    // Akun / import gagal, itu sudah terlambat.
   })
 
   const save = useMutation({
@@ -2348,6 +2351,12 @@ function PasswordDefaultPanel() {
     onError: (e: any) => setMsg({ type: 'err', text: e.response?.data?.message ?? 'Gagal menghapus.' }),
   })
 
+  // Generate Akun & import massal menolak jalan tanpa nilai ini, jadi keadaannya
+  // harus terbaca sekilas — bukan baru ketahuan lewat error saat dipakai.
+  const belum = data && !data.guru.is_set && !data.siswa.is_set
+  const rusak = data && (data.guru.rusak || data.siswa.rusak)
+  const peringatan = rusak ? 'Perlu diisi ulang' : belum ? 'Belum diatur' : null
+
   function row(label: string, info: PasswordDefaultInfo | undefined, which: 'guru' | 'siswa',
     value: string, onChange: (v: string) => void) {
     return (
@@ -2359,6 +2368,14 @@ function PasswordDefaultPanel() {
             value={value} onChange={e => onChange(e.target.value)}
           />
         </Field>
+        {info?.rusak && (
+          <p className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-700">
+            <strong>Tersimpan tapi tidak terbaca.</strong> Nilai di panel dienkripsi dengan APP_KEY
+            server yang lama — kemungkinan APP_KEY berganti saat deploy. Untuk sementara sistem
+            memakai {info.env_is_set ? <code>{info.env_key}</code> : 'tidak ada nilai sama sekali'}.
+            Isi ulang kolom ini untuk memperbaiki.
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">
           {info?.sumber === 'panel' && (
             <>Sumber: <strong>panel admin</strong> ·{' '}
@@ -2381,6 +2398,12 @@ function PasswordDefaultPanel() {
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-muted/50">
         <Key className="h-4 w-4 text-muted-foreground" />
         Password Default Guru &amp; Siswa
+        {/* Peringatan muncul tanpa panel perlu dibuka — lihat komentar di useQuery. */}
+        {peringatan && (
+          <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+            {peringatan}
+          </span>
+        )}
         <span className="ml-auto text-xs font-normal text-muted-foreground">
           {open ? 'Tutup' : 'Atur'}
         </span>

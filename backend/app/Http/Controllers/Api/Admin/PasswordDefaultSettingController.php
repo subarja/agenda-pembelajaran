@@ -63,6 +63,10 @@ class PasswordDefaultSettingController extends Controller
             'sumber' => $stored ? 'panel' : ($env ? 'env' : null),
             'env_key' => $envKey,
             'env_is_set' => (bool) $env,
+            // Ada isinya di DB tapi tidak bisa didekripsi (APP_KEY server berganti).
+            // Wajib ditampilkan: tanpa ini sistem diam-diam memakai nilai .env
+            // sementara admin mengira nilai panel yang berlaku.
+            'rusak' => PasswordDefaultSetting::rusak($column),
         ];
     }
 
