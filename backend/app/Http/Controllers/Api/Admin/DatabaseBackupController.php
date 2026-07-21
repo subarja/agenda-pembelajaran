@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Support\DatabaseDumper;
+use App\Support\DatabaseRestorer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Process;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class DatabaseBackupController extends Controller
@@ -77,58 +77,20 @@ class DatabaseBackupController extends Controller
             'safety_backup' => $safetyPath,
         ]);
 
-        $config = $this->connectionConfig();
-
-        $result = match ($config['driver']) {
-            'pgsql' => Process::env(['PGPASSWORD' => $config['password']])
-                ->timeout(600)
-                ->run([
-                    'pg_restore',
-                    '--clean', '--if-exists',
-                    '-h', $config['host'],
-                    '-p', (string) $config['port'],
-                    '-U', $config['username'],
-                    '-d', $config['database'],
-                    $uploadedPath,
-                ]),
-            'mysql' => Process::env(['MYSQL_PWD' => $config['password']])
-                ->timeout(600)
-                ->input(fopen($uploadedPath, 'r'))
-                ->run([
-                    'mysql',
-                    '--protocol=tcp',
-                    '-h', $config['host'],
-                    '-P', (string) $config['port'],
-                    '-u', $config['username'],
-                    $config['database'],
-                ]),
-        };
-
-        if ($result->failed()) {
+        // Coba binary mysql/pg_restore; kalau tak tersedia, otomatis jatuh ke restore
+        // PHP-native via PDO (pola sama dengan backup — lihat DatabaseRestorer).
+        try {
+            DatabaseRestorer::fromFile($uploadedPath);
+        } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Restore gagal. Backup pengaman tetap tersimpan di server.',
-                'error' => $result->errorOutput(),
+                'error' => $e->getMessage(),
             ], 500);
         }
 
         return response()->json([
             'message' => 'Restore berhasil. Backup pengaman data sebelumnya tersimpan di server.',
         ]);
-    }
-
-    // Konfigurasi koneksi DB yang sedang aktif (bukan hardcode ke satu driver),
-    // supaya backup/restore ikut driver di DB_CONNECTION (.env) — pgsql atau mysql.
-    private function connectionConfig(): array
-    {
-        $driver = config('database.default');
-
-        abort_unless(
-            array_key_exists($driver, self::SUPPORTED_DRIVERS),
-            500,
-            "Backup/restore belum didukung untuk driver database '{$driver}'."
-        );
-
-        return array_merge(['driver' => $driver], config("database.connections.{$driver}"));
     }
 
     private function dumpExtension(): string
