@@ -2,121 +2,99 @@
 
 **SMK Negeri 2 Cimahi** · Panduan deploy ke server produksi (cPanel / MySQL)
 
-Dokumen ini adalah langkah praktis. Penjelasan teknis lengkap ada di `docs/DEPLOY.md`.
+Ada **dua metode**. Untuk cPanel tanpa Terminal/SSH, pakai **Metode A (Panel Admin)**.
 
 ---
 
 ## Prinsip Aman (wajib dipahami)
 
 1. **Deploy hanya memindahkan kode.** Perubahan struktur database (kolom/tabel baru)
-   TIDAK otomatis ada di server — harus dijalankan `php artisan migrate` di server.
-   Kalau terlewat, aplikasi bisa error 500 (mis. guru tak bisa mengisi agenda).
-2. **Data lama tidak akan rusak.** Skrip `deploy.sh` selalu membackup database dulu,
+   TIDAK otomatis ada di server — harus dijalankan **migrasi**. Kalau terlewat, aplikasi
+   bisa error 500 (mis. guru tak bisa mengisi agenda).
+2. **Data lama tidak akan rusak.** Panel Admin membackup database dulu sebelum migrasi,
    dan hanya menjalankan migrasi *aditif* (menambah), bukan menghapus.
-3. **Jangan pernah** menjalankan `migrate:fresh`, `migrate:refresh`, `migrate:reset`,
-   `db:wipe`, atau `key:generate` di server berjalan — itu menghapus data / merusak
-   enkripsi kredensial.
+3. **Jangan pernah** pakai migrate:fresh / refresh / reset / db:wipe / key:generate —
+   itu menghapus data / merusak enkripsi. (Tombol di Panel Admin tidak menyediakannya.)
 4. **Jangan menimpa `.env`** server dan **jangan mengubah `APP_KEY`**.
 
 ---
 
-## Prasyarat
+## Metode A — Panel Admin (tanpa Terminal, untuk cPanel) ✅ REKOMENDASI
 
-- Akses Terminal/SSH ke server (cPanel → Terminal).
-- Berada di folder root Laravel di server, contoh: `~/api.agenda/`.
-- Bila perintah `php` bukan versi yang benar, gunakan path lengkap, contoh:
-  `PHP_BIN=/opt/cpanel/ea-php84/root/usr/bin/php`
+### Langkah 1 — Tarik kode terbaru ke server (cPanel Git)
+
+Di cPanel → **Git™ Version Control** → pilih repository → **Update from Remote** (Pull).
+Ini membawa kode PHP terbaru, file migrasi baru, `vendor.zip`, dan `dist.zip` ke server.
+
+> Kalau tidak pakai cPanel Git: upload & ekstrak kode terbaru lewat **File Manager**.
+
+### Langkah 2 — Buka menu Deploy di aplikasi
+
+Login sebagai **Admin** → **Panel Admin** → tab **Deploy & Maintenance**.
+
+### Langkah 3 — Lihat "Status Server" (preflight)
+
+Panel menampilkan **migrasi yang belum diterapkan** (perubahan DB yang menunggu).
+Kalau ada, daftarnya muncul — itu yang akan diterapkan saat Deploy.
+
+### Langkah 4 — Perbarui kode terpasang
+
+- **Build Vendor** — hanya jika ada paket Composer baru (ganti `vendor/` dari `vendor.zip`).
+- **Build Dist** — perbarui tampilan frontend dari `dist.zip`.
+
+### Langkah 5 — Deploy (backup → migrate → clear cache)
+
+Tekan tombol **Deploy**. Urutannya otomatis dan aman:
+1. **Backup database** ke `storage/app/backups/` (kalau gagal → Deploy dibatalkan).
+2. `migrate --force` (aditif — hanya menambah, data lama aman).
+3. Seeder master idempoten + ekstrak `dist.zip` + clear cache.
+
+> Tombol **Migrate** (biru) bila hanya ingin menerapkan perubahan DB tanpa menyentuh frontend.
+
+### Langkah 6 — Verifikasi
+
+Tekan tombol **Verifikasi**. Harus semua ✓: migrasi 0 pending, APP_KEY terpasang,
+DB terhubung, bukan maintenance, symlink storage ada.
+
+### Bila backup otomatis gagal
+
+Jika server tidak mendukung backup otomatis, Deploy/Migrate akan **dibatalkan** dengan
+pesan. Caranya: buka menu **Backup Database** → unduh backup manual, lalu centang
+**"Saya sudah backup manual"** di tab Deploy, dan ulangi.
 
 ---
 
-## Langkah A — Ambil kode terbaru
+## Metode B — Terminal/SSH (bila tersedia)
+
+Dari folder root Laravel di server:
 
 ```bash
-cd ~/api.agenda
 git pull origin main
-# jalankan HANYA jika ada paket Composer baru:
-composer install --no-dev --optimize-autoloader
+bash deploy.sh --check          # lihat migrasi pending (tidak mengubah apa pun)
+bash deploy.sh                  # backup → migrate --force → clear cache
+bash postdeploy-check.sh        # verifikasi migrasi & skema
 ```
 
-## Langkah B — Cek dulu (tidak mengubah apa pun)
-
-```bash
-bash deploy.sh --check
-```
-
-Menampilkan daftar migrasi yang **pending** (perubahan DB yang belum diterapkan).
-Aman — tidak menyentuh kode maupun database.
-
-## Langkah C — Deploy (backup → migrate → clear cache)
-
-```bash
-bash deploy.sh
-```
-
-Skrip akan:
-1. Backup database ke `storage/db-backups/*.sql.gz` (kalau gagal → deploy dibatalkan).
-2. Aktifkan mode maintenance.
-3. Jalankan `php artisan migrate --force` (aditif, aman).
-4. Bersihkan cache (`optimize:clear`).
-5. Hidupkan aplikasi kembali.
-
-Ketik `ya` saat diminta konfirmasi. Untuk otomatis tanpa tanya: `bash deploy.sh -y`.
-
-## Langkah D — Frontend (bila ada perubahan tampilan)
-
-Ekstrak `frontend/dist.zip` (berisi folder `dist/`) lalu salin **isinya** — termasuk
-`.htaccess` — ke docroot frontend. Atau otomatis:
-
-```bash
-FRONTEND_DOCROOT=~/public_html bash deploy.sh
-```
-
-## Langkah E — Verifikasi pasca-deploy
-
-```bash
-bash postdeploy-check.sh
-```
-
-Memeriksa (read-only): migrasi 0 pending, kolom/tabel penting ada
-(`selesai_pada`, `jenis_kelamin`, `must_change_password`, `bell_periods`, dll),
-`APP_KEY` terpasang, DB terhubung, app tidak maintenance, symlink storage ada.
-
-Uji sampai endpoint (opsional, membuktikan guru bisa mengisi agenda):
-
-```bash
-BASE_URL=https://api.agenda.smkn2cmi.sch.id bash postdeploy-check.sh
-# dengan token guru (cara ambil token ada di docs/DEPLOY.md):
-BASE_URL=https://api.agenda.smkn2cmi.sch.id TOKEN=xxxxx bash postdeploy-check.sh
-```
+Bila PHP CLI bukan `php`: `PHP_BIN=/opt/cpanel/ea-php84/root/usr/bin/php bash deploy.sh`.
+Detail & pemulihan dari backup ada di `docs/DEPLOY.md`.
 
 ---
 
-## Bila migrasi gagal / ada yang aneh
+## Checklist Ringkas (Metode A)
 
-Aplikasi tetap maintenance; pulihkan database dari backup terakhir:
-
-```bash
-gunzip < storage/db-backups/NAMA_FILE.sql.gz | mysql -u DB_USER -p DB_NAME
-php artisan up
-```
-
----
-
-## Checklist Ringkas
-
-- [ ] `git pull origin main` (+ `composer install` bila perlu)
-- [ ] `bash deploy.sh --check` — lihat migrasi pending
-- [ ] `bash deploy.sh` — backup + migrate + clear cache
-- [ ] Salin `dist.zip` frontend ke docroot (bila ada perubahan tampilan)
-- [ ] `bash postdeploy-check.sh` — verifikasi migrasi & skema masuk
-- [ ] Pastikan `.env` **tidak** tertimpa & `APP_KEY` tetap sama
+- [ ] cPanel → Git → **Pull** (tarik kode + zip terbaru)
+- [ ] Panel Admin → **Deploy & Maintenance**
+- [ ] Lihat **Status Server** — cek migrasi pending
+- [ ] **Build Vendor** (bila paket baru) & **Build Dist**
+- [ ] **Deploy** (backup + migrate + cache otomatis)
+- [ ] **Verifikasi** — pastikan semua ✓
 - [ ] Uji manual: login → isi agenda → buka menu kokurikuler
 
 ---
 
 ## Yang TIDAK Boleh Dilakukan
 
-| Perintah | Akibat |
+| Perintah / Aksi | Akibat |
 |---|---|
 | `php artisan migrate:fresh` | **Menghapus SEMUA data** lalu buat ulang tabel |
 | `php artisan migrate:refresh` / `:reset` | Rollback semua migrasi — berisiko kehilangan data |

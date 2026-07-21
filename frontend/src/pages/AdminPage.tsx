@@ -5014,26 +5014,45 @@ function CredentialTransferCard() {
 // dan jalankan seeder — semua lewat tombol, bukan URL manual seperti cpanel-deploy.php.
 const ALLOWED_SEEDERS = ['AdminOnlySeeder', 'CharacterSeeder', 'KokurikulerDimensionSeeder']
 
+type DeployStatus = {
+  vendor: { zip_exists: boolean; zip_updated_at: string | null; dir_exists: boolean }
+  dist: { zip_exists: boolean; zip_updated_at: string | null; dir_exists: boolean }
+  migrations: { applied_count: number; pending_count: number; pending: string[] }
+  backup_supported: boolean
+}
+type VerifyCheck = { nama: string; ok: boolean; detail?: string }
+type VerifyData = { ok: boolean; checks: VerifyCheck[]; migrations: { pending_count: number } }
+
 function DeployToolsTab() {
   const [log, setLog] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [seederOpen, setSeederOpen] = useState(false)
   const [seederClass, setSeederClass] = useState(ALLOWED_SEEDERS[0])
+  const [manualBackup, setManualBackup] = useState(false)
+  const [verifyResult, setVerifyResult] = useState<VerifyData | null>(null)
 
-  function onResult(data: { log: string[] }) { setLog(data.log ?? []); setError(null) }
+  const statusQ = useQuery({
+    queryKey: ['deploy-status'],
+    queryFn: async () => (await api.get('/admin/deploy-tools/status')).data.data as DeployStatus,
+  })
+  const mig = statusQ.data?.migrations
+
+  function onResult(data: { log: string[] }) { setLog(data.log ?? []); setError(null); setVerifyResult(null); statusQ.refetch() }
   function onErr(err: any) { setError(err?.response?.data?.message ?? err?.message ?? 'Gagal menjalankan aksi.') }
 
-  const deployMut      = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/deploy')).data, onSuccess: onResult, onError: onErr })
+  const body = () => ({ skip_backup: manualBackup })
+  const deployMut      = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/deploy', body())).data, onSuccess: onResult, onError: onErr })
   const buildDistMut   = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/build-dist')).data, onSuccess: onResult, onError: onErr })
   const buildVendorMut = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/build-vendor')).data, onSuccess: onResult, onError: onErr })
-  const migrateMut     = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/migrate')).data, onSuccess: onResult, onError: onErr })
+  const migrateMut     = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/migrate', body())).data, onSuccess: onResult, onError: onErr })
+  const verifyMut      = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/verify')).data.data as VerifyData, onSuccess: (d) => { setVerifyResult(d); setError(null) }, onError: onErr })
   const seedMut = useMutation({
     mutationFn: async () => (await api.post('/admin/deploy-tools/seed', { class: seederClass })).data,
     onSuccess: (data: { log: string[] }) => { onResult(data); setSeederOpen(false) },
     onError: onErr,
   })
 
-  const anyPending = deployMut.isPending || buildDistMut.isPending || buildVendorMut.isPending || migrateMut.isPending || seedMut.isPending
+  const anyPending = deployMut.isPending || buildDistMut.isPending || buildVendorMut.isPending || migrateMut.isPending || seedMut.isPending || verifyMut.isPending
 
   const actions: Array<{
     key: string; label: string; icon: typeof RefreshCw; tone: 'green' | 'yellow' | 'blue'
@@ -5041,8 +5060,8 @@ function DeployToolsTab() {
   }> = [
     {
       key: 'deploy', label: 'Deploy', icon: RefreshCw, tone: 'green',
-      desc: 'Migrate + hapus & extract dist.zip + clear semua cache — sekaligus.',
-      confirm: 'Jalankan Deploy?\n\nIni akan: migrate database, MENGHAPUS folder frontend/dist saat ini lalu menggantinya dari dist.zip, dan clear semua cache. Pastikan dist.zip sudah versi terbaru (git pull dulu).',
+      desc: 'Backup DB otomatis → migrate + extract dist.zip + clear cache — sekaligus.',
+      confirm: 'Jalankan Deploy?\n\nUrutan: BACKUP database dulu (otomatis), lalu migrate, MENGHAPUS folder frontend/dist lalu ganti dari dist.zip, clear cache. Data lama tidak dihapus (migrasi aditif). Pastikan dist.zip sudah versi terbaru (git pull dulu).',
       mut: deployMut,
     },
     {
@@ -5059,8 +5078,8 @@ function DeployToolsTab() {
     },
     {
       key: 'migrate', label: 'Migrate', icon: FileCode2, tone: 'blue',
-      desc: 'Jalankan php artisan migrate --force.',
-      confirm: 'Jalankan migrasi database (migrate --force)?',
+      desc: 'Backup DB otomatis → migrate --force (aditif, tidak menghapus data).',
+      confirm: 'Jalankan migrasi database?\n\nBackup otomatis dibuat dulu, lalu migrate --force (hanya menambah kolom/tabel — data lama aman).',
       mut: migrateMut,
     },
   ]
@@ -5077,6 +5096,37 @@ function DeployToolsTab() {
           ter-update di server (lewat Git pull) — build ulang & commit dulu dari lokal
           sebelum menekan tombol di sini.
         </p>
+      </div>
+
+      {/* Preflight: status server & migrasi pending */}
+      <div className="rounded-lg border bg-card p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold flex items-center gap-1.5"><FileCode2 className="h-3.5 w-3.5" /> Status Server</h3>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={statusQ.isFetching} onClick={() => statusQ.refetch()}>
+            {statusQ.isFetching ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Muat ulang'}
+          </Button>
+        </div>
+        {mig ? (
+          mig.pending_count > 0 ? (
+            <div className="rounded border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+              <p className="font-medium flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /> {mig.pending_count} migrasi belum diterapkan (perubahan database menunggu):</p>
+              <ul className="mt-1 pl-4 list-disc space-y-0.5 max-h-28 overflow-y-auto">
+                {mig.pending.map(m => <li key={m} className="font-mono">{m}</li>)}
+              </ul>
+              <p className="mt-1.5">Tekan <span className="font-medium">Deploy</span> atau <span className="font-medium">Migrate</span> untuk menerapkannya (backup otomatis dulu).</p>
+            </div>
+          ) : (
+            <p className="text-xs text-green-700 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Semua migrasi sudah diterapkan ({mig.applied_count}). Tidak ada perubahan DB menunggu.</p>
+          )
+        ) : (
+          <p className="text-xs text-muted-foreground">{statusQ.isLoading ? 'Memuat status…' : 'Status tidak tersedia.'}</p>
+        )}
+        {statusQ.data && (
+          <p className="text-[11px] text-muted-foreground">
+            dist.zip: {statusQ.data.dist.zip_updated_at ?? '—'} · vendor.zip: {statusQ.data.vendor.zip_updated_at ?? '—'}
+            {statusQ.data.backup_supported ? '' : ' · ⚠ backup otomatis tidak didukung driver DB ini'}
+          </p>
+        )}
       </div>
 
       <div className="rounded-lg border bg-card p-5 space-y-4">
@@ -5097,11 +5147,25 @@ function DeployToolsTab() {
               {a.label}
             </Button>
           ))}
+          <Button size="sm" variant="outline" disabled={anyPending} onClick={() => verifyMut.mutate()}>
+            {verifyMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
+            Verifikasi
+          </Button>
           <Button size="sm" variant="outline" disabled={anyPending} onClick={() => setSeederOpen(true)}>
             <Users className="h-3.5 w-3.5 mr-1" />
             Seeder
           </Button>
         </div>
+
+        {/* Fallback: lewati backup otomatis bila server tak bisa mysqldump */}
+        <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+          <input type="checkbox" className="mt-0.5" checked={manualBackup} onChange={e => setManualBackup(e.target.checked)} />
+          <span>
+            <span className="font-medium text-foreground">Saya sudah backup manual</span> — lewati backup otomatis sebelum Migrate/Deploy.
+            Centang HANYA jika Anda sudah mengunduh backup lewat menu <span className="font-medium">Backup Database</span>
+            {' '}(mis. server tidak mendukung backup otomatis).
+          </span>
+        </label>
 
         <ul className="text-xs text-muted-foreground space-y-0.5">
           {actions.map(a => <li key={a.key}><span className="font-medium text-foreground">{a.label}:</span> {a.desc}</li>)}
@@ -5112,6 +5176,26 @@ function DeployToolsTab() {
       {error && (
         <div className="rounded border border-red-200 bg-red-50 px-3 py-2 flex gap-2 text-xs text-red-700">
           <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />{error}
+        </div>
+      )}
+
+      {verifyResult && (
+        <div className={cn('rounded-lg border p-4', verifyResult.ok ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50')}>
+          <h3 className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+            {verifyResult.ok
+              ? <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Verifikasi: semua sehat</>
+              : <><AlertCircle className="h-3.5 w-3.5 text-amber-600" /> Verifikasi: ada yang perlu diperbaiki</>}
+          </h3>
+          <ul className="space-y-1 text-xs">
+            {verifyResult.checks.map(c => (
+              <li key={c.nama} className="flex items-start gap-1.5">
+                {c.ok
+                  ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0 mt-0.5" />
+                  : <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" />}
+                <span className={c.ok ? '' : 'text-red-700'}>{c.nama}{c.detail ? <span className="text-muted-foreground"> — {c.detail}</span> : null}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
