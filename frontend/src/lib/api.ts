@@ -18,6 +18,15 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  // Upload file: HAPUS PAKSA Content-Type saat body berupa FormData. Instance ini
+  // ber-default 'application/json'; kalau default itu ikut terkirim untuk FormData,
+  // axios TIDAK memasang boundary multipart, sehingga Laravel tak bisa mem-parse file
+  // dan menolak dengan "The file field is required." Dengan menghapusnya di sini, axios
+  // selalu menghasilkan 'multipart/form-data; boundary=...' sendiri — jadi tiap call
+  // upload benar otomatis tanpa harus ingat menimpa header di masing-masing tempat.
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type']
+  }
   return config
 })
 
