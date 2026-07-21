@@ -997,7 +997,7 @@ function WaliKelasImportModal({ onClose, onSuccess }: { onClose: () => void; onS
     setLoading(true)
     try {
       const form = new FormData(); form.append('file', file)
-      const res = await api.post('/admin/import/wali-kelas', form, { headers: { 'Accept': 'application/json' } })
+      const res = await api.post('/admin/import/wali-kelas', form, { headers: { 'Content-Type': 'multipart/form-data' } })
       setResult(res.data)
       if (res.data.success_count > 0) onSuccess?.()
     } catch (e: any) {
