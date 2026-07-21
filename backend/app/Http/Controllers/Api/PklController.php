@@ -667,8 +667,12 @@ class PklController extends Controller
         $placements->loadMissing(['student.user', 'schoolClass']);
         $studentIds = $placements->pluck('student_id')->unique()->values();
 
+        // orderBy('id'): saat SATU (siswa, tanggal) punya >1 catatan (mis. minggu yang
+        // sama sempat diisi 2 pembimbing setelah pergantian pembimbing), catatan TERBARU
+        // (id terbesar) menang — lihat dedup per-tanggal di bawah.
         $attByStudent = PklAttendance::whereIn('student_id', $studentIds)
-            ->get(['student_id', 'tanggal', 'status'])
+            ->orderBy('id')
+            ->get(['id', 'student_id', 'tanggal', 'status'])
             ->groupBy('student_id');
 
         $libur = $this->liburNasionalSet();
@@ -679,12 +683,17 @@ class PklController extends Controller
 
             $counts = ['hadir' => 0, 'sakit' => 0, 'izin' => 0, 'alpha' => 0];
             if ($mulai && $selesai) {
+                // 1 status per TANGGAL (kebal duplikat lintas-pembimbing): baris terbaru
+                // menimpa, lalu hitung dari peta ter-dedup — bukan langsung dari tiap baris.
+                $perTanggal = [];
                 foreach ($attByStudent->get($p->student_id, collect()) as $a) {
                     $t = substr((string) $a->tanggal, 0, 10);
                     if ($t < $mulai || $t > $selesai) {
                         continue; // presensi ini milik penempatan/industri lain
                     }
-                    $s = $a->status instanceof AttendanceStatus ? $a->status->value : (string) $a->status;
+                    $perTanggal[$t] = $a->status instanceof AttendanceStatus ? $a->status->value : (string) $a->status;
+                }
+                foreach ($perTanggal as $s) {
                     if (isset($counts[$s])) {
                         $counts[$s]++;
                     }

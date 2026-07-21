@@ -8,6 +8,8 @@ use App\Enums\UserRole;
 use App\Http\Controllers\Api\PklController;
 use App\Models\AcademicYear;
 use App\Models\NonEffectiveDay;
+use App\Models\PklAgenda;
+use App\Models\PklAttendance;
 use App\Models\PklPlacement;
 use App\Models\PklSetting;
 use App\Models\SchoolClass;
@@ -127,5 +129,51 @@ class PklBimbinganTest extends TestCase
 
         // TAPI tidak membebaskan agenda reguler kelasnya (siswa masih di sekolah).
         $this->assertFalse(PklMode::isAgendaExempt($kelas->id, '2026-04-30'));
+    }
+
+    public function test_rekap_satu_status_per_tanggal_kebal_duplikat_ganti_pembimbing(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-30 10:00', config('app.school_timezone')));
+        $ay = AcademicYear::create([
+            'tahun' => '2025/2026', 'semester' => Semester::Genap,
+            'tanggal_mulai' => '2026-01-05', 'tanggal_selesai' => '2026-06-19', 'aktif' => true,
+        ]);
+        PklSetting::instance()->update(['aktif' => true]);
+        PklMode::flush();
+
+        $kelas = SchoolClass::create(['tingkat' => Tingkat::XII, 'jurusan' => 'Animasi', 'rombel' => 'A', 'academic_year_id' => $ay->id]);
+        $lamaU = User::create(['nama' => 'Pembimbing Lama', 'email' => 'lama@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Guru, 'must_change_password' => false]);
+        $lama = Teacher::create(['user_id' => $lamaU->id, 'is_bk' => false]);
+        $baruU = User::create(['nama' => 'Pembimbing Baru', 'email' => 'baru@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Guru, 'must_change_password' => false]);
+        $baru = Teacher::create(['user_id' => $baruU->id, 'is_bk' => false]);
+
+        $su = User::create(['nama' => 'Cici', 'email' => 'cici@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Siswa, 'must_change_password' => false]);
+        $siswa = Student::create(['user_id' => $su->id, 'nis' => '9003', 'nisn' => '333', 'class_id' => $kelas->id]);
+
+        // Penempatan kini dibimbing PEMBIMBING BARU.
+        PklPlacement::create([
+            'student_id' => $siswa->id, 'class_id' => $kelas->id, 'academic_year_id' => $ay->id,
+            'pembimbing_teacher_id' => $baru->id, 'tempat_pkl' => 'PT X', 'alamat_pkl' => 'Jl. X',
+            'tanggal_mulai' => '2026-04-20', 'tanggal_selesai' => '2026-11-13',
+        ]);
+
+        // Tanggal 21 Apr tercatat DUA kali (agenda lama & baru) — keduanya "hadir".
+        foreach ([$lama, $baru] as $g) {
+            $ag = PklAgenda::create([
+                'pembimbing_teacher_id' => $g->id, 'class_id' => $kelas->id,
+                'academic_year_id' => $ay->id, 'minggu_mulai' => '2026-04-20',
+            ]);
+            PklAttendance::create([
+                'pkl_agenda_id' => $ag->id, 'student_id' => $siswa->id,
+                'tanggal' => '2026-04-21', 'status' => 'hadir',
+            ]);
+        }
+        PklMode::flush();
+
+        Sanctum::actingAs($baruU->fresh());
+        $row = $this->getJson('/api/v1/pkl/my-students')->assertOk()->json('data.0');
+
+        // Dua baris absensi tanggal sama → tetap dihitung 1 (bukan 2).
+        $this->assertSame(1, $row['hadir']);
     }
 }
