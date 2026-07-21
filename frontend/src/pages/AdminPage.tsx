@@ -203,6 +203,11 @@ function ImportModal({
             type="file"
             accept=".xlsx,.xls"
             className={inputCls}
+            // Kosongkan value tiap klik agar memilih ulang file BERNAMA SAMA (mis. file
+            // yang baru diperbaiki lalu disimpan dgn nama yang sama) tetap memicu onChange.
+            // Tanpa ini, browser menganggap path tak berubah → onChange tak menyala →
+            // File lama tetap dipakai saat Import (terasa seperti "data ke-cache").
+            onClick={e => { (e.target as HTMLInputElement).value = ''; setFile(null) }}
             onChange={e => { setFile(e.target.files?.[0] || null); setResult(null) }}
           />
         </Field>
@@ -1038,6 +1043,11 @@ function WaliKelasImportModal({ onClose, onSuccess }: { onClose: () => void; onS
             type="file"
             accept=".xlsx,.xls"
             className={inputCls}
+            // Kosongkan value tiap klik agar memilih ulang file BERNAMA SAMA (mis. file
+            // yang baru diperbaiki lalu disimpan dgn nama yang sama) tetap memicu onChange.
+            // Tanpa ini, browser menganggap path tak berubah → onChange tak menyala →
+            // File lama tetap dipakai saat Import (terasa seperti "data ke-cache").
+            onClick={e => { (e.target as HTMLInputElement).value = ''; setFile(null) }}
             onChange={e => { setFile(e.target.files?.[0] || null); setResult(null) }}
           />
         </Field>
