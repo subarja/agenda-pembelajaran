@@ -210,9 +210,9 @@ class KokurikulerBillingTest extends TestCase
 
         KokurikulerMode::flush();
         $id = $this->kelasXiA->id;
-        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-10'), 'saat berjalan tetap bebas');
-        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-11'), 'hari penutupan masih bebas');
-        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-12'), 'sesudah penutupan kembali ke mode mengajar');
+        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-10'), 'H-1 penutupan (selama projek) tetap bebas');
+        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-11'), 'HARI INI dinyatakan selesai → langsung mode mengajar');
+        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-12'), 'sesudah penutupan tetap mode mengajar');
         $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-13'), 'tanggal_selesai terjadwal tak lagi membebaskan');
 
         // Dibuka kembali → tanggal penutupan dihapus, periode bebas penuh lagi.

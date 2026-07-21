@@ -229,12 +229,12 @@ class ModeExemptBoundaryTest extends TestCase
     }
 
     /**
-     * Projek ditutup LEBIH AWAL (selesai_pada < tanggal_selesai terjadwal):
-     * pembebasan berhenti di HARI PENUTUPAN. Tanggal selama projek berjalan & pada
-     * hari penutupan tetap bebas (tidak jadi hutang), tapi tanggal SESUDAHNYA langsung
-     * kembali ke mode mengajar reguler — tanpa menunggu tanggal_selesai terjadwal.
+     * Projek ditutup LEBIH AWAL (selesai_pada < tanggal_selesai terjadwal): pada HARI
+     * penutupan guru sudah kembali mengajar, jadi pembebasan berhenti di H-1 penutupan.
+     * Tanggal SELAMA projek (s.d. H-1) tetap bebas (tak jadi hutang); hari penutupan &
+     * sesudahnya langsung ke mode mengajar — tanpa menunggu tanggal_selesai terjadwal.
      */
-    public function test_kokurikuler_ditutup_lebih_awal_berhenti_membebaskan_setelah_penutupan(): void
+    public function test_kokurikuler_ditutup_lebih_awal_berhenti_membebaskan_di_hari_penutupan(): void
     {
         $p = $this->projek('selesai', '2026-03-02', '2026-03-20');
         $p->selesai_pada = '2026-03-05';
@@ -243,9 +243,9 @@ class ModeExemptBoundaryTest extends TestCase
 
         $id = $this->kelasXI->id;
 
-        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-04'), 'saat projek berjalan tetap bebas');
-        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-05'), 'HARI PENUTUPAN masih bebas (inklusif)');
-        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-06'), 'H+1 penutupan kembali ke mode mengajar');
+        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-04'), 'H-1 penutupan (selama projek) tetap bebas');
+        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-05'), 'HARI PENUTUPAN sudah kembali mengajar');
+        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-06'), 'sesudah penutupan tetap mode mengajar');
         $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-19'), 'jelang tanggal terjadwal tetap ditagih reguler');
     }
 

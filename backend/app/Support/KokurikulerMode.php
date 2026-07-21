@@ -81,13 +81,15 @@ class KokurikulerMode
     }
 
     /**
-     * Batas akhir pembebasan yang BERLAKU untuk sebuah projek.
-     * - Projek 'selesai' yang ditutup LEBIH AWAL (punya `selesai_pada` < tanggal
-     *   terjadwal): pembebasan berhenti di hari penutupan, sehingga kelas langsung
-     *   kembali ke mode mengajar reguler tanpa menunggu tanggal_selesai.
+     * Batas akhir pembebasan yang BERLAKU (tanggal TERAKHIR yang masih bebas) untuk
+     * sebuah projek.
+     * - Projek 'selesai' ber-`selesai_pada`: pada HARI ia dinyatakan selesai guru sudah
+     *   kembali mengajar, jadi pembebasan berhenti di H-1 penutupan. Hari penutupan &
+     *   sesudahnya = mode mengajar reguler; tanggal SELAMA projek (s.d. H-1) tetap bebas
+     *   agar tak berubah jadi hutang. Contoh: dinyatakan selesai hari ini → hari ini
+     *   sudah muncul agenda mengajar, tanpa menunggu tanggal_selesai terjadwal.
      * - Selain itu (aktif, atau selesai tanpa `selesai_pada` = data lama): pakai
-     *   tanggal_selesai terjadwal penuh — perilaku lama, tanggal projek tetap bebas
-     *   agar tak berubah jadi hutang tagihan.
+     *   tanggal_selesai terjadwal penuh — perilaku lama.
      *
      * @param  mixed  $tanggalSelesai  Carbon|string
      * @param  mixed  $selesaiPada  Carbon|string|null
@@ -97,9 +99,10 @@ class KokurikulerMode
         $selesai = substr((string) $tanggalSelesai, 0, 10);
 
         if ($status === 'selesai' && $selesaiPada !== null && $selesaiPada !== '') {
-            $pada = substr((string) $selesaiPada, 0, 10);
+            $hSebelumPenutupan = Carbon::parse(substr((string) $selesaiPada, 0, 10))
+                ->subDay()->toDateString();
 
-            return $pada < $selesai ? $pada : $selesai;
+            return $hSebelumPenutupan < $selesai ? $hSebelumPenutupan : $selesai;
         }
 
         return $selesai;
