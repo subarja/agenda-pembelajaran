@@ -68,11 +68,50 @@ gunzip < storage/db-backups/NAMA_FILE.sql.gz | mysql -u DB_USER -p DB_NAME
 php artisan up
 ```
 
+## Langkah PASCA-deploy (verifikasi)
+
+Setelah `deploy.sh` selesai, jalankan pemeriksa read-only
+[`backend/postdeploy-check.sh`](../backend/postdeploy-check.sh):
+
+```bash
+bash postdeploy-check.sh
+```
+Memeriksa (tanpa mengubah apa pun): migrasi 0 pending, kolom/tabel kritikal ada
+(`selesai_pada`, `jenis_kelamin`, `must_change_password`, `bell_periods`, dll),
+`APP_KEY` terpasang, DB terhubung, aplikasi tidak maintenance, symlink storage ada.
+Keluar kode 0 = sehat; ≠0 = ada masalah yang diprint.
+
+### Sertakan uji endpoint (opsional tapi disarankan)
+
+```bash
+# Liveness API (tanpa login):
+BASE_URL=https://api.agenda.smkn2cmi.sch.id bash postdeploy-check.sh
+```
+
+Untuk membuktikan **guru benar-benar bisa mengisi agenda** (endpoint terproteksi yang
+menyentuh query kokurikuler `selesai_pada`), sertakan token guru:
+
+```bash
+# 1) Ambil academic_year_id:
+curl -s https://api.agenda.smkn2cmi.sch.id/api/v1/academic-years/pilihan
+
+# 2) Login sebagai satu guru → salin "token" dari respons:
+curl -s -X POST https://api.agenda.smkn2cmi.sch.id/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"NIP_GURU","password":"PASSWORD","academic_year_id":ID}'
+
+# 3) Uji dengan token itu:
+BASE_URL=https://api.agenda.smkn2cmi.sch.id TOKEN=xxxxx bash postdeploy-check.sh
+```
+`/agendas/perlu-diisi` dan `/schedules/today` yang membalas **2xx** (bukan 5xx)
+membuktikan skema kokurikuler sudah benar dan guru bisa mengisi agenda.
+
 ## Checklist ringkas tiap deploy
 
 - [ ] `git pull` / upload kode terbaru + `composer install` (bila perlu)
 - [ ] `bash deploy.sh --check` → lihat migrasi pending
 - [ ] `bash deploy.sh` → backup + migrate + clear cache
 - [ ] Salin `dist.zip` frontend ke docroot (bila ada perubahan FE)
+- [ ] **`bash postdeploy-check.sh`** → verifikasi migrasi & skema masuk
 - [ ] Pastikan `.env` server **tidak** tertimpa & `APP_KEY` tetap sama
 - [ ] Uji cepat: login, isi agenda, buka menu kokurikuler
