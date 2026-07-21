@@ -5022,6 +5022,7 @@ type DeployStatus = {
 }
 type VerifyCheck = { nama: string; ok: boolean; detail?: string }
 type VerifyData = { ok: boolean; checks: VerifyCheck[]; migrations: { pending_count: number } }
+type SchemaDiff = { in_sync: boolean; missing_tables: string[]; extra_tables: string[]; missing_columns: string[]; extra_columns: string[]; type_diff: string[] }
 
 function DeployToolsTab() {
   const [log, setLog] = useState<string[]>([])
@@ -5030,6 +5031,7 @@ function DeployToolsTab() {
   const [seederClass, setSeederClass] = useState(ALLOWED_SEEDERS[0])
   const [manualBackup, setManualBackup] = useState(false)
   const [verifyResult, setVerifyResult] = useState<VerifyData | null>(null)
+  const [schemaResult, setSchemaResult] = useState<SchemaDiff | null>(null)
 
   const statusQ = useQuery({
     queryKey: ['deploy-status'],
@@ -5046,13 +5048,14 @@ function DeployToolsTab() {
   const buildVendorMut = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/build-vendor')).data, onSuccess: onResult, onError: onErr })
   const migrateMut     = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/migrate', body())).data, onSuccess: onResult, onError: onErr })
   const verifyMut      = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/verify')).data.data as VerifyData, onSuccess: (d) => { setVerifyResult(d); setError(null) }, onError: onErr })
+  const schemaMut      = useMutation({ mutationFn: async () => (await api.post('/admin/deploy-tools/schema-diff')).data.data as SchemaDiff, onSuccess: (d) => { setSchemaResult(d); setError(null) }, onError: onErr })
   const seedMut = useMutation({
     mutationFn: async () => (await api.post('/admin/deploy-tools/seed', { class: seederClass })).data,
     onSuccess: (data: { log: string[] }) => { onResult(data); setSeederOpen(false) },
     onError: onErr,
   })
 
-  const anyPending = deployMut.isPending || buildDistMut.isPending || buildVendorMut.isPending || migrateMut.isPending || seedMut.isPending || verifyMut.isPending
+  const anyPending = deployMut.isPending || buildDistMut.isPending || buildVendorMut.isPending || migrateMut.isPending || seedMut.isPending || verifyMut.isPending || schemaMut.isPending
 
   const actions: Array<{
     key: string; label: string; icon: typeof RefreshCw; tone: 'green' | 'yellow' | 'blue'
@@ -5151,6 +5154,10 @@ function DeployToolsTab() {
             {verifyMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
             Verifikasi
           </Button>
+          <Button size="sm" variant="outline" disabled={anyPending} onClick={() => schemaMut.mutate()}>
+            {schemaMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <FileCode2 className="h-3.5 w-3.5 mr-1" />}
+            Bandingkan Skema
+          </Button>
           <Button size="sm" variant="outline" disabled={anyPending} onClick={() => setSeederOpen(true)}>
             <Users className="h-3.5 w-3.5 mr-1" />
             Seeder
@@ -5196,6 +5203,45 @@ function DeployToolsTab() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {schemaResult && (
+        <div className={cn('rounded-lg border p-4', schemaResult.in_sync ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50')}>
+          <h3 className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+            {schemaResult.in_sync
+              ? <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Skema server = lokal (tidak ada kolom/tabel yang beda)</>
+              : <><AlertCircle className="h-3.5 w-3.5 text-amber-600" /> Skema server BERBEDA dari lokal</>}
+          </h3>
+          {schemaResult.in_sync ? (
+            <p className="text-xs text-muted-foreground">Semua tabel & kolom di server cocok dengan snapshot lokal.</p>
+          ) : (
+            <div className="space-y-2 text-xs">
+              {schemaResult.missing_tables.length > 0 && (
+                <div><p className="font-medium text-red-700">Tabel belum ada di server ({schemaResult.missing_tables.length}) — perlu migrate:</p>
+                  <p className="font-mono text-red-600 break-words">{schemaResult.missing_tables.join(', ')}</p></div>
+              )}
+              {schemaResult.missing_columns.length > 0 && (
+                <div><p className="font-medium text-red-700">Kolom belum ada di server ({schemaResult.missing_columns.length}) — perlu migrate:</p>
+                  <ul className="mt-0.5 pl-4 list-disc font-mono text-red-600 max-h-32 overflow-y-auto">{schemaResult.missing_columns.map(c => <li key={c}>{c}</li>)}</ul></div>
+              )}
+              {schemaResult.extra_tables.length > 0 && (
+                <div><p className="font-medium text-amber-700">Tabel hanya ada di server ({schemaResult.extra_tables.length}):</p>
+                  <p className="font-mono text-amber-700 break-words">{schemaResult.extra_tables.join(', ')}</p></div>
+              )}
+              {schemaResult.extra_columns.length > 0 && (
+                <div><p className="font-medium text-amber-700">Kolom hanya ada di server ({schemaResult.extra_columns.length}):</p>
+                  <p className="font-mono text-amber-700 break-words">{schemaResult.extra_columns.join(', ')}</p></div>
+              )}
+              <p className="text-muted-foreground pt-1">Kolom/tabel yang hilang di server biasanya karena migrasi belum jalan — tekan <span className="font-medium">Deploy</span> atau <span className="font-medium">Migrate</span>.</p>
+            </div>
+          )}
+          {schemaResult.type_diff.length > 0 && (
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer text-muted-foreground">Beda tipe kolom ({schemaResult.type_diff.length}) — biasanya sekadar beda versi MySQL, bukan masalah</summary>
+              <ul className="mt-1 pl-4 list-disc font-mono text-muted-foreground max-h-32 overflow-y-auto">{schemaResult.type_diff.map(t => <li key={t}>{t}</li>)}</ul>
+            </details>
+          )}
         </div>
       )}
 

@@ -71,6 +71,19 @@ class DeployToolsTest extends TestCase
             ->assertJsonPath('message', fn ($m) => is_string($m) && str_contains($m, 'DIBATALKAN'));
     }
 
+    public function test_schema_diff_in_sync_saat_snapshot_cocok_dengan_db(): void
+    {
+        Sanctum::actingAs($this->admin());
+
+        // Snapshot committed (database/schema-snapshot.json) dibuat dari migrasi yang
+        // sama dengan DB uji → harus in_sync (tidak ada kolom/tabel yang hilang).
+        $this->postJson('/api/v1/admin/deploy-tools/schema-diff')
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['in_sync', 'missing_tables', 'missing_columns', 'extra_columns', 'type_diff']])
+            ->assertJsonPath('data.missing_columns', [])
+            ->assertJsonPath('data.missing_tables', []);
+    }
+
     public function test_non_admin_ditolak(): void
     {
         $wakasek = User::create([
@@ -80,6 +93,7 @@ class DeployToolsTest extends TestCase
         Sanctum::actingAs($wakasek);
 
         $this->postJson('/api/v1/admin/deploy-tools/verify')->assertForbidden();
+        $this->postJson('/api/v1/admin/deploy-tools/schema-diff')->assertForbidden();
         $this->getJson('/api/v1/admin/deploy-tools/status')->assertForbidden();
     }
 }

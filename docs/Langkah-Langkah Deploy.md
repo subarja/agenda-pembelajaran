@@ -56,6 +56,13 @@ Tekan tombol **Deploy**. Urutannya otomatis dan aman:
 Tekan tombol **Verifikasi**. Harus semua ✓: migrasi 0 pending, APP_KEY terpasang,
 DB terhubung, bukan maintenance, symlink storage ada.
 
+Untuk memastikan lebih dalam, tekan **Bandingkan Skema** — membandingkan kolom/tabel DB
+server dengan snapshot lokal, lalu menampilkan kolom/tabel yang **belum ada di server**
+(bila ada). "Skema server = lokal" berarti struktur database sudah persis sama.
+
+> Snapshot skema dibuat di LOKAL dengan `php artisan schema:snapshot` (file
+> `database/schema-snapshot.json`, ikut git) — regenerasi tiap menambah/ubah migrasi.
+
 ### Bila backup otomatis gagal
 
 Jika server tidak mendukung backup otomatis, Deploy/Migrate akan **dibatalkan** dengan

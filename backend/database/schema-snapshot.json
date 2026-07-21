@@ -1,0 +1,3159 @@
+{
+    "note": "Snapshot skema LOKAL. Regenerasi: php artisan schema:snapshot (lalu commit). Jangan edit manual.",
+    "tables": {
+        "academic_years": {
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "kepala_sekolah_gelar_belakang": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "kepala_sekolah_gelar_depan": {
+                "type": "varchar(50)",
+                "nullable": true
+            },
+            "kepala_sekolah_nama": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "kepala_sekolah_nip": {
+                "type": "varchar(30)",
+                "nullable": true
+            },
+            "locked": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "semester": {
+                "type": "enum('ganjil','genap')",
+                "nullable": false
+            },
+            "tahun": {
+                "type": "varchar(9)",
+                "nullable": false
+            },
+            "tanggal_mulai": {
+                "type": "date",
+                "nullable": true
+            },
+            "tanggal_selesai": {
+                "type": "date",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            },
+            "wk_kurikulum_gelar_belakang": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "wk_kurikulum_gelar_depan": {
+                "type": "varchar(50)",
+                "nullable": true
+            },
+            "wk_kurikulum_nama": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "wk_kurikulum_nip": {
+                "type": "varchar(30)",
+                "nullable": true
+            }
+        },
+        "action_thresholds": {
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "character_category_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "max_point": {
+                "type": "int",
+                "nullable": true
+            },
+            "min_point": {
+                "type": "int",
+                "nullable": false
+            },
+            "rekomendasi": {
+                "type": "text",
+                "nullable": false
+            },
+            "sifat": {
+                "type": "enum('positif','negatif')",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "agenda_fill_settings": {
+            "batas_hari": {
+                "type": "smallint unsigned",
+                "nullable": false
+            },
+            "batas_jam": {
+                "type": "tinyint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "agenda_learning_objectives": {
+            "agenda_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "learning_objective_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            }
+        },
+        "agenda_student_scores": {
+            "agenda_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "catatan": {
+                "type": "text",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "nilai": {
+                "type": "int",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "agendas": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "resume_kbm": {
+                "type": "text",
+                "nullable": true
+            },
+            "schedule_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "status": {
+                "type": "enum('draft','submitted')",
+                "nullable": false
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "archive_write_settings": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "izinkan_tulis": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "audit_logs": {
+            "action": {
+                "type": "varchar(50)",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "ip": {
+                "type": "varchar(45)",
+                "nullable": true
+            },
+            "payload": {
+                "type": "json",
+                "nullable": true
+            },
+            "target_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "target_type": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "timestamp": {
+                "type": "timestamp",
+                "nullable": false
+            },
+            "user_agent": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "user_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            }
+        },
+        "bell_day_defaults": {
+            "bell_mode_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "hari": {
+                "type": "varchar(10)",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "bell_mode_overrides": {
+            "bell_mode_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "keterangan": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "bell_modes": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "is_default": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "nama": {
+                "type": "varchar(50)",
+                "nullable": false
+            },
+            "offset_menit": {
+                "type": "smallint",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "bell_periods": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "hari": {
+                "type": "varchar(10)",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "jam_ke": {
+                "type": "tinyint unsigned",
+                "nullable": false
+            },
+            "jam_mulai": {
+                "type": "time",
+                "nullable": false
+            },
+            "jam_selesai": {
+                "type": "time",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "branding_settings": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "logo_path": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "cache": {
+            "expiration": {
+                "type": "int",
+                "nullable": false
+            },
+            "key": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "value": {
+                "type": "mediumtext",
+                "nullable": false
+            }
+        },
+        "cache_locks": {
+            "expiration": {
+                "type": "int",
+                "nullable": false
+            },
+            "key": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "owner": {
+                "type": "varchar(255)",
+                "nullable": false
+            }
+        },
+        "calendar_events": {
+            "all_day": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "color": {
+                "type": "varchar(30)",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "description": {
+                "type": "text",
+                "nullable": true
+            },
+            "end_date": {
+                "type": "date",
+                "nullable": false
+            },
+            "google_event_id": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "source": {
+                "type": "enum('google','manual')",
+                "nullable": false
+            },
+            "start_date": {
+                "type": "date",
+                "nullable": false
+            },
+            "synced_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "title": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "calendar_settings": {
+            "api_key": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "calendar_id": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "ics_url": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "last_synced_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "service_account_json": {
+                "type": "text",
+                "nullable": true
+            },
+            "sync_method": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "sync_months_ahead": {
+                "type": "int",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "character_categories": {
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "deskripsi": {
+                "type": "text",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "nama": {
+                "type": "varchar(100)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "character_inputs": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "agenda_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "catatan": {
+                "type": "text",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "sign": {
+                "type": "enum('positif','negatif')",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "subitem_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "character_manual_notes": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "admin_catatan": {
+                "type": "text",
+                "nullable": true
+            },
+            "atas_nama_teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "catatan": {
+                "type": "text",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "nilai": {
+                "type": "int",
+                "nullable": true
+            },
+            "nilai_final": {
+                "type": "int",
+                "nullable": true
+            },
+            "reviewed_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "reviewed_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "status": {
+                "type": "enum('pending','approved','rejected')",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "sumber": {
+                "type": "enum('manual','nilai_tambah')",
+                "nullable": false
+            },
+            "teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "character_subitems": {
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "bobot": {
+                "type": "int",
+                "nullable": false
+            },
+            "category_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "deskripsi": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "kode": {
+                "type": "varchar(20)",
+                "nullable": false
+            },
+            "sifat": {
+                "type": "enum('positif','negatif','keduanya')",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "class_student": {
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "status": {
+                "type": "enum('aktif','naik','tinggal','lulus','pindah')",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "classes": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "jadwal_pdf": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "jurusan": {
+                "type": "varchar(100)",
+                "nullable": false
+            },
+            "rombel": {
+                "type": "varchar(10)",
+                "nullable": false
+            },
+            "tingkat": {
+                "type": "enum('X','XI','XII')",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            },
+            "wali_kelas_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            }
+        },
+        "daily_attendances": {
+            "catatan": {
+                "type": "text",
+                "nullable": true
+            },
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "recorded_by": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "status": {
+                "type": "enum('hadir','sakit','izin','alpha')",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "ews_statuses": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "catatan_count": {
+                "type": "smallint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "karakter_score": {
+                "type": "int",
+                "nullable": false
+            },
+            "kehadiran_score": {
+                "type": "decimal(5,2)",
+                "nullable": false
+            },
+            "last_calculated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "level": {
+                "type": "enum('hijau','kuning','oranye','merah')",
+                "nullable": false
+            },
+            "nilai_score": {
+                "type": "decimal(5,2)",
+                "nullable": true
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "failed_jobs": {
+            "connection": {
+                "type": "text",
+                "nullable": false
+            },
+            "exception": {
+                "type": "longtext",
+                "nullable": false
+            },
+            "failed_at": {
+                "type": "timestamp",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "payload": {
+                "type": "longtext",
+                "nullable": false
+            },
+            "queue": {
+                "type": "text",
+                "nullable": false
+            },
+            "uuid": {
+                "type": "varchar(255)",
+                "nullable": false
+            }
+        },
+        "fcm_settings": {
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "messaging_sender_id": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "project_id": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "service_account_json": {
+                "type": "text",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "vapid_public_key": {
+                "type": "text",
+                "nullable": true
+            },
+            "web_api_key": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "web_app_id": {
+                "type": "varchar(255)",
+                "nullable": true
+            }
+        },
+        "handling_sessions": {
+            "catatan": {
+                "type": "text",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "handled_by": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "is_resume": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "jenis": {
+                "type": "enum('wali_kelas','bk')",
+                "nullable": false
+            },
+            "judul": {
+                "type": "varchar(120)",
+                "nullable": true
+            },
+            "link_dokumen": {
+                "type": "varchar(500)",
+                "nullable": true
+            },
+            "link_foto": {
+                "type": "varchar(500)",
+                "nullable": true
+            },
+            "links": {
+                "type": "json",
+                "nullable": true
+            },
+            "recommendation_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "shared_with_wali_kelas": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "job_batches": {
+            "cancelled_at": {
+                "type": "int",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "int",
+                "nullable": false
+            },
+            "failed_job_ids": {
+                "type": "longtext",
+                "nullable": false
+            },
+            "failed_jobs": {
+                "type": "int",
+                "nullable": false
+            },
+            "finished_at": {
+                "type": "int",
+                "nullable": true
+            },
+            "id": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "name": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "options": {
+                "type": "mediumtext",
+                "nullable": true
+            },
+            "pending_jobs": {
+                "type": "int",
+                "nullable": false
+            },
+            "total_jobs": {
+                "type": "int",
+                "nullable": false
+            }
+        },
+        "jobs": {
+            "attempts": {
+                "type": "tinyint unsigned",
+                "nullable": false
+            },
+            "available_at": {
+                "type": "int unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "int unsigned",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "payload": {
+                "type": "longtext",
+                "nullable": false
+            },
+            "queue": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "reserved_at": {
+                "type": "int unsigned",
+                "nullable": true
+            }
+        },
+        "kokurikuler_attendances": {
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "project_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "recorded_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "status": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "kokurikuler_dimensions": {
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "deskripsi": {
+                "type": "text",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "kode": {
+                "type": "varchar(40)",
+                "nullable": false
+            },
+            "nama": {
+                "type": "varchar(160)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "urutan": {
+                "type": "tinyint unsigned",
+                "nullable": false
+            }
+        },
+        "kokurikuler_documents": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "judul": {
+                "type": "varchar(200)",
+                "nullable": false
+            },
+            "team_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "url": {
+                "type": "varchar(500)",
+                "nullable": false
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "kokurikuler_project_classes": {
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "fasilitator_user_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "project_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "kokurikuler_project_dimensions": {
+            "aspek": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "dimension_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "project_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "urutan": {
+                "type": "tinyint unsigned",
+                "nullable": false
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "kokurikuler_project_subdimensions": {
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "project_dimension_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "subdimension_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            }
+        },
+        "kokurikuler_projects": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "deskripsi": {
+                "type": "text",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "judul": {
+                "type": "varchar(200)",
+                "nullable": false
+            },
+            "selesai_pada": {
+                "type": "date",
+                "nullable": true
+            },
+            "status": {
+                "type": "varchar(20)",
+                "nullable": false
+            },
+            "tanggal_mulai": {
+                "type": "date",
+                "nullable": false
+            },
+            "tanggal_selesai": {
+                "type": "date",
+                "nullable": false
+            },
+            "tema": {
+                "type": "varchar(200)",
+                "nullable": true
+            },
+            "tingkat": {
+                "type": "varchar(10)",
+                "nullable": true
+            },
+            "tujuan": {
+                "type": "text",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "kokurikuler_reflections": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "isi": {
+                "type": "text",
+                "nullable": false
+            },
+            "jenis": {
+                "type": "varchar(10)",
+                "nullable": false
+            },
+            "project_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "kokurikuler_reports": {
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "isi": {
+                "type": "text",
+                "nullable": false
+            },
+            "project_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "kokurikuler_scores": {
+            "catatan": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "dinilai_oleh": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "level": {
+                "type": "varchar(2)",
+                "nullable": false
+            },
+            "project_dimension_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "project_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "kokurikuler_subdimensions": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "dimension_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "nama": {
+                "type": "varchar(200)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "urutan": {
+                "type": "tinyint unsigned",
+                "nullable": false
+            }
+        },
+        "kokurikuler_team_members": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "team_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "kokurikuler_teams": {
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "nama": {
+                "type": "varchar(120)",
+                "nullable": true
+            },
+            "nomor": {
+                "type": "tinyint unsigned",
+                "nullable": false
+            },
+            "project_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "learning_objective_logs": {
+            "action": {
+                "type": "enum('create','update','delete','restore')",
+                "nullable": false
+            },
+            "changed_by": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "learning_objective_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "snapshot": {
+                "type": "json",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "learning_objectives": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "active_unique_flag": {
+                "type": "tinyint unsigned",
+                "nullable": true
+            },
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "deskripsi": {
+                "type": "text",
+                "nullable": false
+            },
+            "fase": {
+                "type": "varchar(1)",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "kode": {
+                "type": "varchar(20)",
+                "nullable": false
+            },
+            "semester": {
+                "type": "enum('ganjil','genap')",
+                "nullable": false
+            },
+            "subject_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "urutan": {
+                "type": "smallint unsigned",
+                "nullable": false
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "migrations": {
+            "batch": {
+                "type": "int",
+                "nullable": false
+            },
+            "id": {
+                "type": "int unsigned",
+                "nullable": false
+            },
+            "migration": {
+                "type": "varchar(255)",
+                "nullable": false
+            }
+        },
+        "non_effective_days": {
+            "calendar_event_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "keterangan": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "status": {
+                "type": "enum('tidak_efektif')",
+                "nullable": false
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            }
+        },
+        "notes": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "isi": {
+                "type": "text",
+                "nullable": false
+            },
+            "kategori": {
+                "type": "enum('akademik','karakter','presensi','kesehatan','lainnya')",
+                "nullable": false
+            },
+            "target_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "target_type": {
+                "type": "varchar(100)",
+                "nullable": false
+            },
+            "tindak_lanjut": {
+                "type": "text",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "notification_preferences": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "push_enabled": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "quiet_end": {
+                "type": "varchar(5)",
+                "nullable": false
+            },
+            "quiet_hours_enabled": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "quiet_start": {
+                "type": "varchar(5)",
+                "nullable": false
+            },
+            "types": {
+                "type": "json",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "user_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            }
+        },
+        "notifications": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "data": {
+                "type": "text",
+                "nullable": false
+            },
+            "id": {
+                "type": "char(36)",
+                "nullable": false
+            },
+            "notifiable_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "notifiable_type": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "read_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "type": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "password_default_settings": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "student_password": {
+                "type": "text",
+                "nullable": true
+            },
+            "teacher_password": {
+                "type": "text",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "password_reset_tokens": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "email": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "token": {
+                "type": "varchar(255)",
+                "nullable": false
+            }
+        },
+        "personal_access_tokens": {
+            "abilities": {
+                "type": "text",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "expires_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "last_used_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "name": {
+                "type": "text",
+                "nullable": false
+            },
+            "token": {
+                "type": "varchar(64)",
+                "nullable": false
+            },
+            "tokenable_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "tokenable_type": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "pkl_agenda_objective": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "pkl_agenda_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "pkl_objective_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "pkl_agendas": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "catatan": {
+                "type": "text",
+                "nullable": true
+            },
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "minggu_mulai": {
+                "type": "date",
+                "nullable": false
+            },
+            "pembimbing_teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "pkl_attendances": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "pkl_agenda_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "status": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "pkl_objectives": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "deskripsi": {
+                "type": "text",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "jurusan": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "kode": {
+                "type": "varchar(30)",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "pkl_placements": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "alamat_pkl": {
+                "type": "text",
+                "nullable": true
+            },
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "pembimbing_teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "tanggal_mulai": {
+                "type": "date",
+                "nullable": false
+            },
+            "tanggal_selesai": {
+                "type": "date",
+                "nullable": false
+            },
+            "telpon_siswa": {
+                "type": "varchar(20)",
+                "nullable": true
+            },
+            "tempat_pkl": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "pkl_settings": {
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "print_settings": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "kop_position": {
+                "type": "enum('left','center','right')",
+                "nullable": false
+            },
+            "kop_width_percent": {
+                "type": "tinyint unsigned",
+                "nullable": false
+            },
+            "margin_bottom": {
+                "type": "decimal(4,2)",
+                "nullable": false
+            },
+            "margin_left": {
+                "type": "decimal(4,2)",
+                "nullable": false
+            },
+            "margin_right": {
+                "type": "decimal(4,2)",
+                "nullable": false
+            },
+            "margin_top": {
+                "type": "decimal(4,2)",
+                "nullable": false
+            },
+            "paper_size": {
+                "type": "enum('A4','F4')",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "user_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            }
+        },
+        "program_keahlians": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "kode": {
+                "type": "varchar(20)",
+                "nullable": false
+            },
+            "konsentrasi": {
+                "type": "varchar(150)",
+                "nullable": false
+            },
+            "program_keahlian": {
+                "type": "varchar(150)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "push_subscriptions": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "device_label": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "last_used_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "token": {
+                "type": "varchar(512)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "user_agent": {
+                "type": "varchar(512)",
+                "nullable": true
+            },
+            "user_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            }
+        },
+        "r2_settings": {
+            "access_key_id": {
+                "type": "text",
+                "nullable": true
+            },
+            "account_id": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "bucket": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "public_url": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "secret_access_key": {
+                "type": "text",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "recommendation_handlers": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "recommendation_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "suggested_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "user_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            }
+        },
+        "recommendations": {
+            "academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "akumulasi_saat_trigger": {
+                "type": "int",
+                "nullable": true
+            },
+            "alasan_manual": {
+                "type": "varchar(500)",
+                "nullable": true
+            },
+            "bk_selesai_pada": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "bk_status": {
+                "type": "enum('none','diajukan','diterima','selesai')",
+                "nullable": false
+            },
+            "bk_teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "catatan_admin": {
+                "type": "text",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "diajukan_konseling_pada": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "ditangani_pada": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "diterima_bk_pada": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "ditugaskan_ke": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "hasil_tindak_lanjut": {
+                "type": "text",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "resume_bk": {
+                "type": "text",
+                "nullable": true
+            },
+            "status": {
+                "type": "enum('pending','proses','menunggu_verifikasi','selesai','diabaikan')",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "threshold_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            },
+            "verified_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "verified_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            }
+        },
+        "reports": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "filter_json": {
+                "type": "json",
+                "nullable": true
+            },
+            "generated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "generated_by": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "generated_url": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "jenis": {
+                "type": "enum('agenda','kehadiran','karakter','ews','rekapitulasi_siswa')",
+                "nullable": false
+            },
+            "periode": {
+                "type": "varchar(50)",
+                "nullable": true
+            },
+            "status": {
+                "type": "enum('pending','processing','ready','gagal')",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "schedules": {
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "hari": {
+                "type": "enum('senin','selasa','rabu','kamis','jumat','sabtu')",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "jam_ke_mulai": {
+                "type": "tinyint unsigned",
+                "nullable": true
+            },
+            "jam_ke_selesai": {
+                "type": "tinyint unsigned",
+                "nullable": true
+            },
+            "jam_mulai": {
+                "type": "time",
+                "nullable": false
+            },
+            "jam_selesai": {
+                "type": "time",
+                "nullable": false
+            },
+            "subject_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "sessions": {
+            "id": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "ip_address": {
+                "type": "varchar(45)",
+                "nullable": true
+            },
+            "last_activity": {
+                "type": "int",
+                "nullable": false
+            },
+            "payload": {
+                "type": "longtext",
+                "nullable": false
+            },
+            "user_agent": {
+                "type": "text",
+                "nullable": true
+            },
+            "user_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            }
+        },
+        "student_attendances": {
+            "agenda_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "catatan": {
+                "type": "text",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "durasi_terlambat": {
+                "type": "smallint unsigned",
+                "nullable": false
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "lampiran_url": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "status": {
+                "type": "enum('hadir','sakit','izin','alpha')",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "student_case_notes": {
+            "author_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "catatan": {
+                "type": "text",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "jenis": {
+                "type": "enum('bk','wali_kelas')",
+                "nullable": false
+            },
+            "konfidensial": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "student_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "tindak_lanjut": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "students": {
+            "angkatan": {
+                "type": "year",
+                "nullable": true
+            },
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "foto": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "hp_ortu": {
+                "type": "varchar(20)",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "jenis_kelamin": {
+                "type": "varchar(1)",
+                "nullable": true
+            },
+            "nama_ayah": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "nama_ibu": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "nis": {
+                "type": "varchar(20)",
+                "nullable": false
+            },
+            "nisn": {
+                "type": "varchar(10)",
+                "nullable": true
+            },
+            "status": {
+                "type": "enum('aktif','lulus','pindah','keluar')",
+                "nullable": false
+            },
+            "tanggal_keluar": {
+                "type": "date",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "user_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            },
+            "wali_kontak": {
+                "type": "varchar(20)",
+                "nullable": true
+            },
+            "wali_nama": {
+                "type": "varchar(100)",
+                "nullable": true
+            }
+        },
+        "subjects": {
+            "aktif": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "kelompok": {
+                "type": "enum('normatif','adaptif','produktif','muatan_lokal')",
+                "nullable": false
+            },
+            "kode": {
+                "type": "varchar(20)",
+                "nullable": false
+            },
+            "nama": {
+                "type": "varchar(100)",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "substitution_requests": {
+            "alasan": {
+                "type": "varchar(500)",
+                "nullable": false
+            },
+            "alasan_penolakan": {
+                "type": "varchar(500)",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "link_tugas": {
+                "type": "varchar(500)",
+                "nullable": true
+            },
+            "pesan": {
+                "type": "text",
+                "nullable": true
+            },
+            "requester_teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "responded_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "status": {
+                "type": "varchar(20)",
+                "nullable": false
+            },
+            "substitute_teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "substitution_sessions": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "request_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "schedule_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "slot_aktif": {
+                "type": "tinyint unsigned",
+                "nullable": true
+            },
+            "tanggal": {
+                "type": "date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "teacher_attendances": {
+            "agenda_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "bukti_url": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "catatan": {
+                "type": "text",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "status": {
+                "type": "enum('hadir','tidak_hadir','izin','sakit')",
+                "nullable": false
+            },
+            "teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "teachers": {
+            "agama": {
+                "type": "varchar(30)",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "gelar_belakang": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "gelar_depan": {
+                "type": "varchar(50)",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "is_bk": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "jadwal_pdf": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "jenis_ptk": {
+                "type": "varchar(50)",
+                "nullable": true
+            },
+            "jk": {
+                "type": "varchar(1)",
+                "nullable": true
+            },
+            "mapel_utama": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "nik": {
+                "type": "varchar(20)",
+                "nullable": true
+            },
+            "nip": {
+                "type": "varchar(20)",
+                "nullable": true
+            },
+            "nomor_hp": {
+                "type": "varchar(20)",
+                "nullable": true
+            },
+            "nuptk": {
+                "type": "varchar(20)",
+                "nullable": true
+            },
+            "status_kepegawaian": {
+                "type": "varchar(50)",
+                "nullable": true
+            },
+            "tanggal_lahir": {
+                "type": "date",
+                "nullable": true
+            },
+            "tempat_lahir": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "user_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "teaching_assignments": {
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "jp_per_minggu": {
+                "type": "decimal(4,1)",
+                "nullable": false
+            },
+            "subject_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            }
+        },
+        "users": {
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "current_academic_year_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "email": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "email_verified_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "foto": {
+                "type": "varchar(255)",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "linked_student_id": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "must_change_password": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
+            "nama": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "nomor_hp": {
+                "type": "varchar(20)",
+                "nullable": true
+            },
+            "password": {
+                "type": "varchar(255)",
+                "nullable": false
+            },
+            "remember_token": {
+                "type": "varchar(100)",
+                "nullable": true
+            },
+            "role": {
+                "type": "enum('admin','guru','wali_kelas','siswa','wakasek','bk','orang_tua')",
+                "nullable": false
+            },
+            "status": {
+                "type": "enum('aktif','nonaktif')",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        },
+        "weekly_reflections": {
+            "catatan": {
+                "type": "text",
+                "nullable": false
+            },
+            "class_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "created_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "deleted_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "minggu_mulai": {
+                "type": "date",
+                "nullable": false
+            },
+            "teacher_id": {
+                "type": "bigint unsigned",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "timestamp",
+                "nullable": true
+            },
+            "updated_by": {
+                "type": "bigint unsigned",
+                "nullable": true
+            },
+            "uuid": {
+                "type": "char(36)",
+                "nullable": false
+            }
+        }
+    }
+}

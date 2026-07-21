@@ -447,6 +447,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
 
             Route::get('deploy-tools/status', [DeployToolController::class, 'status']);
             Route::post('deploy-tools/verify', [DeployToolController::class, 'verify']);
+            Route::post('deploy-tools/schema-diff', [DeployToolController::class, 'schemaDiff']);
             Route::post('deploy-tools/migrate', [DeployToolController::class, 'migrate']);
             Route::post('deploy-tools/build-vendor', [DeployToolController::class, 'buildVendor']);
             Route::post('deploy-tools/build-dist', [DeployToolController::class, 'buildDist']);

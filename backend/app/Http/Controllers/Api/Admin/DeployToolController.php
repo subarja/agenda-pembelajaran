@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Support\SchemaSnapshot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -71,6 +72,27 @@ class DeployToolController extends Controller
         $ok = ! collect($checks)->contains(fn ($c) => $c['ok'] === false);
 
         return response()->json(['data' => ['ok' => $ok, 'checks' => $checks, 'migrations' => $mig]]);
+    }
+
+    // POST /admin/deploy-tools/schema-diff — bandingkan skema LIVE (server) vs snapshot
+    // LOKAL (database/schema-snapshot.json, dibuat `php artisan schema:snapshot` + commit).
+    // Mendeteksi kolom/tabel yang HILANG di server (mis. migrasi belum jalan) atau berlebih.
+    public function schemaDiff(Request $request): JsonResponse
+    {
+        $this->ensureAdmin($request);
+
+        $path = database_path('schema-snapshot.json');
+        if (! is_file($path)) {
+            return response()->json([
+                'message' => 'Snapshot skema belum ada. Di LOKAL jalankan `php artisan schema:snapshot`, '
+                    .'commit database/schema-snapshot.json, lalu pull ke server.',
+            ], 422);
+        }
+
+        $snapshot = json_decode((string) file_get_contents($path), true)['tables'] ?? [];
+        $diff = SchemaSnapshot::diff($snapshot, SchemaSnapshot::capture());
+
+        return response()->json(['data' => $diff]);
     }
 
     // POST /admin/deploy-tools/build-vendor — hapus vendor/ lama, extract vendor.zip
