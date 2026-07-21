@@ -1930,7 +1930,11 @@ function FotoBulkUploadTab() {
 // satu request berisi ribuan file gampang kena limit server (max_file_uploads,
 // post_max_size) atau timeout, hasilnya blank/gagal tanpa pesan jelas. Batch juga kasih
 // progress yang terlihat ke admin, bukan cuma "loading" diam selama beberapa menit.
-const PHOTO_BATCH_SIZE = 100
+// ≤ default PHP `max_file_uploads` (20). Batch lebih besar bikin server DIAM-DIAM
+// membuang file ke-21+ tiap request (mis. 100/batch → cuma 20 masuk, sisanya hilang
+// tanpa error) — insiden 2026-07-21: dari 1100 foto hanya ~240 masuk. Jangan naikkan
+// tanpa memastikan max_file_uploads server juga dinaikkan.
+const PHOTO_BATCH_SIZE = 20
 
 function BulkPhotoUploadSection({ title, description, endpoint, matchColumnLabel }: {
   title: string; description: string; endpoint: string; matchColumnLabel: string
@@ -1948,13 +1952,27 @@ function BulkPhotoUploadSection({ title, description, endpoint, matchColumnLabel
     setError(null)
     setResult(null)
 
+    // Batch dibatasi JUMLAH (≤ max_file_uploads) DAN UKURAN (jaga di bawah post_max_size
+    // server untuk foto besar) — mana yang lebih dulu tercapai.
+    const MAX_BATCH_BYTES = 15 * 1024 * 1024
     const batches: File[][] = []
-    for (let i = 0; i < files.length; i += PHOTO_BATCH_SIZE) batches.push(files.slice(i, i + PHOTO_BATCH_SIZE))
+    {
+      let cur: File[] = []
+      let bytes = 0
+      for (const f of files) {
+        if (cur.length > 0 && (cur.length >= PHOTO_BATCH_SIZE || bytes + f.size > MAX_BATCH_BYTES)) {
+          batches.push(cur); cur = []; bytes = 0
+        }
+        cur.push(f); bytes += f.size
+      }
+      if (cur.length > 0) batches.push(cur)
+    }
 
     const merged: PhotoUploadResult = { message: '', summary: { total: 0, berhasil: 0, gagal: 0 }, berhasil: [], gagal: [] }
 
+    let filesDone = 0
     for (let i = 0; i < batches.length; i++) {
-      setProgress({ batch: i + 1, totalBatch: batches.length, filesDone: i * PHOTO_BATCH_SIZE })
+      setProgress({ batch: i + 1, totalBatch: batches.length, filesDone })
       try {
         const form = new FormData()
         batches[i].forEach(f => form.append('photos[]', f))
@@ -1963,12 +1981,22 @@ function BulkPhotoUploadSection({ title, description, endpoint, matchColumnLabel
         })
         merged.berhasil.push(...resp.data.berhasil)
         merged.gagal.push(...resp.data.gagal)
+        // Deteksi file yang DIBUANG server diam-diam (request melebihi max_file_uploads /
+        // upload limit): terkirim tapi tak muncul di berhasil MAUPUN gagal. Tanpa ini
+        // kegagalan tak terlihat sama sekali (kasus 2026-07-21: 1100 foto, hanya ~240 masuk).
+        const diproses = new Set([...resp.data.berhasil, ...resp.data.gagal].map(x => x.file))
+        for (const f of batches[i]) {
+          if (!diproses.has(f.name)) {
+            merged.gagal.push({ file: f.name, alasan: 'Tidak diproses server (kemungkinan melebihi batas upload/max_file_uploads server). Upload ulang file ini.' })
+          }
+        }
       } catch (err: any) {
         // Satu batch gagal (mis. jaringan putus) TIDAK membatalkan batch lain — catat
         // semua file di batch itu sebagai gagal, lanjut ke batch berikutnya.
         const reason = err?.response?.data?.message ?? 'Gagal mengunggah batch ini (kemungkinan jaringan terputus) — coba upload ulang file yang gagal.'
         batches[i].forEach(f => merged.gagal.push({ file: f.name, alasan: reason }))
       }
+      filesDone += batches[i].length
     }
 
     merged.summary = {
@@ -2039,7 +2067,7 @@ function BulkPhotoUploadSection({ title, description, endpoint, matchColumnLabel
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">
             Mengupload batch {progress.batch} dari {progress.totalBatch}
-            {' '}({Math.min(progress.filesDone + PHOTO_BATCH_SIZE, files.length)} / {files.length} foto)...
+            {' '}({progress.filesDone} / {files.length} foto)...
           </p>
           <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
             <div
