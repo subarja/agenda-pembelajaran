@@ -155,7 +155,7 @@ export default function ProfilePage() {
                 <Camera className="h-3.5 w-3.5" />
               </button>
             )}
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={handlePhotoChange} />
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }} onChange={handlePhotoChange} />
           </div>
           {isSiswa && (
             <p className="text-xs text-muted-foreground -mt-1">

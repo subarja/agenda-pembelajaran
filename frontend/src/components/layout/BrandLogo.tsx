@@ -148,6 +148,8 @@ function GantiLogoDialog({ logoUrl, onClose }: { logoUrl: string | null; onClose
               ref={fileRef}
               type="file"
               accept="image/png,image/jpeg,image/webp"
+              // Reset value tiap klik → memilih ulang file bernama sama tetap memicu onChange.
+              onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }}
               onChange={handlePick}
               className="hidden"
             />

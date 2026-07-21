@@ -2007,8 +2007,10 @@ function BulkPhotoUploadSection({ title, description, endpoint, matchColumnLabel
         </Button>
         {/* @ts-expect-error webkitdirectory bukan atribut React standar tapi didukung Chrome/Edge */}
         <input ref={folderRef} type="file" webkitdirectory="" multiple className="hidden"
+          onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }}
           onChange={(e) => pickFiles(e.target.files)} />
         <input ref={fileRef} type="file" accept="image/jpeg,image/png" multiple className="hidden"
+          onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }}
           onChange={(e) => pickFiles(e.target.files)} />
       </div>
 
@@ -2233,6 +2235,7 @@ function BulkScheduleUploadSection({ title, description, endpoint, renderBerhasi
           <Upload className="mr-1.5 h-4 w-4" />Pilih File PDF
         </Button>
         <input ref={fileRef} type="file" accept="application/pdf" multiple className="hidden"
+          onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }}
           onChange={(e) => pickFiles(e.target.files)} />
       </div>
 
@@ -3557,6 +3560,7 @@ function ImportCard({
           <p className="text-xs text-muted-foreground">Klik pilih file {accept.includes('xml') ? '.xml' : '.xlsx'}</p>
         )}
         <input ref={fileRef} type="file" accept={accept} className="hidden"
+          onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }}
           onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setError(null) }} />
       </div>
 
@@ -4127,6 +4131,7 @@ function KalenderAdminTab() {
                   </p>
                   <div className="flex items-center gap-2">
                     <input ref={credRef} type="file" accept=".json" className="hidden"
+                      onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }}
                       onChange={e => setCredFile(e.target.files?.[0] ?? null)} />
                     <Button size="sm" variant="outline" onClick={() => credRef.current?.click()}>
                       <Upload className="h-3.5 w-3.5 mr-1" /> {credFile ? credFile.name : 'Pilih File JSON'}
@@ -4236,6 +4241,7 @@ function KalenderAdminTab() {
             <Download className="h-3.5 w-3.5 mr-1" /> Template Excel
           </Button>
           <input ref={importNedRef} type="file" accept=".xlsx,.xls" className="hidden"
+            onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) importNedMut.mutate(f) }} />
           <Button size="sm" variant="outline" onClick={() => importNedRef.current?.click()} disabled={importNedMut.isPending}>
             {importNedMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
@@ -4832,6 +4838,7 @@ function BackupRestoreTab() {
             <p className="text-xs text-muted-foreground">Klik pilih file .dump</p>
           )}
           <input ref={fileRef} type="file" accept=".dump" className="hidden"
+            onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }}
             onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setError(null) }} />
         </div>
 
@@ -4968,6 +4975,7 @@ function CredentialTransferCard() {
           <p className="text-xs text-muted-foreground">Klik pilih file .json hasil ekspor untuk impor</p>
         )}
         <input ref={fileRef} type="file" accept=".json,application/json" className="hidden"
+          onClick={e => { (e.currentTarget as HTMLInputElement).value = '' }}
           onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setError(null) }} />
       </div>
 
