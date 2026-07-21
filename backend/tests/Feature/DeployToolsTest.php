@@ -59,16 +59,22 @@ class DeployToolsTest extends TestCase
         $this->assertTrue(collect($log)->contains(fn ($l) => str_contains($l, 'DILEWATI')));
     }
 
-    public function test_migrate_dibatalkan_bila_backup_gagal(): void
+    public function test_migrate_pakai_fallback_php_saat_mysqldump_gagal(): void
     {
         Sanctum::actingAs($this->admin());
 
-        // Simulasikan mysqldump GAGAL (mis. tak tersedia di host) → backup null.
-        Process::fake(['*' => Process::result(exitCode: 1, errorOutput: 'mysqldump gagal (uji)')]);
+        // Simulasikan binary mysqldump GAGAL/absen → DatabaseDumper jatuh ke dump
+        // PHP-native (via PDO), backup TETAP terbuat, dan migrasi lanjut (tidak 422).
+        Process::fake(['*' => Process::result(exitCode: 1, errorOutput: 'mysqldump tak tersedia (uji)')]);
 
-        $this->postJson('/api/v1/admin/deploy-tools/migrate')
-            ->assertStatus(422)
-            ->assertJsonPath('message', fn ($m) => is_string($m) && str_contains($m, 'DIBATALKAN'));
+        $log = $this->postJson('/api/v1/admin/deploy-tools/migrate')
+            ->assertOk()
+            ->json('log');
+
+        $this->assertTrue(
+            collect($log)->contains(fn ($l) => str_contains($l, 'Backup dibuat (php)')),
+            'Backup harus tetap dibuat via fallback PHP. Log: '.json_encode($log)
+        );
     }
 
     public function test_schema_diff_in_sync_saat_snapshot_cocok_dengan_db(): void

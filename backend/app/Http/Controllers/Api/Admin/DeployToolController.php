@@ -4,13 +4,13 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Support\DatabaseDumper;
 use App\Support\SchemaSnapshot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Process;
 
 class DeployToolController extends Controller
 {
@@ -194,27 +194,18 @@ class DeployToolController extends Controller
             return null;
         }
 
-        $conf = config("database.connections.{$driver}");
         $dir = storage_path('app/backups');
         if (! is_dir($dir)) {
             mkdir($dir, 0755, true);
         }
-        $ext = $driver === 'pgsql' ? 'dump' : 'sql';
+        $ext = DatabaseDumper::extension();
         $path = $dir.'/predeploy-'.now()->format('Y-m-d_His').'.'.$ext;
 
-        $result = $driver === 'pgsql'
-            ? Process::env(['PGPASSWORD' => $conf['password']])->timeout(300)->run([
-                'pg_dump', '-h', $conf['host'], '-p', (string) $conf['port'],
-                '-U', $conf['username'], '-Fc', '-f', $path, $conf['database'],
-            ])
-            : Process::env(['MYSQL_PWD' => $conf['password']])->timeout(300)->run([
-                'mysqldump', '--protocol=tcp', '-h', $conf['host'], '-P', (string) $conf['port'],
-                '-u', $conf['username'], '--single-transaction', '--add-drop-table',
-                '--result-file='.$path, $conf['database'],
-            ]);
-
-        if (! $result->successful() || ! is_file($path) || filesize($path) === 0) {
-            $log[] = 'GAGAL backup: '.trim($result->errorOutput() ?: 'output kosong / mysqldump tak tersedia');
+        try {
+            // Coba mysqldump; kalau gagal, otomatis fallback dump PHP-native (via PDO).
+            $metode = DatabaseDumper::toFile($path);
+        } catch (\Throwable $e) {
+            $log[] = 'GAGAL backup: '.$e->getMessage();
             if (is_file($path)) {
                 @unlink($path);
             }
@@ -222,7 +213,7 @@ class DeployToolController extends Controller
             return null;
         }
 
-        $log[] = 'Backup dibuat: '.basename($path).' ('.number_format(filesize($path) / 1024).' KB)';
+        $log[] = "Backup dibuat ({$metode}): ".basename($path).' ('.number_format(filesize($path) / 1024).' KB)';
         $this->pruneBackups($dir, $ext);
 
         return $path;

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Support\DatabaseDumper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -26,10 +27,10 @@ class DatabaseBackupController extends Controller
         abort_unless($request->user()->role === UserRole::Admin, 403, 'Hanya admin yang dapat mengakses fitur backup.');
 
         $extension = $this->dumpExtension();
-        $path      = tempnam(sys_get_temp_dir(), 'backup_');
+        $path = tempnam(sys_get_temp_dir(), 'backup_');
         $this->runDump($path);
 
-        $filename = 'backup-agenda-' . now()->format('Y-m-d_His') . '.' . $extension;
+        $filename = 'backup-agenda-'.now()->format('Y-m-d_His').'.'.$extension;
 
         return response()->download($path, $filename, [
             'Content-Type' => 'application/octet-stream',
@@ -44,7 +45,7 @@ class DatabaseBackupController extends Controller
         $extension = $this->dumpExtension();
 
         $data = $request->validate([
-            'file'         => ['required', 'file', 'max:512000'], // 500 MB
+            'file' => ['required', 'file', 'max:512000'], // 500 MB
             'confirmation' => ['required', 'string'],
         ]);
 
@@ -56,22 +57,24 @@ class DatabaseBackupController extends Controller
 
         if ($data['confirmation'] !== self::RESTORE_CONFIRMATION) {
             return response()->json([
-                'message' => 'Konfirmasi tidak sesuai. Ketik "' . self::RESTORE_CONFIRMATION . '" persis untuk melanjutkan.',
+                'message' => 'Konfirmasi tidak sesuai. Ketik "'.self::RESTORE_CONFIRMATION.'" persis untuk melanjutkan.',
             ], 422);
         }
 
         // Backup pengaman dari data saat ini SEBELUM restore dijalankan
-        $safetyDir  = storage_path('app/backups');
-        if (! is_dir($safetyDir)) mkdir($safetyDir, 0755, true);
-        $safetyPath = $safetyDir . '/safety-' . now()->format('Y-m-d_His') . '.' . $extension;
+        $safetyDir = storage_path('app/backups');
+        if (! is_dir($safetyDir)) {
+            mkdir($safetyDir, 0755, true);
+        }
+        $safetyPath = $safetyDir.'/safety-'.now()->format('Y-m-d_His').'.'.$extension;
         $this->runDump($safetyPath);
 
         $uploadedPath = $request->file('file')->getRealPath();
 
         Log::warning('Database restore dijalankan', [
-            'user_id'      => $request->user()->id,
-            'user_email'   => $request->user()->email,
-            'safety_backup'=> $safetyPath,
+            'user_id' => $request->user()->id,
+            'user_email' => $request->user()->email,
+            'safety_backup' => $safetyPath,
         ]);
 
         $config = $this->connectionConfig();
@@ -104,7 +107,7 @@ class DatabaseBackupController extends Controller
         if ($result->failed()) {
             return response()->json([
                 'message' => 'Restore gagal. Backup pengaman tetap tersimpan di server.',
-                'error'   => $result->errorOutput(),
+                'error' => $result->errorOutput(),
             ], 500);
         }
 
@@ -135,35 +138,12 @@ class DatabaseBackupController extends Controller
 
     private function runDump(string $outputPath): void
     {
-        $config = $this->connectionConfig();
-
-        $result = match ($config['driver']) {
-            'pgsql' => Process::env(['PGPASSWORD' => $config['password']])
-                ->timeout(300)
-                ->run([
-                    'pg_dump',
-                    '-h', $config['host'],
-                    '-p', (string) $config['port'],
-                    '-U', $config['username'],
-                    '-Fc',
-                    '-f', $outputPath,
-                    $config['database'],
-                ]),
-            'mysql' => Process::env(['MYSQL_PWD' => $config['password']])
-                ->timeout(300)
-                ->run([
-                    'mysqldump',
-                    '--protocol=tcp',
-                    '-h', $config['host'],
-                    '-P', (string) $config['port'],
-                    '-u', $config['username'],
-                    '--single-transaction',
-                    '--add-drop-table',
-                    '--result-file=' . $outputPath,
-                    $config['database'],
-                ]),
-        };
-
-        abort_unless($result->successful(), 500, 'Gagal membuat backup: ' . $result->errorOutput());
+        // Coba mysqldump/pg_dump; kalau tak tersedia (mis. dev container atau shared
+        // hosting yang menonaktifkannya), otomatis jatuh ke dump PHP-native via PDO.
+        try {
+            DatabaseDumper::toFile($outputPath);
+        } catch (\Throwable $e) {
+            abort(500, 'Gagal membuat backup: '.$e->getMessage());
+        }
     }
 }
