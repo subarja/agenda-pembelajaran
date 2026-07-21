@@ -177,7 +177,7 @@ class StudentAdminController extends Controller
         $student = Student::where('uuid', $uuid)->with('user')->firstOrFail();
         DB::transaction(function () use ($student) {
             $student->delete();
-            $student->user->update(['status' => UserStatus::NonAktif]);
+            $student->user->update(['status' => UserStatus::Nonaktif]);
         });
 
         return response()->json(['message' => 'Siswa dinonaktifkan.']);

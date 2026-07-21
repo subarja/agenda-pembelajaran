@@ -149,7 +149,7 @@ class TeacherAdminController extends Controller
         $teacher = Teacher::where('uuid', $uuid)->with('user')->firstOrFail();
         DB::transaction(function () use ($teacher) {
             $teacher->delete();
-            $teacher->user->update(['status' => UserStatus::NonAktif]);
+            $teacher->user->update(['status' => UserStatus::Nonaktif]);
         });
 
         return response()->json(['message' => 'Guru dinonaktifkan.']);
