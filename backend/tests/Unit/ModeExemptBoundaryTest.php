@@ -35,7 +35,9 @@ class ModeExemptBoundaryTest extends TestCase
     use RefreshDatabase;
 
     private AcademicYear $ay;
+
     private SchoolClass $kelasXII;
+
     private SchoolClass $kelasXI;
 
     protected function setUp(): void
@@ -178,12 +180,12 @@ class ModeExemptBoundaryTest extends TestCase
     private function projek(string $status, string $mulai, string $selesai, ?string $tingkat = 'XI'): KokurikulerProject
     {
         $p = KokurikulerProject::create([
-            'judul'            => "Projek {$status}",
-            'status'           => $status,
-            'tingkat'          => $tingkat,
+            'judul' => "Projek {$status}",
+            'status' => $status,
+            'tingkat' => $tingkat,
             'academic_year_id' => $this->ay->id,
-            'tanggal_mulai'    => $mulai,
-            'tanggal_selesai'  => $selesai,
+            'tanggal_mulai' => $mulai,
+            'tanggal_selesai' => $selesai,
         ]);
 
         KokurikulerMode::flush();
@@ -224,6 +226,38 @@ class ModeExemptBoundaryTest extends TestCase
             KokurikulerMode::isAgendaExempt($this->kelasXI->id, '2026-03-04'),
             'projek selesai harus tetap membebaskan tanggal dalam periodenya'
         );
+    }
+
+    /**
+     * Projek ditutup LEBIH AWAL (selesai_pada < tanggal_selesai terjadwal):
+     * pembebasan berhenti di HARI PENUTUPAN. Tanggal selama projek berjalan & pada
+     * hari penutupan tetap bebas (tidak jadi hutang), tapi tanggal SESUDAHNYA langsung
+     * kembali ke mode mengajar reguler — tanpa menunggu tanggal_selesai terjadwal.
+     */
+    public function test_kokurikuler_ditutup_lebih_awal_berhenti_membebaskan_setelah_penutupan(): void
+    {
+        $p = $this->projek('selesai', '2026-03-02', '2026-03-20');
+        $p->selesai_pada = '2026-03-05';
+        $p->save();
+        KokurikulerMode::flush();
+
+        $id = $this->kelasXI->id;
+
+        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-04'), 'saat projek berjalan tetap bebas');
+        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-05'), 'HARI PENUTUPAN masih bebas (inklusif)');
+        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-06'), 'H+1 penutupan kembali ke mode mengajar');
+        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-19'), 'jelang tanggal terjadwal tetap ditagih reguler');
+    }
+
+    /**
+     * Projek selesai TANPA `selesai_pada` (data lama / ditutup pas di tanggal
+     * terjadwal): perilaku lama dipertahankan — seluruh periode terjadwal tetap bebas.
+     */
+    public function test_kokurikuler_selesai_tanpa_tanggal_penutupan_bebas_se_periode(): void
+    {
+        $this->projek('selesai', '2026-03-02', '2026-03-06');
+
+        $this->assertTrue(KokurikulerMode::isAgendaExempt($this->kelasXI->id, '2026-03-06'));
     }
 
     /** Pembebasan per-tingkat hanya menyentuh tingkat yang disebut projek. */

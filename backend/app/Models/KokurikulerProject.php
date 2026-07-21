@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\TahunAjaran;
 use App\Traits\HasAuditTrail;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,15 +22,16 @@ class KokurikulerProject extends Model
 
     protected $fillable = [
         'academic_year_id', 'judul', 'tema', 'tingkat', 'tujuan', 'deskripsi',
-        'tanggal_mulai', 'tanggal_selesai', 'status',
+        'tanggal_mulai', 'tanggal_selesai', 'status', 'selesai_pada',
         'created_by', 'updated_by',
     ];
 
     protected function casts(): array
     {
         return [
-            'tanggal_mulai'   => 'date',
+            'tanggal_mulai' => 'date',
             'tanggal_selesai' => 'date',
+            'selesai_pada' => 'date',
         ];
     }
 
@@ -56,7 +58,7 @@ class KokurikulerProject extends Model
     /** Projek berstatus aktif pada tahun ajaran yang aktif. */
     public function scopeBerjalan(Builder $q): Builder
     {
-        $ayId = \App\Support\TahunAjaran::id();
+        $ayId = TahunAjaran::id();
 
         return $q->where('status', 'aktif')
             ->when($ayId, fn ($qq) => $qq->where('academic_year_id', $ayId));

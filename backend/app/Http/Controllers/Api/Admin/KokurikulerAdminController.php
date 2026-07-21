@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\KokurikulerAttendance;
 use App\Models\KokurikulerDimension;
 use App\Models\KokurikulerDocument;
@@ -51,11 +52,11 @@ class KokurikulerAdminController extends Controller
             ->orderBy('urutan')
             ->get()
             ->map(fn ($d) => [
-                'id'        => $d->id,
-                'kode'      => $d->kode,
-                'nama'      => $d->nama,
+                'id' => $d->id,
+                'kode' => $d->kode,
+                'nama' => $d->nama,
                 'deskripsi' => $d->deskripsi,
-                'aktif'     => $d->aktif,
+                'aktif' => $d->aktif,
                 'subdimensions' => $d->subdimensions->map(fn ($s) => ['id' => $s->id, 'nama' => $s->nama])->values(),
             ]);
 
@@ -66,17 +67,17 @@ class KokurikulerAdminController extends Controller
     public function storeDimension(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'nama'      => ['required', 'string', 'max:160'],
+            'nama' => ['required', 'string', 'max:160'],
             'deskripsi' => ['nullable', 'string', 'max:2000'],
-            'subdimensions'   => ['array'],
+            'subdimensions' => ['array'],
             'subdimensions.*' => ['string', 'max:200'],
         ]);
 
         $dim = KokurikulerDimension::create([
-            'kode'      => Str::slug($data['nama'], '_'),
-            'nama'      => $data['nama'],
+            'kode' => Str::slug($data['nama'], '_'),
+            'nama' => $data['nama'],
             'deskripsi' => $data['deskripsi'] ?? null,
-            'urutan'    => (int) KokurikulerDimension::max('urutan') + 1,
+            'urutan' => (int) KokurikulerDimension::max('urutan') + 1,
         ]);
         foreach ($data['subdimensions'] ?? [] as $i => $nama) {
             $dim->subdimensions()->create(['nama' => $nama, 'urutan' => $i + 1]);
@@ -88,20 +89,20 @@ class KokurikulerAdminController extends Controller
     /** PUT /admin/kokurikuler/dimensions/{id} */
     public function updateDimension(Request $request, int $id): JsonResponse
     {
-        $dim  = KokurikulerDimension::findOrFail($id);
+        $dim = KokurikulerDimension::findOrFail($id);
         $data = $request->validate([
-            'nama'      => ['required', 'string', 'max:160'],
+            'nama' => ['required', 'string', 'max:160'],
             'deskripsi' => ['nullable', 'string', 'max:2000'],
-            'aktif'     => ['boolean'],
-            'subdimensions'   => ['array'],
+            'aktif' => ['boolean'],
+            'subdimensions' => ['array'],
             'subdimensions.*' => ['string', 'max:200'],
         ]);
 
         DB::transaction(function () use ($dim, $data) {
             $dim->update([
-                'nama'      => $data['nama'],
+                'nama' => $data['nama'],
                 'deskripsi' => $data['deskripsi'] ?? null,
-                'aktif'     => $data['aktif'] ?? $dim->aktif,
+                'aktif' => $data['aktif'] ?? $dim->aktif,
             ]);
 
             // Sub-dimensi disinkronkan by-nama; yang hilang dihapus bila tidak dipakai projek.
@@ -137,7 +138,7 @@ class KokurikulerAdminController extends Controller
     public function dimensionsTemplate(): BinaryFileResponse
     {
         $tempFile = tempnam(sys_get_temp_dir(), 'kk_dim_');
-        $writer   = new Writer();
+        $writer = new Writer;
         $writer->openToFile($tempFile);
         $writer->getOptions()->setColumnWidthForRange(36, 1, 3);
 
@@ -154,7 +155,7 @@ class KokurikulerAdminController extends Controller
         }
         $writer->addRow(Row::fromValuesWithStyle(
             ['jangan diubah -> hapus baris ini sebelum impor bila perlu; nama = kunci pencocokan', 'opsional', 'contoh: Berperilaku produktif; Menciptakan inovasi'],
-            (new Style())->withFontItalic(true)->withFontColor('6B7280')
+            (new Style)->withFontItalic(true)->withFontColor('6B7280')
         ));
         $writer->close();
 
@@ -173,26 +174,34 @@ class KokurikulerAdminController extends Controller
         $request->validate(['file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120']]);
 
         $success = 0;
-        $errors  = [];
+        $errors = [];
         foreach ($this->readXlsx($request->file('file')->getRealPath()) as $i => $row) {
-            $rowNum    = $i + 2;
-            $nama      = trim((string) ($row[0] ?? ''));
+            $rowNum = $i + 2;
+            $nama = trim((string) ($row[0] ?? ''));
             $deskripsi = trim((string) ($row[1] ?? '')) ?: null;
-            $subRaw    = trim((string) ($row[2] ?? ''));
+            $subRaw = trim((string) ($row[2] ?? ''));
 
-            if ($nama === '') continue;
-            if (str_starts_with($nama, 'jangan diubah')) continue; // baris catatan template
-            if (mb_strlen($nama) > 160) { $errors[] = "Baris $rowNum: nama dimensi terlalu panjang (maks. 160)."; continue; }
+            if ($nama === '') {
+                continue;
+            }
+            if (str_starts_with($nama, 'jangan diubah')) {
+                continue;
+            } // baris catatan template
+            if (mb_strlen($nama) > 160) {
+                $errors[] = "Baris $rowNum: nama dimensi terlalu panjang (maks. 160).";
+
+                continue;
+            }
 
             $dim = KokurikulerDimension::whereRaw('LOWER(nama) = ?', [mb_strtolower($nama)])->first();
             if (! $dim) {
                 $kode = Str::slug($nama, '_');
                 if (KokurikulerDimension::where('kode', $kode)->exists()) {
-                    $kode .= '_' . Str::lower(Str::random(4));
+                    $kode .= '_'.Str::lower(Str::random(4));
                 }
                 $dim = KokurikulerDimension::create([
-                    'kode'   => $kode,
-                    'nama'   => $nama,
+                    'kode' => $kode,
+                    'nama' => $nama,
                     'urutan' => (int) KokurikulerDimension::max('urutan') + 1,
                 ]);
             }
@@ -206,8 +215,8 @@ class KokurikulerAdminController extends Controller
 
         return response()->json([
             'success_count' => $success,
-            'error_count'   => count($errors),
-            'errors'        => $errors,
+            'error_count' => count($errors),
+            'errors' => $errors,
         ]);
     }
 
@@ -249,6 +258,11 @@ class KokurikulerAdminController extends Controller
             $project = KokurikulerProject::create([
                 ...collect($data)->except(['classes', 'dimensi'])->all(),
                 'academic_year_id' => $ayId,
+                // Dibuat langsung berstatus selesai → tanggal penutupan = hari ini,
+                // supaya pembebasan agenda terkunci ke hari ini (lihat update()).
+                'selesai_pada' => $data['status'] === 'selesai'
+                    ? Carbon::now(config('app.school_timezone'))->toDateString()
+                    : null,
             ]);
             $this->syncClasses($project, $data['classes'] ?? []);
             $this->syncDimensions($project, $data['dimensi'] ?? []);
@@ -258,7 +272,7 @@ class KokurikulerAdminController extends Controller
 
         return response()->json([
             'message' => 'Projek kokurikuler dibuat.',
-            'data'    => $this->projectRow($project->fresh($this->projectRelations())),
+            'data' => $this->projectRow($project->fresh($this->projectRelations())),
         ], 201);
     }
 
@@ -266,11 +280,26 @@ class KokurikulerAdminController extends Controller
     public function update(Request $request, string $uuid): JsonResponse
     {
         $project = KokurikulerProject::where('uuid', $uuid)->firstOrFail();
-        $data    = $this->validated($request);
+        $data = $this->validated($request);
         $this->assertPeriodeDalamTahunAjaran($project->academic_year_id, $data['tanggal_mulai'], $data['tanggal_selesai']);
 
-        DB::transaction(function () use ($request, $project, $data) {
+        $statusLama = $project->status;
+
+        DB::transaction(function () use ($request, $project, $data, $statusLama) {
             $project->update(collect($data)->except(['classes', 'dimensi'])->all());
+
+            // Selesai lebih awal: catat tanggal penutupan sekali (transisi → selesai)
+            // agar pembebasan tagihan agenda berhenti di hari itu, bukan menunggu
+            // tanggal_selesai terjadwal. Dibuka kembali (aktif/draft) → tanggal
+            // penutupan dihapus supaya periode kembali bebas penuh. Bila sudah selesai
+            // dan tetap selesai, tanggal penutupan TIDAK digeser oleh edit lain.
+            if ($project->status === 'selesai' && $statusLama !== 'selesai') {
+                $project->selesai_pada = Carbon::now(config('app.school_timezone'))->toDateString();
+                $project->save();
+            } elseif ($project->status !== 'selesai' && $project->selesai_pada !== null) {
+                $project->selesai_pada = null;
+                $project->save();
+            }
 
             // Sinkronkan HANYA bila key-nya benar-benar dikirim. Dulu `?? []`
             // membuat PUT tanpa key classes/dimensi (mis. klien lama yang cuma
@@ -286,7 +315,7 @@ class KokurikulerAdminController extends Controller
 
         return response()->json([
             'message' => 'Projek diperbarui.',
-            'data'    => $this->projectRow($project->fresh($this->projectRelations())),
+            'data' => $this->projectRow($project->fresh($this->projectRelations())),
         ]);
     }
 
@@ -311,7 +340,7 @@ class KokurikulerAdminController extends Controller
 
         return response()->json([
             'message' => 'Fasilitator semua kelas dikembalikan ke wali kelas.',
-            'data'    => $this->projectRow($project->fresh($this->projectRelations())),
+            'data' => $this->projectRow($project->fresh($this->projectRelations())),
         ]);
     }
 
@@ -322,7 +351,7 @@ class KokurikulerAdminController extends Controller
             ->where('uuid', $uuid)->firstOrFail();
 
         $tempFile = tempnam(sys_get_temp_dir(), 'kk_fasil_');
-        $writer   = new Writer();
+        $writer = new Writer;
         $writer->openToFile($tempFile);
         $writer->getOptions()->setColumnWidthForRange(28, 1, 3);
 
@@ -337,7 +366,7 @@ class KokurikulerAdminController extends Controller
         }
         $writer->addRow(Row::fromValuesWithStyle(
             ['jangan diubah', 'kunci pencocokan utama', 'dipakai bila NIP kosong — harus persis & unik'],
-            (new Style())->withFontItalic(true)->withFontColor('6B7280')
+            (new Style)->withFontItalic(true)->withFontColor('6B7280')
         ));
         $writer->close();
 
@@ -360,21 +389,33 @@ class KokurikulerAdminController extends Controller
         });
 
         $success = 0;
-        $errors  = [];
+        $errors = [];
         foreach ($this->readXlsx($request->file('file')->getRealPath()) as $i => $row) {
             $rowNum = $i + 2;
-            $kelas  = mb_strtolower(trim((string) ($row[0] ?? '')));
-            $nip    = trim((string) ($row[1] ?? ''));
-            $nama   = trim((string) ($row[2] ?? ''));
+            $kelas = mb_strtolower(trim((string) ($row[0] ?? '')));
+            $nip = trim((string) ($row[1] ?? ''));
+            $nama = trim((string) ($row[2] ?? ''));
 
-            if ($kelas === '' || ($nip === '' && $nama === '')) continue;
-            if (str_starts_with($kelas, 'jangan diubah')) continue; // baris catatan template
+            if ($kelas === '' || ($nip === '' && $nama === '')) {
+                continue;
+            }
+            if (str_starts_with($kelas, 'jangan diubah')) {
+                continue;
+            } // baris catatan template
 
             $pc = $byLabel->get($kelas);
-            if (! $pc) { $errors[] = "Baris $rowNum: kelas '{$row[0]}' bukan peserta projek ini."; continue; }
+            if (! $pc) {
+                $errors[] = "Baris $rowNum: kelas '{$row[0]}' bukan peserta projek ini.";
+
+                continue;
+            }
 
             [$user, $err] = $this->resolveFasilitator($nip, $nama);
-            if (! $user) { $errors[] = "Baris $rowNum: $err"; continue; }
+            if (! $user) {
+                $errors[] = "Baris $rowNum: $err";
+
+                continue;
+            }
 
             $pc->update(['fasilitator_user_id' => $user->id]);
             $success++;
@@ -382,9 +423,9 @@ class KokurikulerAdminController extends Controller
 
         return response()->json([
             'success_count' => $success,
-            'error_count'   => count($errors),
-            'errors'        => $errors,
-            'data'          => $this->projectRow($project->fresh($this->projectRelations())),
+            'error_count' => count($errors),
+            'errors' => $errors,
+            'data' => $this->projectRow($project->fresh($this->projectRelations())),
         ]);
     }
 
@@ -432,28 +473,28 @@ class KokurikulerAdminController extends Controller
             $key = fn ($t) => Carbon::parse($t)->toDateString();
 
             $refleksiKelas = $refleksi->get($pc->class_id, collect());
-            $jumlahSiswa   = Student::where('class_id', $pc->class_id)->count();
+            $jumlahSiswa = Student::where('class_id', $pc->class_id)->count();
 
             return [
-                'id'           => $pc->schoolClass->uuid,
-                'label'        => $pc->schoolClass->label(),
-                'fasilitator'  => $pc->fasilitator?->nama ?? '— (belum ada fasilitator)',
+                'id' => $pc->schoolClass->uuid,
+                'label' => $pc->schoolClass->label(),
+                'fasilitator' => $pc->fasilitator?->nama ?? '— (belum ada fasilitator)',
                 'jumlah_siswa' => $jumlahSiswa,
-                'jumlah_tim'   => (int) $tim->get($pc->class_id, 0),
-                'dokumen'      => (int) $dokumen->get($pc->class_id, 0),
-                'absen'   => $absen->get($pc->class_id, collect())->mapWithKeys(fn ($r) => [$key($r->tanggal) => (int) $r->c]),
+                'jumlah_tim' => (int) $tim->get($pc->class_id, 0),
+                'dokumen' => (int) $dokumen->get($pc->class_id, 0),
+                'absen' => $absen->get($pc->class_id, collect())->mapWithKeys(fn ($r) => [$key($r->tanggal) => (int) $r->c]),
                 'laporan' => $laporan->get($pc->class_id, collect())->mapWithKeys(fn ($r) => [$key($r->tanggal) => true]),
                 'refleksi' => $refleksiKelas->where('jenis', 'harian')
                     ->mapWithKeys(fn ($r) => [$key($r->tanggal) => (int) $r->c]),
                 'refleksi_akhir' => (int) $refleksiKelas->where('jenis', 'akhir')->sum('c'),
-                'nilai_terisi'   => (int) $nilai->get($pc->class_id, 0),
-                'nilai_total'    => $jumlahSiswa * $jumlahDimensi,
+                'nilai_terisi' => (int) $nilai->get($pc->class_id, 0),
+                'nilai_total' => $jumlahSiswa * $jumlahDimensi,
             ];
         })->values();
 
         return response()->json(['data' => [
             'project' => $this->projectRow($project),
-            'hari'    => $this->projectDates($project),
+            'hari' => $this->projectDates($project),
             'classes' => $classes,
         ]]);
     }
@@ -462,7 +503,7 @@ class KokurikulerAdminController extends Controller
     public function exportAbsen(string $uuid)
     {
         $project = KokurikulerProject::with('projectClasses.schoolClass')->where('uuid', $uuid)->firstOrFail();
-        $dates   = collect($this->projectDates($project))->pluck('tanggal');
+        $dates = collect($this->projectDates($project))->pluck('tanggal');
 
         $statuses = KokurikulerAttendance::where('project_id', $project->id)->get()
             ->groupBy('student_id')
@@ -470,12 +511,16 @@ class KokurikulerAdminController extends Controller
 
         return $this->streamXlsx('absen_kokurikuler.xlsx', function (Writer $w) use ($project, $dates, $statuses) {
             $widths = [1 => 5, 2 => 28, 3 => 14];
-            foreach (range(4, 3 + $dates->count()) as $i) $widths[$i] = 7;
-            foreach (range(4 + $dates->count(), 8 + $dates->count()) as $i) $widths[$i] = 8;
+            foreach (range(4, 3 + $dates->count()) as $i) {
+                $widths[$i] = 7;
+            }
+            foreach (range(4 + $dates->count(), 8 + $dates->count()) as $i) {
+                $widths[$i] = 8;
+            }
             $this->xlsxSetColumnWidths($w, $widths);
 
             $center = $this->xlsxCellCenterStyle();
-            $text   = $this->xlsxCellStyle();
+            $text = $this->xlsxCellStyle();
 
             foreach ($project->projectClasses as $pc) {
                 $class = $pc->schoolClass;
@@ -490,10 +535,10 @@ class KokurikulerAdminController extends Controller
                     ->get()->sortBy(fn ($s) => $s->user->nama)->values();
 
                 foreach ($students as $i => $s) {
-                    $marks  = $statuses->get($s->id, collect());
+                    $marks = $statuses->get($s->id, collect());
                     $counts = $marks->countBy();
-                    $total  = $marks->count();
-                    $hadir  = (int) $counts->get('H', 0);
+                    $total = $marks->count();
+                    $hadir = (int) $counts->get('H', 0);
 
                     $w->addRow(new Row([
                         new NumericCell($i + 1, $center),
@@ -504,7 +549,7 @@ class KokurikulerAdminController extends Controller
                         new NumericCell((int) $counts->get('S', 0), $center),
                         new NumericCell((int) $counts->get('I', 0), $center),
                         new NumericCell((int) $counts->get('A', 0), $center),
-                        new StringCell($total > 0 ? round($hadir / $total * 100, 1) . '%' : '—', $center),
+                        new StringCell($total > 0 ? round($hadir / $total * 100, 1).'%' : '—', $center),
                     ]));
                 }
                 $w->addRow(Row::fromValues(['']));
@@ -546,7 +591,7 @@ class KokurikulerAdminController extends Controller
 
         return $this->streamXlsx('program_kokurikuler.xlsx', function (Writer $w) use ($projects, $siswaPerKelas, $timPerKelas, $tanggal) {
             $header = $this->xlsxHeaderStyle();
-            $text   = $this->xlsxCellStyle();
+            $text = $this->xlsxCellStyle();
             $center = $this->xlsxCellCenterStyle();
 
             // ── Sheet 1: satu baris per projek ────────────────────────────────
@@ -655,7 +700,7 @@ class KokurikulerAdminController extends Controller
      */
     private function assertPeriodeDalamTahunAjaran(int $ayId, string $mulai, string $selesai): void
     {
-        $ay = \App\Models\AcademicYear::find($ayId);
+        $ay = AcademicYear::find($ayId);
         if (! $ay) {
             return;
         }
@@ -684,28 +729,28 @@ class KokurikulerAdminController extends Controller
     private function validated(Request $request): array
     {
         $data = $request->validate([
-            'judul'           => ['required', 'string', 'max:200'],
-            'tema'            => ['nullable', 'string', 'max:200'],
-            'tingkat'         => ['nullable', 'string', 'max:10'],
-            'tujuan'          => ['nullable', 'string', 'max:2000'],
-            'deskripsi'       => ['nullable', 'string', 'max:2000'],
-            'tanggal_mulai'   => ['required', 'date'],
+            'judul' => ['required', 'string', 'max:200'],
+            'tema' => ['nullable', 'string', 'max:200'],
+            'tingkat' => ['nullable', 'string', 'max:10'],
+            'tujuan' => ['nullable', 'string', 'max:2000'],
+            'deskripsi' => ['nullable', 'string', 'max:2000'],
+            'tanggal_mulai' => ['required', 'date'],
             'tanggal_selesai' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
-            'status'          => ['required', 'in:draft,aktif,selesai'],
-            'classes'         => ['array'],
-            'classes.*.id'    => ['required', 'string'],
+            'status' => ['required', 'in:draft,aktif,selesai'],
+            'classes' => ['array'],
+            'classes.*.id' => ['required', 'string'],
             'classes.*.fasilitator_user_id' => ['nullable', 'string'],
-            'dimensi'         => ['array', 'max:4'],
-            'dimensi.*.dimension_id'        => ['required', 'integer'],
-            'dimensi.*.aspek'               => ['nullable', 'string', 'max:255'],
-            'dimensi.*.subdimension_ids'    => ['array'],
-            'dimensi.*.subdimension_ids.*'  => ['integer'],
+            'dimensi' => ['array', 'max:4'],
+            'dimensi.*.dimension_id' => ['required', 'integer'],
+            'dimensi.*.aspek' => ['nullable', 'string', 'max:255'],
+            'dimensi.*.subdimension_ids' => ['array'],
+            'dimensi.*.subdimension_ids.*' => ['integer'],
         ]);
 
         // Tingkat boleh lebih dari satu ('XI,XII'). Dinormalkan: urut X→XI→XII,
         // duplikat/nilai asing dibuang; ketiganya terpilih ≡ semua tingkat (null).
         if (! empty($data['tingkat'])) {
-            $urutan  = ['X', 'XI', 'XII'];
+            $urutan = ['X', 'XI', 'XII'];
             $tingkat = collect(explode(',', $data['tingkat']))
                 ->map(fn ($t) => strtoupper(trim($t)))
                 ->filter(fn ($t) => in_array($t, $urutan, true))
@@ -727,8 +772,8 @@ class KokurikulerAdminController extends Controller
     private function syncClasses(KokurikulerProject $project, array $rows): void
     {
         $classUuids = collect($rows)->pluck('id');
-        $classes    = SchoolClass::whereIn('uuid', $classUuids)->get()->keyBy('uuid');
-        $keepIds    = $classes->pluck('id');
+        $classes = SchoolClass::whereIn('uuid', $classUuids)->get()->keyBy('uuid');
+        $keepIds = $classes->pluck('id');
 
         $removed = KokurikulerProjectClass::where('project_id', $project->id)
             ->whereNotIn('class_id', $keepIds)
@@ -802,24 +847,34 @@ class KokurikulerAdminController extends Controller
         $matches = User::whereHas('teacher')
             ->whereRaw('LOWER(nama) = ?', [mb_strtolower($nama)])
             ->get();
-        if ($matches->isEmpty()) return [null, "guru '$nama' tidak ditemukan. Tulis nama persis seperti di data guru."];
-        if ($matches->count() > 1) return [null, "guru '$nama' ganda di data — isi kolom NIP untuk memastikan."];
+        if ($matches->isEmpty()) {
+            return [null, "guru '$nama' tidak ditemukan. Tulis nama persis seperti di data guru."];
+        }
+        if ($matches->count() > 1) {
+            return [null, "guru '$nama' ganda di data — isi kolom NIP untuk memastikan."];
+        }
 
         return [$matches->first(), null];
     }
 
     private function readXlsx(string $path): array
     {
-        $reader = new XlsxReader();
+        $reader = new XlsxReader;
         $reader->open($path);
         $rows = [];
 
         foreach ($reader->getSheetIterator() as $sheet) {
             $firstRow = true;
             foreach ($sheet->getRowIterator() as $row) {
-                if ($firstRow) { $firstRow = false; continue; }
+                if ($firstRow) {
+                    $firstRow = false;
+
+                    continue;
+                }
                 $values = $row->toArray();
-                if (empty(array_filter($values, fn ($v) => $v !== '' && $v !== null))) continue;
+                if (empty(array_filter($values, fn ($v) => $v !== '' && $v !== null))) {
+                    continue;
+                }
                 $rows[] = $values;
             }
             break; // sheet pertama saja
@@ -833,22 +888,22 @@ class KokurikulerAdminController extends Controller
     private function projectRow(KokurikulerProject $project): array
     {
         return [
-            'id'              => $project->uuid,
-            'judul'           => $project->judul,
-            'tema'            => $project->tema,
-            'tingkat'         => $project->tingkat,
-            'tujuan'          => $project->tujuan,
-            'deskripsi'       => $project->deskripsi,
-            'status'          => $project->status,
-            'tanggal_mulai'   => $project->tanggal_mulai->toDateString(),
+            'id' => $project->uuid,
+            'judul' => $project->judul,
+            'tema' => $project->tema,
+            'tingkat' => $project->tingkat,
+            'tujuan' => $project->tujuan,
+            'deskripsi' => $project->deskripsi,
+            'status' => $project->status,
+            'tanggal_mulai' => $project->tanggal_mulai->toDateString(),
             'tanggal_selesai' => $project->tanggal_selesai->toDateString(),
-            'tahun_ajaran'    => $project->relationLoaded('academicYear') && $project->academicYear
-                ? $project->academicYear->tahun . ' - ' . ucfirst($project->academicYear->semester->value)
+            'tahun_ajaran' => $project->relationLoaded('academicYear') && $project->academicYear
+                ? $project->academicYear->tahun.' - '.ucfirst($project->academicYear->semester->value)
                 : null,
             'classes' => $project->relationLoaded('projectClasses')
                 ? $project->projectClasses->map(fn ($pc) => [
-                    'id'          => $pc->schoolClass->uuid,
-                    'label'       => $pc->schoolClass->label(),
+                    'id' => $pc->schoolClass->uuid,
+                    'label' => $pc->schoolClass->label(),
                     'fasilitator' => $pc->relationLoaded('fasilitator') ? $pc->fasilitator?->nama : null,
                     'fasilitator_user_id' => $pc->fasilitator?->uuid,
                     'wali_adalah_fasilitator' => $pc->fasilitator_user_id !== null
@@ -857,9 +912,9 @@ class KokurikulerAdminController extends Controller
                 : [],
             'dimensi' => $project->relationLoaded('projectDimensions')
                 ? $project->projectDimensions->map(fn ($pd) => [
-                    'dimension_id'     => $pd->dimension_id,
-                    'nama'             => $pd->dimension?->nama,
-                    'aspek'            => $pd->aspek,
+                    'dimension_id' => $pd->dimension_id,
+                    'nama' => $pd->dimension?->nama,
+                    'aspek' => $pd->aspek,
                     'subdimension_ids' => $pd->subdimensions->pluck('id')->values(),
                 ])->values()
                 : [],
@@ -870,12 +925,12 @@ class KokurikulerAdminController extends Controller
     private function projectDates(KokurikulerProject $project): array
     {
         $out = [];
-        $d   = $project->tanggal_mulai->copy();
+        $d = $project->tanggal_mulai->copy();
         while ($d->lte($project->tanggal_selesai)) {
             if (! $d->isSunday()) {
                 $out[] = [
                     'tanggal' => $d->toDateString(),
-                    'label'   => $d->locale('id')->isoFormat('dddd, D MMM'),
+                    'label' => $d->locale('id')->isoFormat('dddd, D MMM'),
                 ];
             }
             $d = $d->copy()->addDay();

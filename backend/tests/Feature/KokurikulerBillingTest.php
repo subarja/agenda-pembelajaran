@@ -35,9 +35,13 @@ class KokurikulerBillingTest extends TestCase
     use RefreshDatabase;
 
     private User $guruXi;       // pengajar XI, BUKAN fasilitator
+
     private User $waliXi;       // wali kelas XI = fasilitator projek
+
     private SchoolClass $kelasXiA;
+
     private SchoolClass $kelasXA;
+
     private KokurikulerProject $project;
 
     protected function setUp(): void
@@ -55,7 +59,7 @@ class KokurikulerBillingTest extends TestCase
         $this->waliXi = $this->makeTeacher('Wali Sebelas');
 
         $this->kelasXiA = SchoolClass::create(['tingkat' => Tingkat::XI, 'jurusan' => 'Animasi', 'rombel' => 'A', 'academic_year_id' => $ay->id, 'wali_kelas_id' => $this->waliXi->id]);
-        $this->kelasXA  = SchoolClass::create(['tingkat' => Tingkat::X,  'jurusan' => 'Animasi', 'rombel' => 'A', 'academic_year_id' => $ay->id]);
+        $this->kelasXA = SchoolClass::create(['tingkat' => Tingkat::X,  'jurusan' => 'Animasi', 'rombel' => 'A', 'academic_year_id' => $ay->id]);
 
         $subject = Subject::create(['kode' => 'ANM', 'nama' => 'KK Animasi', 'aktif' => true]);
 
@@ -184,6 +188,42 @@ class KokurikulerBillingTest extends TestCase
         ])->assertOk();
 
         $this->assertDatabaseCount('kokurikuler_project_classes', 0);
+    }
+
+    /**
+     * Ditutup lebih awal via API (status → selesai pada 11 Mar, sedangkan
+     * tanggal_selesai terjadwal 13 Mar): `selesai_pada` tercatat = hari ini, dan
+     * pembebasan agenda BERHENTI di hari itu — kelas langsung kembali ke mode
+     * mengajar tanpa menunggu 13 Mar. Dibuka kembali (aktif) → `selesai_pada` bersih.
+     */
+    public function test_tutup_lebih_awal_via_api_hentikan_pembebasan_seketika(): void
+    {
+        $admin = User::create(['nama' => 'Admin Tutup', 'email' => 'admintutup@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Admin]);
+        Sanctum::actingAs($admin);
+
+        $this->putJson("/api/v1/admin/kokurikuler/projects/{$this->project->uuid}", [
+            'judul' => $this->project->judul, 'status' => 'selesai',
+            'tanggal_mulai' => '2026-03-09', 'tanggal_selesai' => '2026-03-13',
+        ])->assertOk();
+
+        $this->assertSame('2026-03-11', $this->project->fresh()->selesai_pada->toDateString());
+
+        KokurikulerMode::flush();
+        $id = $this->kelasXiA->id;
+        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-10'), 'saat berjalan tetap bebas');
+        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-11'), 'hari penutupan masih bebas');
+        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-12'), 'sesudah penutupan kembali ke mode mengajar');
+        $this->assertFalse(KokurikulerMode::isAgendaExempt($id, '2026-03-13'), 'tanggal_selesai terjadwal tak lagi membebaskan');
+
+        // Dibuka kembali → tanggal penutupan dihapus, periode bebas penuh lagi.
+        $this->putJson("/api/v1/admin/kokurikuler/projects/{$this->project->uuid}", [
+            'judul' => $this->project->judul, 'status' => 'aktif',
+            'tanggal_mulai' => '2026-03-09', 'tanggal_selesai' => '2026-03-13',
+        ])->assertOk();
+
+        $this->assertNull($this->project->fresh()->selesai_pada);
+        KokurikulerMode::flush();
+        $this->assertTrue(KokurikulerMode::isAgendaExempt($id, '2026-03-13'), 'projek aktif lagi → 13 Mar bebas kembali');
     }
 
     public function test_periode_di_luar_tahun_ajaran_aktif_ditolak(): void

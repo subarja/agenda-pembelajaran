@@ -2,10 +2,13 @@
 
 namespace App\Support;
 
-use App\Models\AcademicYear;
+use App\Models\AgendaFillSetting;
 use App\Models\KokurikulerProject;
 use App\Models\KokurikulerProjectClass;
+use App\Models\KokurikulerReport;
+use App\Models\SchoolClass;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -20,7 +23,7 @@ class KokurikulerMode
 
     public static function activeAcademicYearId(): ?int
     {
-        return \App\Support\TahunAjaran::id();
+        return TahunAjaran::id();
     }
 
     /**
@@ -47,27 +50,59 @@ class KokurikulerMode
             ->join('kokurikuler_projects as p', 'p.id', '=', 'kokurikuler_project_classes.project_id')
             ->where('p.status', '!=', 'draft')
             ->whereNull('p.deleted_at')
-            ->get(['kokurikuler_project_classes.class_id', 'p.tanggal_mulai', 'p.tanggal_selesai']);
+            ->get(['kokurikuler_project_classes.class_id', 'p.status', 'p.tanggal_mulai', 'p.tanggal_selesai', 'p.selesai_pada'])
+            ->map(fn ($r) => (object) [
+                'class_id' => $r->class_id,
+                'tanggal_mulai' => $r->tanggal_mulai,
+                'tanggal_selesai' => static::batasAkhirEfektif($r->status, $r->tanggal_selesai, $r->selesai_pada),
+            ]);
 
         $byTingkat = KokurikulerProject::query()
             ->where('status', '!=', 'draft')
-            ->get(['id', 'academic_year_id', 'tingkat', 'tanggal_mulai', 'tanggal_selesai'])
+            ->get(['id', 'academic_year_id', 'tingkat', 'status', 'tanggal_mulai', 'tanggal_selesai', 'selesai_pada'])
             ->flatMap(function ($p) {
                 $tingkat = $p->tingkat !== null
                     ? array_map('trim', explode(',', $p->tingkat))
                     : null; // null = semua tingkat
 
-                return \App\Models\SchoolClass::where('academic_year_id', $p->academic_year_id)
+                $batasAkhir = static::batasAkhirEfektif($p->status, $p->tanggal_selesai, $p->selesai_pada);
+
+                return SchoolClass::where('academic_year_id', $p->academic_year_id)
                     ->when($tingkat, fn ($q) => $q->whereIn('tingkat', $tingkat))
                     ->pluck('id')
                     ->map(fn ($classId) => (object) [
-                        'class_id'        => $classId,
-                        'tanggal_mulai'   => $p->tanggal_mulai,
-                        'tanggal_selesai' => $p->tanggal_selesai,
+                        'class_id' => $classId,
+                        'tanggal_mulai' => $p->tanggal_mulai,
+                        'tanggal_selesai' => $batasAkhir,
                     ]);
             });
 
         return static::$exemptCache = $explicit->concat($byTingkat)->groupBy('class_id');
+    }
+
+    /**
+     * Batas akhir pembebasan yang BERLAKU untuk sebuah projek.
+     * - Projek 'selesai' yang ditutup LEBIH AWAL (punya `selesai_pada` < tanggal
+     *   terjadwal): pembebasan berhenti di hari penutupan, sehingga kelas langsung
+     *   kembali ke mode mengajar reguler tanpa menunggu tanggal_selesai.
+     * - Selain itu (aktif, atau selesai tanpa `selesai_pada` = data lama): pakai
+     *   tanggal_selesai terjadwal penuh — perilaku lama, tanggal projek tetap bebas
+     *   agar tak berubah jadi hutang tagihan.
+     *
+     * @param  mixed  $tanggalSelesai  Carbon|string
+     * @param  mixed  $selesaiPada  Carbon|string|null
+     */
+    protected static function batasAkhirEfektif(?string $status, $tanggalSelesai, $selesaiPada): string
+    {
+        $selesai = substr((string) $tanggalSelesai, 0, 10);
+
+        if ($status === 'selesai' && $selesaiPada !== null && $selesaiPada !== '') {
+            $pada = substr((string) $selesaiPada, 0, 10);
+
+            return $pada < $selesai ? $pada : $selesai;
+        }
+
+        return $selesai;
     }
 
     /** Reset cache statis — dipakai test & setelah CRUD projek. */
@@ -89,8 +124,7 @@ class KokurikulerMode
 
         $periods = static::agendaExemptPeriods()->get($classId);
 
-        return $periods !== null && $periods->contains(fn ($p) =>
-            $tanggal >= substr((string) $p->tanggal_mulai, 0, 10)
+        return $periods !== null && $periods->contains(fn ($p) => $tanggal >= substr((string) $p->tanggal_mulai, 0, 10)
             && $tanggal <= substr((string) $p->tanggal_selesai, 0, 10));
     }
 
@@ -105,9 +139,9 @@ class KokurikulerMode
      */
     public static function tagihanFasilitator(
         User $user,
-        \Illuminate\Support\Carbon $mulai,
-        \Illuminate\Support\Carbon $today,
-        \App\Models\AgendaFillSetting $setting,
+        Carbon $mulai,
+        Carbon $today,
+        AgendaFillSetting $setting,
     ): array {
         $slots = KokurikulerProjectClass::where('fasilitator_user_id', $user->id)
             ->whereHas('project', fn ($q) => $q->berjalan())
@@ -118,23 +152,23 @@ class KokurikulerMode
             return [];
         }
 
-        $now  = \Illuminate\Support\Carbon::now('Asia/Jakarta');
+        $now = Carbon::now('Asia/Jakarta');
         $rows = [];
 
         foreach ($slots as $pc) {
-            $p     = $pc->project;
+            $p = $pc->project;
             $class = $pc->schoolClass;
             if (! $p || ! $class) {
                 continue;
             }
 
-            $dari   = $p->tanggal_mulai->greaterThan($mulai) ? $p->tanggal_mulai->copy() : $mulai->copy();
+            $dari = $p->tanggal_mulai->greaterThan($mulai) ? $p->tanggal_mulai->copy() : $mulai->copy();
             $sampai = $p->tanggal_selesai->lessThan($today) ? $p->tanggal_selesai->copy() : $today->copy();
             if ($dari->gt($sampai)) {
                 continue;
             }
 
-            $terisi = \App\Models\KokurikulerReport::where('project_id', $p->id)
+            $terisi = KokurikulerReport::where('project_id', $p->id)
                 ->where('class_id', $class->id)
                 ->whereBetween('tanggal', [$dari->toDateString(), $sampai->toDateString()])
                 ->pluck('tanggal')
@@ -155,19 +189,19 @@ class KokurikulerMode
 
                 $deadline = $setting->batasWaktu($d->copy()->endOfDay());
                 $rows[] = [
-                    'jenis'        => 'kokurikuler',
+                    'jenis' => 'kokurikuler',
                     // Kunci unik utk daftar FE — bukan uuid jadwal sungguhan.
-                    'schedule_id'  => "kokurikuler|{$p->uuid}|{$class->uuid}",
-                    'tanggal'      => $d->toDateString(),
-                    'hari'         => ucfirst($d->locale('id')->dayName),
-                    'jam_mulai'    => '',
-                    'jam_selesai'  => '',
-                    'class_id'     => $class->uuid,
-                    'kelas'        => $class->label(),
-                    'mapel'        => "Kokurikuler — {$p->judul}",
-                    'deadline'     => $deadline->format('Y-m-d H:i'),
-                    'bisa_diisi'   => $now->lte($deadline),
-                    'jam_tersisa'  => $now->lte($deadline) ? $now->diffInHours($deadline) : null,
+                    'schedule_id' => "kokurikuler|{$p->uuid}|{$class->uuid}",
+                    'tanggal' => $d->toDateString(),
+                    'hari' => ucfirst($d->locale('id')->dayName),
+                    'jam_mulai' => '',
+                    'jam_selesai' => '',
+                    'class_id' => $class->uuid,
+                    'kelas' => $class->label(),
+                    'mapel' => "Kokurikuler — {$p->judul}",
+                    'deadline' => $deadline->format('Y-m-d H:i'),
+                    'bisa_diisi' => $now->lte($deadline),
+                    'jam_tersisa' => $now->lte($deadline) ? $now->diffInHours($deadline) : null,
                 ];
             }
         }
@@ -199,9 +233,9 @@ class KokurikulerMode
             : false;
 
         return [
-            'aktif'          => $isFasilitator || $isPeserta,
+            'aktif' => $isFasilitator || $isPeserta,
             'is_fasilitator' => $isFasilitator,
-            'is_peserta'     => $isPeserta,
+            'is_peserta' => $isPeserta,
         ];
     }
 }
