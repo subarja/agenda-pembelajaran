@@ -230,8 +230,14 @@ export default function PklPage() {
                       <p className="font-medium">{s.nama} {s.kelas && <span className="text-xs font-normal text-muted-foreground">· {s.kelas}</span>}</p>
                       <p className="text-xs text-muted-foreground break-words">NIS {s.nis ?? '—'} · NISN {s.nisn ?? '—'}</p>
                       <p className="text-xs text-muted-foreground break-words">{s.tempat_pkl}</p>
+                      {s.alamat_pkl && s.alamat_pkl !== '—' && <p className="text-xs text-muted-foreground break-words">{s.alamat_pkl}</p>}
                       <p className="text-xs text-muted-foreground">{s.mulai} → {s.selesai}</p>
                       {s.telpon && <WhatsAppLink telpon={s.telpon} className="text-xs text-muted-foreground" />}
+                      <p className="text-xs mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span className={cn('font-medium', s.pct_hadir >= 90 ? 'text-green-600' : s.pct_hadir >= 75 ? 'text-amber-600' : 'text-red-600')}>Hadir {s.pct_hadir}%</span>
+                        <span className="text-muted-foreground">H {s.hadir}/{s.hari_kerja} hari kerja</span>
+                        {(s.sakit + s.izin + s.alpha) > 0 && <span className="text-muted-foreground">· S{s.sakit} I{s.izin} A{s.alpha}</span>}
+                      </p>
                     </div>
                     <span className="flex items-center gap-0.5 text-muted-foreground shrink-0">
                       <button onClick={() => openEdit(s)} aria-label="Edit penempatan" className="p-1.5 hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>

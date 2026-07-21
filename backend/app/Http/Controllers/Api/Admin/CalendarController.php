@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\AcademicYear;
 use App\Models\CalendarEvent;
 use App\Models\CalendarSetting;
 use App\Models\NonEffectiveDay;
 use App\Services\GoogleApiKeyCalendarService;
 use App\Services\GoogleCalendarService;
 use App\Services\IcsCalendarService;
+use App\Support\TahunAjaran;
 use App\Traits\BuildsXlsxReports;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -172,6 +172,7 @@ class CalendarController extends Controller
             'tanggal' => $n->tanggal->format('Y-m-d'),
             'status' => $n->status,
             'keterangan' => $n->keterangan,
+            'libur_nasional' => (bool) $n->libur_nasional,
             'event_title' => $n->calendarEvent?->title,
         ]);
 
@@ -198,18 +199,20 @@ class CalendarController extends Controller
                 },
             ],
             'keterangan' => ['nullable', 'string', 'max:255'],
+            'libur_nasional' => ['boolean'],
         ]);
 
         $ned = NonEffectiveDay::create([
             ...$data,
             'status' => 'tidak_efektif',
+            'libur_nasional' => $request->boolean('libur_nasional'),
             'created_by' => $request->user()->id,
             'updated_by' => $request->user()->id,
         ]);
 
         return response()->json([
             'message' => 'Hari tidak efektif berhasil ditambahkan.',
-            'data' => ['id' => $ned->id, 'tanggal' => $ned->tanggal->format('Y-m-d'), 'status' => $ned->status, 'keterangan' => $ned->keterangan],
+            'data' => ['id' => $ned->id, 'tanggal' => $ned->tanggal->format('Y-m-d'), 'status' => $ned->status, 'keterangan' => $ned->keterangan, 'libur_nasional' => $ned->libur_nasional],
         ], 201);
     }
 
@@ -228,8 +231,12 @@ class CalendarController extends Controller
                 },
             ],
             'keterangan' => ['nullable', 'string', 'max:255'],
+            'libur_nasional' => ['boolean'],
         ]);
 
+        if ($request->has('libur_nasional')) {
+            $data['libur_nasional'] = $request->boolean('libur_nasional');
+        }
         $ned->update([...$data, 'updated_by' => $request->user()->id]);
 
         return response()->json(['message' => 'Berhasil diperbarui.']);
@@ -254,8 +261,10 @@ class CalendarController extends Controller
             'tanggal.*' => ['date'],
             'status' => ['required', 'in:efektif,tidak_efektif'],
             'keterangan' => ['nullable', 'string', 'max:255'],
+            'libur_nasional' => ['boolean'],
         ]);
 
+        $liburNasional = $request->boolean('libur_nasional');
         $userId = $request->user()->id;
         $marked = 0;
         $reverted = 0;
@@ -281,12 +290,14 @@ class CalendarController extends Controller
                 if ($existing) {
                     $existing->update([
                         'keterangan' => $data['keterangan'] ?? $existing->keterangan,
+                        'libur_nasional' => $liburNasional,
                         'updated_by' => $userId,
                     ]);
                 } else {
                     NonEffectiveDay::create([
                         'tanggal' => $tanggal,
                         'status' => 'tidak_efektif',
+                        'libur_nasional' => $liburNasional,
                         'keterangan' => $data['keterangan'] ?? null,
                         'created_by' => $userId,
                         'updated_by' => $userId,
@@ -419,7 +430,7 @@ class CalendarController extends Controller
             ->map(fn ($t) => Carbon::parse($t)->toDateString())
             ->flip();
 
-        $ay = \App\Support\TahunAjaran::current();
+        $ay = TahunAjaran::current();
 
         // Tanggal dikumpulkan sebagai himpunan, bukan dihitung di dalam loop: dua acara
         // yang saling bertumpang tindih (mis. "Libur Semester" dan "Rapat Kelulusan" di
@@ -450,11 +461,11 @@ class CalendarController extends Controller
             : collect();
 
         return response()->json(['data' => [
-            'belum_ditandai'    => $dalamSemester->count(),
-            'di_luar_semester'  => $belum->count() - $dalamSemester->count(),
-            'semester_label'    => $ay ? "{$ay->tahun} {$ay->semester->value}" : null,
-            'semester_mulai'    => $ay?->tanggal_mulai?->toDateString(),
-            'semester_selesai'  => $ay?->tanggal_selesai?->toDateString(),
+            'belum_ditandai' => $dalamSemester->count(),
+            'di_luar_semester' => $belum->count() - $dalamSemester->count(),
+            'semester_label' => $ay ? "{$ay->tahun} {$ay->semester->value}" : null,
+            'semester_mulai' => $ay?->tanggal_mulai?->toDateString(),
+            'semester_selesai' => $ay?->tanggal_selesai?->toDateString(),
         ]]);
     }
 

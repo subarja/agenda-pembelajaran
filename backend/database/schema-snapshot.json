@@ -1702,6 +1702,10 @@
                 "type": "varchar(255)",
                 "nullable": true
             },
+            "libur_nasional": {
+                "type": "tinyint(1)",
+                "nullable": false
+            },
             "status": {
                 "type": "enum('tidak_efektif')",
                 "nullable": false

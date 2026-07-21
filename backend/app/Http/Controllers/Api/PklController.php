@@ -4,14 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\AttendanceStatus;
 use App\Http\Controllers\Controller;
+use App\Models\NonEffectiveDay;
 use App\Models\PklAgenda;
 use App\Models\PklAttendance;
 use App\Models\PklObjective;
 use App\Models\PklPlacement;
 use App\Models\PrintSetting;
 use App\Models\SchoolClass;
+use App\Models\Student;
 use App\Support\ClassAccess;
 use App\Support\PklMode;
+use App\Support\TahunAjaran;
 use App\Traits\BuildsXlsxReports;
 use App\Traits\HandlesPdfPreview;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -53,17 +56,17 @@ class PklController extends Controller
             $class = $group->first()->schoolClass;
 
             return [
-                'id'           => $class->uuid,
-                'label'        => $class->label(),
+                'id' => $class->uuid,
+                'label' => $class->label(),
                 'jumlah_siswa' => $group->count(),
-                'sebagai'      => 'pembimbing',
+                'sebagai' => 'pembimbing',
             ];
         });
 
         return response()->json([
             'data' => [
                 'mode_aktif' => PklMode::isActive(),
-                'classes'    => $classes->values()->sortBy('label')->values(),
+                'classes' => $classes->values()->sortBy('label')->values(),
             ],
         ]);
     }
@@ -76,10 +79,11 @@ class PklController extends Controller
 
         $placements = $this->myPlacements($teacher->id)
             ->load(['student.user', 'schoolClass'])
-            ->when($request->filled('class_id'), fn ($c) =>
-                $c->filter(fn ($p) => $p->schoolClass?->uuid === $request->class_id)->values());
+            ->when($request->filled('class_id'), fn ($c) => $c->filter(fn ($p) => $p->schoolClass?->uuid === $request->class_id)->values())
+            ->sortBy(fn ($p) => [$p->schoolClass?->label(), $p->student?->user?->nama])
+            ->values();
 
-        return response()->json(['data' => $placements->map(fn ($p) => $this->placementRow($p))->values()]);
+        return response()->json(['data' => $this->rowsWithRekap($placements)]);
     }
 
     // ── Agenda PKL mingguan (AGREGAT lintas kelas) ─────────────────────────────
@@ -107,14 +111,14 @@ class PklController extends Controller
             ->map(fn ($g) => $g->map(fn ($a) => substr((string) $a->minggu_mulai, 0, 10))->flip());
 
         [$min, $max] = $this->aggregateRange($placements);
-        $ay          = \App\Support\TahunAjaran::current();
-        $semMulai    = $ay?->tanggal_mulai->toDateString();
-        $semSelesai  = $ay?->tanggal_selesai->toDateString();
-        $now         = Carbon::now(config('app.school_timezone'));
+        $ay = TahunAjaran::current();
+        $semMulai = $ay?->tanggal_mulai->toDateString();
+        $semSelesai = $ay?->tanggal_selesai->toDateString();
+        $now = Carbon::now(config('app.school_timezone'));
 
         $weeks = [];
         foreach ($this->mondays($min, $max) as $senin) {
-            $key   = $senin->toDateString();
+            $key = $senin->toDateString();
             $jumat = $senin->copy()->addDays(4);
             if ($semMulai && ($key > $semSelesai || $jumat->toDateString() < $semMulai)) {
                 continue;
@@ -128,18 +132,18 @@ class PklController extends Controller
             // Terisi bila SEMUA kelas aktif minggu ini sudah punya rekaman agenda.
             $terisi = $activeClasses->every(fn ($c) => ($filledByClass[$c['class_db_id']] ?? collect())->has($key));
 
-            $deadline  = PklMode::fillDeadline($senin->copy());
+            $deadline = PklMode::fillDeadline($senin->copy());
             $bisaMulai = $now->gte($jumat->copy()->startOfDay());  // baru boleh diisi mulai Jumat
             $weeks[] = [
-                'minggu_mulai'  => $key,
-                'label'         => $senin->locale('id')->isoFormat('D MMM') . ' – ' . $jumat->locale('id')->isoFormat('D MMM YYYY'),
-                'classes'       => $activeClasses->map(fn ($c) => ['label' => $c['label'], 'jumlah_siswa' => $c['jumlah']])->values(),
-                'total_siswa'   => $activeClasses->sum('jumlah'),
-                'terisi'        => $terisi,
-                'bisa_diisi'    => $bisaMulai && $now->lte($deadline),
+                'minggu_mulai' => $key,
+                'label' => $senin->locale('id')->isoFormat('D MMM').' – '.$jumat->locale('id')->isoFormat('D MMM YYYY'),
+                'classes' => $activeClasses->map(fn ($c) => ['label' => $c['label'], 'jumlah_siswa' => $c['jumlah']])->values(),
+                'total_siswa' => $activeClasses->sum('jumlah'),
+                'terisi' => $terisi,
+                'bisa_diisi' => $bisaMulai && $now->lte($deadline),
                 'sebelum_jumat' => ! $bisaMulai,
-                'lewat_batas'   => $bisaMulai && $now->gt($deadline),
-                'deadline'      => $deadline->format('Y-m-d H:i'),
+                'lewat_batas' => $bisaMulai && $now->gt($deadline),
+                'deadline' => $deadline->format('Y-m-d H:i'),
             ];
         }
 
@@ -150,13 +154,13 @@ class PklController extends Controller
     public function showAgenda(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'minggu'       => ['required', 'date'],
+            'minggu' => ['required', 'date'],
             'placement_id' => ['nullable', 'uuid'],
         ]);
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403);
 
-        $senin      = $this->normalizeMonday($data['minggu']);
+        $senin = $this->normalizeMonday($data['minggu']);
         $placements = $this->myPlacements($teacher->id)->load(['student.user', 'schoolClass']);
         abort_if($placements->isEmpty(), 403, 'Anda belum menjadi pembimbing PKL.');
 
@@ -178,30 +182,29 @@ class PklController extends Controller
             ->with(['objectives', 'attendances'])
             ->get();
 
-        $catatan  = $agendas->pluck('catatan')->first(fn ($c) => filled($c)) ?? '';
+        $catatan = $agendas->pluck('catatan')->first(fn ($c) => filled($c)) ?? '';
         $selected = $agendas->flatMap(fn ($a) => $a->objectives->pluck('uuid'))->unique()->values()->all();
-        $absensi  = $agendas->flatMap(fn ($a) => $a->attendances)
+        $absensi = $agendas->flatMap(fn ($a) => $a->attendances)
             ->mapWithKeys(fn ($a) => [$a->student_id.'|'.$a->tanggal->toDateString() => $a->status->value]);
 
         $hari = $this->weekdays($senin);
 
         return response()->json([
             'data' => [
-                'minggu'     => $senin->toDateString(),
-                'hari'       => $hari,
+                'minggu' => $senin->toDateString(),
+                'hari' => $hari,
                 'objectives' => $this->objectivesForJurusans($active->map(fn ($p) => $p->schoolClass?->jurusan)->filter()->unique()->values()->all()),
-                'agenda'     => ['catatan' => $catatan, 'objectives' => $selected],
+                'agenda' => ['catatan' => $catatan, 'objectives' => $selected],
                 // Siswa dikelompokkan agar FE bisa tampilkan per kelas, tapi tetap satu tabel.
-                'students'   => $active
+                'students' => $active
                     ->sortBy(fn ($p) => [$p->schoolClass?->label(), $p->student->user->nama])
                     ->map(fn ($p) => [
-                        'id'       => $p->student->uuid,
-                        'nis'      => $p->student->nis,
-                        'nama'     => $p->student->user->nama,
-                        'kelas'    => $p->schoolClass?->label(),
-                        'telpon'   => $p->telpon_siswa,
-                        'presensi' => collect($hari)->mapWithKeys(fn ($d) =>
-                            [$d['tanggal'] => $absensi->get($p->student->id.'|'.$d['tanggal'])])->all(),
+                        'id' => $p->student->uuid,
+                        'nis' => $p->student->nis,
+                        'nama' => $p->student->user->nama,
+                        'kelas' => $p->schoolClass?->label(),
+                        'telpon' => $p->telpon_siswa,
+                        'presensi' => collect($hari)->mapWithKeys(fn ($d) => [$d['tanggal'] => $absensi->get($p->student->id.'|'.$d['tanggal'])])->all(),
                     ])->values(),
             ],
         ]);
@@ -211,24 +214,24 @@ class PklController extends Controller
     public function storeAgenda(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'minggu'            => ['required', 'date'],
-            'catatan'           => ['nullable', 'string', 'max:2000'],
-            'objective_ids'     => ['array'],
-            'objective_ids.*'   => ['string'],
-            'presensi'          => ['array'],
+            'minggu' => ['required', 'date'],
+            'catatan' => ['nullable', 'string', 'max:2000'],
+            'objective_ids' => ['array'],
+            'objective_ids.*' => ['string'],
+            'presensi' => ['array'],
             'presensi.*.student_id' => ['required', 'string'],
-            'presensi.*.tanggal'    => ['required', 'date'],
-            'presensi.*.status'     => ['required', 'in:hadir,sakit,izin,alpha'],
+            'presensi.*.tanggal' => ['required', 'date'],
+            'presensi.*.status' => ['required', 'in:hadir,sakit,izin,alpha'],
         ]);
 
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403);
 
-        $senin      = $this->normalizeMonday($data['minggu']);
-        $jumat      = $senin->copy()->addDays(4);
+        $senin = $this->normalizeMonday($data['minggu']);
+        $jumat = $senin->copy()->addDays(4);
         $placements = $this->myPlacements($teacher->id)->load(['student.user', 'schoolClass']);
         abort_if($placements->isEmpty(), 403, 'Anda belum menjadi pembimbing PKL.');
-        $active     = $this->placementsActiveInWeek($placements, $senin);
+        $active = $this->placementsActiveInWeek($placements, $senin);
         abort_if($active->isEmpty(), 404, 'Tidak ada siswa bimbingan yang PKL pada minggu ini.');
 
         // Jendela: baru boleh diisi mulai Jumat; ditolak kalau lewat deadline.
@@ -238,9 +241,9 @@ class PklController extends Controller
         abort_if($now->gt(PklMode::fillDeadline($senin->copy())), 422,
             'Batas waktu pengisian agenda PKL untuk minggu ini sudah lewat.');
 
-        $ayId       = PklMode::activeAcademicYearId();
+        $ayId = PklMode::activeAcademicYearId();
         $validDates = collect($this->weekdays($senin))->pluck('tanggal');
-        $today      = $now->toDateString();
+        $today = $now->toDateString();
 
         // Presensi masuk yang di-key per uuid siswa (validasi tanggal & masa depan).
         $presensiByStudent = collect($data['presensi'] ?? [])
@@ -263,14 +266,14 @@ class PklController extends Controller
                     ->first()
                     ?? new PklAgenda([
                         'pembimbing_teacher_id' => $teacher->id,
-                        'class_id'              => $class->id,
-                        'minggu_mulai'          => $senin->toDateString(),
+                        'class_id' => $class->id,
+                        'minggu_mulai' => $senin->toDateString(),
                     ]);
                 if ($agenda->trashed()) {
                     $agenda->restore();
                 }
                 $agenda->academic_year_id = $ayId;
-                $agenda->catatan          = $data['catatan'] ?? null;
+                $agenda->catatan = $data['catatan'] ?? null;
                 $agenda->save();
 
                 // TP: hanya yang valid untuk jurusan kelas ini (dari daftar yang dikirim).
@@ -305,7 +308,7 @@ class PklController extends Controller
     {
         $request->validate([
             'class_id' => ['nullable', 'string'],
-            'format'   => ['required', 'in:pdf,excel'],
+            'format' => ['required', 'in:pdf,excel'],
         ]);
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403);
@@ -313,7 +316,7 @@ class PklController extends Controller
         if ($request->filled('class_id')) {
             [$class, $students] = $this->authorizeClass($teacher->id, $request->class_id);
             $kelasLabel = $class->label();
-            $filename   = 'data_pkl_'.$class->tingkat->value.'_'.$class->jurusanKode().'_'.$class->rombel;
+            $filename = 'data_pkl_'.$class->tingkat->value.'_'.$class->jurusanKode().'_'.$class->rombel;
         } else {
             $students = $this->myPlacements($teacher->id)
                 ->load(['student.user', 'schoolClass'])
@@ -321,9 +324,9 @@ class PklController extends Controller
                 ->values();
             abort_if($students->isEmpty(), 404, 'Belum ada siswa bimbingan.');
             $kelasLabel = 'Semua Siswa Bimbingan';
-            $filename   = 'data_pkl_bimbingan';
+            $filename = 'data_pkl_bimbingan';
         }
-        $rows = $students->map(fn ($p) => $this->placementRow($p))->values();
+        $rows = $this->rowsWithRekap($students instanceof Collection ? $students : collect($students));
 
         if ($request->format === 'pdf') {
             $printSettings = PrintSetting::instance($request->user()->id);
@@ -337,24 +340,33 @@ class PklController extends Controller
         }
 
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kelasLabel) {
-            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 28, 3 => 14, 4 => 30, 5 => 36, 6 => 14, 7 => 14]);
-            $w->addRow(Row::fromValuesWithStyle(["Data PKL Siswa — {$kelasLabel}"], $this->xlsxTitleStyle()));
+            $this->xlsxSetColumnWidths($w, [1 => 4, 2 => 26, 3 => 14, 4 => 14, 5 => 16, 6 => 26, 7 => 32, 8 => 12, 9 => 12, 10 => 6, 11 => 6, 12 => 6, 13 => 6, 14 => 9, 15 => 9]);
+            $w->addRow(Row::fromValuesWithStyle(["Data & Rekap Kehadiran PKL — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                ['No', 'Nama', 'NISN', 'Tempat PKL', 'Alamat PKL', 'Awal PKL', 'Akhir PKL'],
+                ['No', 'Nama', 'Kelas', 'NIS', 'NISN', 'No. WA', 'Industri', 'Alamat Industri', 'Awal PKL', 'Akhir PKL', 'H', 'S', 'I', 'A', 'Hari Kerja', '% Hadir'],
                 $this->xlsxHeaderStyle()
             ));
             $center = $this->xlsxCellCenterStyle();
-            $text   = $this->xlsxCellStyle();
+            $text = $this->xlsxCellStyle();
             foreach ($rows as $i => $r) {
                 $w->addRow(new Row([
                     new NumericCell($i + 1, $center),
                     new StringCell($r['nama'], $text),
+                    new StringCell((string) $r['kelas'], $center),
+                    new StringCell((string) $r['nis'], $center),
                     new StringCell((string) $r['nisn'], $center),
+                    new StringCell((string) ($r['telpon'] ?? '—'), $center),
                     new StringCell($r['tempat_pkl'], $text),
                     new StringCell((string) $r['alamat_pkl'], $text),
                     new StringCell((string) $r['mulai'], $center),
                     new StringCell((string) $r['selesai'], $center),
+                    new NumericCell($r['hadir'], $center),
+                    new NumericCell($r['sakit'], $center),
+                    new NumericCell($r['izin'], $center),
+                    new NumericCell($r['alpha'], $center),
+                    new NumericCell($r['hari_kerja'], $center),
+                    new StringCell($r['pct_hadir'].'%', $center),
                 ]));
             }
         });
@@ -369,12 +381,12 @@ class PklController extends Controller
     {
         $request->validate([
             'class_id' => ['required', 'string'],
-            'format'   => ['required', 'in:pdf,excel'],
+            'format' => ['required', 'in:pdf,excel'],
         ]);
 
-        $user     = $request->user();
+        $user = $request->user();
         $sections = $this->rekapSections($user, $request->class_id);
-        $periode  = now(config('app.school_timezone'))->locale('id')->isoFormat('MMMM YYYY');
+        $periode = now(config('app.school_timezone'))->locale('id')->isoFormat('MMMM YYYY');
 
         if ($request->format === 'pdf') {
             $printSettings = PrintSetting::instance($user->id);
@@ -388,7 +400,7 @@ class PklController extends Controller
         return $this->streamXlsx('rekap_absen_pkl.xlsx', function (Writer $w) use ($sections) {
             $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 28, 3 => 14, 4 => 8, 5 => 8, 6 => 8, 7 => 8, 8 => 8, 9 => 13]);
             $center = $this->xlsxCellCenterStyle();
-            $text   = $this->xlsxCellStyle();
+            $text = $this->xlsxCellStyle();
 
             foreach ($sections as $sec) {
                 $w->addRow(Row::fromValuesWithStyle(["Rekap Absen PKL — {$sec['kelas']}"], $this->xlsxTitleStyle()));
@@ -426,10 +438,10 @@ class PklController extends Controller
         abort_unless($p->pembimbing_teacher_id === $teacher->id, 403, 'Bukan siswa bimbingan Anda.');
 
         $data = $request->validate([
-            'tempat_pkl'      => ['required', 'string', 'max:200'],
-            'alamat_pkl'      => ['nullable', 'string', 'max:300'],
-            'telpon'          => ['nullable', 'string', 'max:25'],
-            'tanggal_mulai'   => ['required', 'date'],
+            'tempat_pkl' => ['required', 'string', 'max:200'],
+            'alamat_pkl' => ['nullable', 'string', 'max:300'],
+            'telpon' => ['nullable', 'string', 'max:25'],
+            'tanggal_mulai' => ['required', 'date'],
             'tanggal_selesai' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
         ]);
 
@@ -440,10 +452,10 @@ class PklController extends Controller
         );
 
         $p->update([
-            'tempat_pkl'      => $data['tempat_pkl'],
-            'alamat_pkl'      => $data['alamat_pkl'] ?? null,
-            'telpon_siswa'    => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
-            'tanggal_mulai'   => $data['tanggal_mulai'],
+            'tempat_pkl' => $data['tempat_pkl'],
+            'alamat_pkl' => $data['alamat_pkl'] ?? null,
+            'telpon_siswa' => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
+            'tanggal_mulai' => $data['tanggal_mulai'],
             'tanggal_selesai' => $data['tanggal_selesai'],
         ]);
 
@@ -460,15 +472,15 @@ class PklController extends Controller
         abort_if(! $teacher, 403);
 
         $data = $request->validate([
-            'student_id'      => ['required', 'string'],
-            'tempat_pkl'      => ['required', 'string', 'max:200'],
-            'alamat_pkl'      => ['nullable', 'string', 'max:300'],
-            'telpon'          => ['nullable', 'string', 'max:25'],
-            'tanggal_mulai'   => ['required', 'date'],
+            'student_id' => ['required', 'string'],
+            'tempat_pkl' => ['required', 'string', 'max:200'],
+            'alamat_pkl' => ['nullable', 'string', 'max:300'],
+            'telpon' => ['nullable', 'string', 'max:25'],
+            'tanggal_mulai' => ['required', 'date'],
             'tanggal_selesai' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
         ]);
 
-        $student = \App\Models\Student::where('uuid', $data['student_id'])->firstOrFail();
+        $student = Student::where('uuid', $data['student_id'])->firstOrFail();
 
         $ayId = PklMode::activeAcademicYearId();
         $bimbingan = PklPlacement::where('student_id', $student->id)
@@ -485,15 +497,15 @@ class PklController extends Controller
         );
 
         $p = PklPlacement::create([
-            'student_id'            => $student->id,
-            'class_id'              => $bimbingan->class_id,
-            'academic_year_id'      => $ayId ?? $bimbingan->academic_year_id,
+            'student_id' => $student->id,
+            'class_id' => $bimbingan->class_id,
+            'academic_year_id' => $ayId ?? $bimbingan->academic_year_id,
             'pembimbing_teacher_id' => $teacher->id,
-            'tempat_pkl'            => $data['tempat_pkl'],
-            'alamat_pkl'            => $data['alamat_pkl'] ?? null,
-            'telpon_siswa'          => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
-            'tanggal_mulai'         => $data['tanggal_mulai'],
-            'tanggal_selesai'       => $data['tanggal_selesai'],
+            'tempat_pkl' => $data['tempat_pkl'],
+            'alamat_pkl' => $data['alamat_pkl'] ?? null,
+            'telpon_siswa' => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
+            'tanggal_mulai' => $data['tanggal_mulai'],
+            'tanggal_selesai' => $data['tanggal_selesai'],
         ]);
 
         return response()->json(['message' => 'Tempat PKL ditambahkan.', 'id' => $p->uuid], 201);
@@ -541,10 +553,10 @@ class PklController extends Controller
             ->orderBy('id')
             ->get()
             ->map(fn ($o) => [
-                'id'        => $o->uuid,
-                'kode'      => $o->kode,
+                'id' => $o->uuid,
+                'kode' => $o->kode,
                 'deskripsi' => $o->deskripsi,
-                'lingkup'   => $o->jurusan === null ? 'Umum (semua jurusan)' : "Khusus {$o->jurusan}",
+                'lingkup' => $o->jurusan === null ? 'Umum (semua jurusan)' : "Khusus {$o->jurusan}",
             ])->all();
     }
 
@@ -562,8 +574,7 @@ class PklController extends Controller
     {
         $jumat = $senin->copy()->addDays(4);
 
-        return $placements->filter(fn ($p) =>
-            $p->tanggal_mulai && $p->tanggal_selesai
+        return $placements->filter(fn ($p) => $p->tanggal_mulai && $p->tanggal_selesai
             && $p->tanggal_mulai->lte($jumat) && $p->tanggal_selesai->gte($senin)
         )->values();
     }
@@ -575,8 +586,8 @@ class PklController extends Controller
             ->groupBy('class_id')
             ->map(fn ($g) => [
                 'class_db_id' => $g->first()->class_id,
-                'label'       => $g->first()->schoolClass?->label(),
-                'jumlah'      => $g->count(),
+                'label' => $g->first()->schoolClass?->label(),
+                'jumlah' => $g->count(),
             ])
             ->sortBy('label')
             ->values();
@@ -586,7 +597,7 @@ class PklController extends Controller
     private function mondays(Carbon $start, Carbon $end): array
     {
         $senin = $start->copy()->startOfWeek(Carbon::MONDAY);
-        $out   = [];
+        $out = [];
         while ($senin->lte($end)) {
             $out[] = $senin->copy();
             $senin->addWeek();
@@ -615,7 +626,7 @@ class PklController extends Controller
     private function classInfo(SchoolClass $class): array
     {
         return [
-            'id'    => $class->uuid,
+            'id' => $class->uuid,
             'label' => $class->label(),
         ];
     }
@@ -625,19 +636,124 @@ class PklController extends Controller
         return [
             // uuid PENEMPATAN — kunci baris (satu siswa bisa >1 tempat) & target edit.
             'placement_id' => $p->uuid,
-            'id'         => $p->student->uuid,
-            'nama'       => $p->student->user->nama,
-            'nis'        => $p->student->nis,
-            'nisn'       => $p->student->nisn,
-            'telpon'     => $p->telpon_siswa,
+            'id' => $p->student->uuid,
+            'nama' => $p->student->user->nama,
+            'nis' => $p->student->nis,
+            'nisn' => $p->student->nisn,
+            'telpon' => $p->telpon_siswa,
+            'wa' => $this->waNumber($p->telpon_siswa),
             'tempat_pkl' => $p->tempat_pkl,
             'alamat_pkl' => $p->alamat_pkl ?? '—',
-            'mulai'      => $p->tanggal_mulai?->toDateString(),
-            'selesai'    => $p->tanggal_selesai?->toDateString(),
+            'mulai' => $p->tanggal_mulai?->toDateString(),
+            'selesai' => $p->tanggal_selesai?->toDateString(),
             // Kelas per baris — daftar bimbingan kini lintas kelas (filter di FE).
-            'class_id'   => $p->schoolClass?->uuid,
-            'kelas'      => $p->schoolClass?->label(),
+            'class_id' => $p->schoolClass?->uuid,
+            'kelas' => $p->schoolClass?->label(),
         ];
+    }
+
+    /**
+     * Baris penempatan + rekap kehadiran PER INDUSTRI (per penempatan). Satu siswa dengan
+     * >1 tempat PKL menghasilkan >1 baris, masing-masing rekapnya sendiri.
+     * % hadir = hadir / HARI KERJA (Sen–Jum minus libur nasional) yang SUDAH BERLALU
+     * (tanggal mulai s.d. hari ini, dibatasi tanggal selesai).
+     */
+    private function rowsWithRekap(Collection $placements): Collection
+    {
+        $placements->loadMissing(['student.user', 'schoolClass']);
+        $studentIds = $placements->pluck('student_id')->unique()->values();
+
+        $attByStudent = PklAttendance::whereIn('student_id', $studentIds)
+            ->get(['student_id', 'tanggal', 'status'])
+            ->groupBy('student_id');
+
+        $libur = $this->liburNasionalSet();
+
+        return $placements->map(function (PklPlacement $p) use ($attByStudent, $libur) {
+            $mulai = $p->tanggal_mulai?->toDateString();
+            $selesai = $p->tanggal_selesai?->toDateString();
+
+            $counts = ['hadir' => 0, 'sakit' => 0, 'izin' => 0, 'alpha' => 0];
+            if ($mulai && $selesai) {
+                foreach ($attByStudent->get($p->student_id, collect()) as $a) {
+                    $t = substr((string) $a->tanggal, 0, 10);
+                    if ($t < $mulai || $t > $selesai) {
+                        continue; // presensi ini milik penempatan/industri lain
+                    }
+                    $s = $a->status instanceof AttendanceStatus ? $a->status->value : (string) $a->status;
+                    if (isset($counts[$s])) {
+                        $counts[$s]++;
+                    }
+                }
+            }
+
+            $hariKerja = ($mulai && $selesai) ? $this->hariKerjaPkl($mulai, $selesai, $libur) : 0;
+            $pct = $hariKerja > 0 ? round($counts['hadir'] / $hariKerja * 100, 1) : 0.0;
+
+            return $this->placementRow($p) + [
+                'hadir' => $counts['hadir'],
+                'sakit' => $counts['sakit'],
+                'izin' => $counts['izin'],
+                'alpha' => $counts['alpha'],
+                'hari_kerja' => $hariKerja,
+                'pct_hadir' => $pct,
+            ];
+        })->values();
+    }
+
+    /** Set tanggal (Y-m-d) libur nasional, di-memoize per request. */
+    private ?array $liburSet = null;
+
+    private function liburNasionalSet(): array
+    {
+        return $this->liburSet ??= NonEffectiveDay::where('libur_nasional', true)
+            ->pluck('tanggal')
+            ->map(fn ($t) => substr((string) $t, 0, 10))
+            ->flip()
+            ->all();
+    }
+
+    /**
+     * Hari kerja PKL yang SUDAH BERLALU: Senin–Jumat dalam [mulai .. min(hari ini, selesai)]
+     * dikurangi libur nasional. Sabtu/Minggu tidak dihitung (keputusan user).
+     */
+    private function hariKerjaPkl(string $mulai, string $selesai, array $liburSet): int
+    {
+        $today = Carbon::now(config('app.school_timezone'))->toDateString();
+        $akhir = $selesai < $today ? $selesai : $today;
+        if ($akhir < $mulai) {
+            return 0;
+        }
+
+        $count = 0;
+        for ($d = Carbon::parse($mulai); $d->lte(Carbon::parse($akhir)); $d->addDay()) {
+            if ($d->isSaturday() || $d->isSunday()) {
+                continue;
+            }
+            if (isset($liburSet[$d->toDateString()])) {
+                continue;
+            }
+            $count++;
+        }
+
+        return $count;
+    }
+
+    /** Normalkan nomor telepon ke format wa.me (62...). Null bila kosong. */
+    private function waNumber(?string $telpon): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $telpon);
+        if ($digits === '' || $digits === null) {
+            return null;
+        }
+        if (str_starts_with($digits, '0')) {
+            return '62'.substr($digits, 1);
+        }
+        if (str_starts_with($digits, '62')) {
+            return $digits;
+        }
+
+        return $digits;
     }
 
     /**
@@ -648,13 +764,13 @@ class PklController extends Controller
      */
     private function rekapSections($user, string $classUuid): array
     {
-        $ayId    = PklMode::activeAcademicYearId();
+        $ayId = PklMode::activeAcademicYearId();
         $teacher = $user->teacher;
 
         // Kelas target
         if ($classUuid === 'semua') {
             if (ClassAccess::isSchoolWide($user)) {
-                $classes = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
+                $classes = SchoolClass::where('academic_year_id', TahunAjaran::id())
                     ->whereHas('students.pklPlacements')
                     ->orderBy('jurusan')->orderBy('rombel')->get();
             } else {
@@ -667,7 +783,7 @@ class PklController extends Controller
                         ->pluck('class_id');
                 }
                 $classIds = $classIds->merge(ClassAccess::waliClassIds($user))->unique();
-                $classes  = SchoolClass::whereIn('id', $classIds)
+                $classes = SchoolClass::whereIn('id', $classIds)
                     ->orderBy('jurusan')->orderBy('rombel')->get();
                 abort_if($classes->isEmpty(), 403, 'Anda tidak membimbing siswa PKL.');
             }
@@ -684,10 +800,11 @@ class PklController extends Controller
                 if ($classUuid !== 'semua') {
                     abort(403, 'Anda tidak berhak atas rekap kelas ini.');
                 }
+
                 continue;
             }
 
-            $rows = \App\Models\Student::whereIn('id', $studentIds)
+            $rows = Student::whereIn('id', $studentIds)
                 ->with('user:id,nama')
                 ->get()
                 ->sortBy(fn ($s) => $s->user->nama)
@@ -697,22 +814,22 @@ class PklController extends Controller
                         ->selectRaw('status, COUNT(*) c')->groupBy('status')->pluck('c', 'status');
                     $hadir = (int) ($counts['hadir'] ?? 0);
                     $sakit = (int) ($counts['sakit'] ?? 0);
-                    $izin  = (int) ($counts['izin'] ?? 0);
+                    $izin = (int) ($counts['izin'] ?? 0);
                     $alpha = (int) ($counts['alpha'] ?? 0);
                     $total = $hadir + $sakit + $izin + $alpha;
 
                     return [
-                        'nama'  => $s->user->nama,
-                        'nisn'  => $s->nisn,
+                        'nama' => $s->user->nama,
+                        'nisn' => $s->nisn,
                         'hadir' => $hadir, 'sakit' => $sakit, 'izin' => $izin, 'alpha' => $alpha,
                         'total' => $total,
-                        'pct'   => $total > 0 ? round($hadir / $total * 100, 1) : 0,
+                        'pct' => $total > 0 ? round($hadir / $total * 100, 1) : 0,
                     ];
                 });
 
             $sections[] = [
                 'kelas' => $class->label(),
-                'rows'  => $rows->all(),
+                'rows' => $rows->all(),
             ];
         }
 

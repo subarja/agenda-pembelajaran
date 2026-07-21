@@ -17,12 +17,20 @@ export interface PklStudentRow {
   nis: string | null
   nisn: string | null
   telpon: string | null
+  wa: string | null
   tempat_pkl: string
   alamat_pkl: string
   mulai: string | null
   selesai: string | null
   class_id: string | null
   kelas: string | null
+  // Rekap kehadiran per industri (per penempatan)
+  hadir: number
+  sakit: number
+  izin: number
+  alpha: number
+  hari_kerja: number
+  pct_hadir: number
 }
 
 export interface PklWeek {

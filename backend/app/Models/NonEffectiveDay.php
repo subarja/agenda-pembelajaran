@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class NonEffectiveDay extends Model
 {
     protected $fillable = [
-        'tanggal', 'status', 'keterangan',
+        'tanggal', 'status', 'keterangan', 'libur_nasional',
         'calendar_event_id', 'created_by', 'updated_by',
     ];
 
@@ -16,6 +16,7 @@ class NonEffectiveDay extends Model
     {
         return [
             'tanggal' => 'date',
+            'libur_nasional' => 'boolean',
         ];
     }
 

@@ -13,7 +13,7 @@ interface CalEvent {
 }
 interface NonEffective {
   id: number; tanggal: string; status: string
-  keterangan: string | null; event_title: string | null
+  keterangan: string | null; event_title: string | null; libur_nasional?: boolean
 }
 interface CalendarData {
   events: CalEvent[]; non_effective: NonEffective[]; last_synced: string | null
@@ -67,6 +67,7 @@ export default function KalenderPage() {
   const [selDay, setSelDay]             = useState<string | null>(null)
   const [nedEdit, setNedEdit]           = useState<NonEffective | null>(null)
   const [nedKeterangan, setNedKeterangan] = useState('')
+  const [nedLibur, setNedLibur]         = useState(false)
   const [syncMsg, setSyncMsg]           = useState<{ type: 'ok'|'err', text: string } | null>(null)
   const [hoveredDate, setHoveredDate] = useState<string | null>(null)
   // Mode pilih-banyak-tanggal: klik sel tanggal menambah/melepas dari selectedDates,
@@ -247,9 +248,11 @@ export default function KalenderPage() {
     if (existing) {
       setNedEdit(existing)
       setNedKeterangan(existing.keterangan ?? '')
+      setNedLibur(existing.libur_nasional ?? false)
     } else {
       setNedEdit(null)
       setNedKeterangan(autoKet)
+      setNedLibur(false)
     }
     setSelDay(ds)
   }
@@ -713,6 +716,10 @@ export default function KalenderPage() {
                 value={nedKeterangan}
                 onChange={e => setNedKeterangan(e.target.value)}
               />
+              <label className="mt-2 flex items-start gap-2 text-xs cursor-pointer">
+                <input type="checkbox" className="mt-0.5" checked={nedLibur} onChange={e => setNedLibur(e.target.checked)} />
+                <span><span className="font-medium">Libur Nasional</span> — hari ini juga tidak dihitung sebagai hari kerja PKL (mengurangi denominator % hadir siswa PKL). Hari tidak efektif internal biasa TIDAK memengaruhi PKL.</span>
+              </label>
             </div>
 
             {/* Aksi — merah SELALU berarti "jadikan tidak efektif", hijau SELALU berarti
@@ -721,7 +728,7 @@ export default function KalenderPage() {
               {nedEdit ? (
                 <>
                   <Button variant="outline" size="sm" className="flex-1"
-                    onClick={() => savNedMut.mutate({ keterangan: nedKeterangan || undefined })}
+                    onClick={() => savNedMut.mutate({ keterangan: nedKeterangan || undefined, libur_nasional: nedLibur })}
                     disabled={savNedMut.isPending}>
                     {savNedMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Simpan Keterangan'}
                   </Button>
@@ -733,7 +740,7 @@ export default function KalenderPage() {
                 </>
               ) : (
                 <Button variant="destructive" size="sm" className="flex-1"
-                  onClick={() => savNedMut.mutate({ tanggal: selDay, keterangan: nedKeterangan || undefined })}
+                  onClick={() => savNedMut.mutate({ tanggal: selDay, keterangan: nedKeterangan || undefined, libur_nasional: nedLibur })}
                   disabled={savNedMut.isPending}>
                   {savNedMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Tandai Tidak Efektif'}
                 </Button>
