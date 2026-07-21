@@ -92,4 +92,40 @@ class PklBimbinganTest extends TestCase
         $this->assertSame(0, $row['hadir']);             // belum ada presensi
         $this->assertEquals(0, $row['pct_hadir']);
     }
+
+    public function test_placeholder_belum_diplot_muncul_tapi_tak_membebaskan_agenda(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-30 10:00', config('app.school_timezone')));
+        $ay = AcademicYear::create([
+            'tahun' => '2025/2026', 'semester' => Semester::Genap,
+            'tanggal_mulai' => '2026-01-05', 'tanggal_selesai' => '2026-06-19', 'aktif' => true,
+        ]);
+        PklSetting::instance()->update(['aktif' => true]);
+        PklMode::flush();
+
+        $kelas = SchoolClass::create(['tingkat' => Tingkat::XII, 'jurusan' => 'Animasi', 'rombel' => 'A', 'academic_year_id' => $ay->id]);
+        $pu = User::create(['nama' => 'Pembimbing2', 'email' => 'p2@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Guru, 'must_change_password' => false]);
+        $pembimbing = Teacher::create(['user_id' => $pu->id, 'is_bk' => false]);
+
+        $su = User::create(['nama' => 'Belum Diplot', 'email' => 'bd@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Siswa, 'must_change_password' => false]);
+        $siswa = Student::create(['user_id' => $su->id, 'nis' => '9002', 'nisn' => '222', 'class_id' => $kelas->id]);
+
+        // Placeholder: dipetakan ke pembimbing TANPA tempat & tanggal.
+        PklPlacement::create([
+            'student_id' => $siswa->id, 'class_id' => $kelas->id, 'academic_year_id' => $ay->id,
+            'pembimbing_teacher_id' => $pembimbing->id,
+            'tempat_pkl' => null, 'tanggal_mulai' => null, 'tanggal_selesai' => null,
+        ]);
+        PklMode::flush();
+
+        // Muncul di daftar bimbingan sebagai belum diplot.
+        Sanctum::actingAs($pu->fresh());
+        $row = $this->getJson('/api/v1/pkl/my-students')->assertOk()->json('data.0');
+        $this->assertSame('Belum Diplot', $row['nama']);
+        $this->assertTrue($row['belum_diplot']);
+        $this->assertNull($row['tempat_pkl']);
+
+        // TAPI tidak membebaskan agenda reguler kelasnya (siswa masih di sekolah).
+        $this->assertFalse(PklMode::isAgendaExempt($kelas->id, '2026-04-30'));
+    }
 }

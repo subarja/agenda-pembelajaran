@@ -99,7 +99,9 @@ class PklController extends Controller
         $teacher = $request->user()->teacher;
         abort_if(! $teacher, 403);
 
-        $placements = $this->myPlacements($teacher->id)->load(['schoolClass']);
+        // Placeholder "belum diplot" (tanpa tanggal) tak punya minggu agenda.
+        $placements = $this->myPlacements($teacher->id)->load(['schoolClass'])
+            ->filter(fn ($p) => $p->tanggal_mulai && $p->tanggal_selesai)->values();
         if ($placements->isEmpty()) {
             return response()->json(['data' => ['weeks' => []]]);
         }
@@ -161,7 +163,8 @@ class PklController extends Controller
         abort_if(! $teacher, 403);
 
         $senin = $this->normalizeMonday($data['minggu']);
-        $placements = $this->myPlacements($teacher->id)->load(['student.user', 'schoolClass']);
+        $placements = $this->myPlacements($teacher->id)->load(['student.user', 'schoolClass'])
+            ->filter(fn ($p) => $p->tanggal_mulai && $p->tanggal_selesai)->values();
         abort_if($placements->isEmpty(), 403, 'Anda belum menjadi pembimbing PKL.');
 
         $active = $this->placementsActiveInWeek($placements, $senin);
@@ -357,7 +360,7 @@ class PklController extends Controller
                     new StringCell((string) $r['nis'], $center),
                     new StringCell((string) $r['nisn'], $center),
                     new StringCell((string) ($r['telpon'] ?? '—'), $center),
-                    new StringCell($r['tempat_pkl'], $text),
+                    new StringCell($r['belum_diplot'] ? 'Belum ada tempat' : (string) $r['tempat_pkl'], $text),
                     new StringCell((string) $r['alamat_pkl'], $text),
                     new StringCell((string) $r['mulai'], $center),
                     new StringCell((string) $r['selesai'], $center),
@@ -642,6 +645,7 @@ class PklController extends Controller
             'nisn' => $p->student->nisn,
             'telpon' => $p->telpon_siswa,
             'wa' => $this->waNumber($p->telpon_siswa),
+            'belum_diplot' => blank($p->tempat_pkl),
             'tempat_pkl' => $p->tempat_pkl,
             'alamat_pkl' => $p->alamat_pkl ?? '—',
             'mulai' => $p->tanggal_mulai?->toDateString(),

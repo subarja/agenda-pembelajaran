@@ -2114,11 +2114,11 @@
             },
             "tanggal_mulai": {
                 "type": "date",
-                "nullable": false
+                "nullable": true
             },
             "tanggal_selesai": {
                 "type": "date",
-                "nullable": false
+                "nullable": true
             },
             "telpon_siswa": {
                 "type": "varchar(20)",
@@ -2126,7 +2126,7 @@
             },
             "tempat_pkl": {
                 "type": "varchar(255)",
-                "nullable": false
+                "nullable": true
             },
             "updated_at": {
                 "type": "timestamp",

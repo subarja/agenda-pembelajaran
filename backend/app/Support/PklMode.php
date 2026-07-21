@@ -3,8 +3,8 @@
 namespace App\Support;
 
 use App\Enums\Tingkat;
-use App\Models\AcademicYear;
 use App\Models\AgendaFillSetting;
+use App\Models\PklAgenda;
 use App\Models\PklPlacement;
 use App\Models\PklSetting;
 use App\Models\Schedule;
@@ -42,7 +42,7 @@ class PklMode
     /** Tahun ajaran yang aktif secara global — dipakai konsisten dgn ClassAccess. */
     public static function activeAcademicYearId(): ?int
     {
-        return \App\Support\TahunAjaran::id();
+        return TahunAjaran::id();
     }
 
     /** Apakah kelas ini kelas XII (yang terdampak Mode PKL)? */
@@ -116,6 +116,9 @@ class PklMode
 
         self::$placementRanges ??= PklPlacement::query()
             ->when(self::activeAcademicYearId(), fn ($q, $ay) => $q->where('academic_year_id', $ay))
+            // Placeholder "belum diplot" (tanggal NULL) tidak membebaskan apa pun — siswa
+            // yang belum dapat tempat masih di sekolah, jadi agenda regulernya tetap ditagih.
+            ->whereNotNull('tanggal_mulai')
             ->selectRaw('class_id, MIN(tanggal_mulai) as mulai, MAX(tanggal_selesai) as selesai')
             ->groupBy('class_id')
             ->get()
@@ -155,7 +158,7 @@ class PklMode
      * belum semua kelasnya terisi. Sebelum Jumat tidak muncul; lewat deadline tetap
      * muncul sebagai "lewat batas".
      */
-    public static function tagihanPembimbing(User $user, \App\Models\AgendaFillSetting $setting): array
+    public static function tagihanPembimbing(User $user, AgendaFillSetting $setting): array
     {
         $teacher = $user->teacher;
         if (! $teacher) {
@@ -165,18 +168,19 @@ class PklMode
         $ayId = self::activeAcademicYearId();
         $placements = PklPlacement::where('pembimbing_teacher_id', $teacher->id)
             ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
+            ->whereNotNull('tanggal_mulai') // placeholder belum diplot: tak ada tagihan agenda PKL
             ->with('schoolClass')
             ->get();
         if ($placements->isEmpty()) {
             return [];
         }
 
-        $ay         = \App\Support\TahunAjaran::current();
-        $semMulai   = $ay?->tanggal_mulai->toDateString();
+        $ay = TahunAjaran::current();
+        $semMulai = $ay?->tanggal_mulai->toDateString();
         $semSelesai = $ay?->tanggal_selesai->toDateString();
 
         // class_id → set minggu (string) yang sudah terisi agendanya.
-        $filledByClass = \App\Models\PklAgenda::where('pembimbing_teacher_id', $teacher->id)
+        $filledByClass = PklAgenda::where('pembimbing_teacher_id', $teacher->id)
             ->get(['class_id', 'minggu_mulai'])
             ->groupBy('class_id')
             ->map(fn ($g) => $g->map(fn ($a) => substr((string) $a->minggu_mulai, 0, 10))->flip());
@@ -185,12 +189,12 @@ class PklMode
         // ini) sebagai backlog — minggu berjalan & mendatang tidak lagi ditagih karena
         // PKL sudah dihentikan. Saklar ON: minggu berjalan (Jumat tercapai) ikut ditagih.
         $modeAktif = self::isActive();
-        $today     = Carbon::now(config('app.school_timezone'))->toDateString();
+        $today = Carbon::now(config('app.school_timezone'))->toDateString();
 
-        $now   = Carbon::now(config('app.school_timezone'));
+        $now = Carbon::now(config('app.school_timezone'));
         $senin = Carbon::parse($placements->min('tanggal_mulai'))->startOfWeek(Carbon::MONDAY);
         $akhir = Carbon::parse($placements->max('tanggal_selesai'));
-        $rows  = [];
+        $rows = [];
 
         for (; $senin->lte($akhir); $senin->addWeek()) {
             $jumat = $senin->copy()->addDays(4);
@@ -206,8 +210,7 @@ class PklMode
             }
 
             // Kelas aktif minggu ini (placement beririsan Sen–Jum).
-            $active = $placements->filter(fn ($p) =>
-                $p->tanggal_mulai && $p->tanggal_selesai
+            $active = $placements->filter(fn ($p) => $p->tanggal_mulai && $p->tanggal_selesai
                 && $p->tanggal_mulai->lte($jumat) && $p->tanggal_selesai->gte($senin)
             );
             if ($active->isEmpty()) {
@@ -215,27 +218,27 @@ class PklMode
             }
 
             $byClass = $active->groupBy('class_id');
-            $terisi  = $byClass->keys()->every(fn ($cid) => ($filledByClass[$cid] ?? collect())->has($key));
+            $terisi = $byClass->keys()->every(fn ($cid) => ($filledByClass[$cid] ?? collect())->has($key));
             if ($terisi) {
                 continue;                                       // semua kelas sudah terisi
             }
 
-            $labels   = $byClass->map(fn ($g) => $g->first()->schoolClass?->label())->filter()->sort()->values();
+            $labels = $byClass->map(fn ($g) => $g->first()->schoolClass?->label())->filter()->sort()->values();
             $deadline = self::fillDeadline($senin->copy());
             $rows[] = [
-                'jenis'        => 'pkl',
-                'schedule_id'  => "pkl|{$key}",                 // kunci unik FE (bukan uuid jadwal)
-                'tanggal'      => $key,
-                'hari'         => 'Jumat',
-                'jam_mulai'    => '',
-                'jam_selesai'  => '',
-                'class_id'     => null,
-                'kelas'        => $labels->implode(', ')." ({$active->count()} siswa)",
-                'mapel'        => 'Agenda PKL Mingguan',
-                'minggu'       => $key,
-                'deadline'     => $deadline->format('Y-m-d H:i'),
-                'bisa_diisi'   => $now->lte($deadline),
-                'jam_tersisa'  => $now->lte($deadline) ? $now->diffInHours($deadline) : null,
+                'jenis' => 'pkl',
+                'schedule_id' => "pkl|{$key}",                 // kunci unik FE (bukan uuid jadwal)
+                'tanggal' => $key,
+                'hari' => 'Jumat',
+                'jam_mulai' => '',
+                'jam_selesai' => '',
+                'class_id' => null,
+                'kelas' => $labels->implode(', ')." ({$active->count()} siswa)",
+                'mapel' => 'Agenda PKL Mingguan',
+                'minggu' => $key,
+                'deadline' => $deadline->format('Y-m-d H:i'),
+                'bisa_diisi' => $now->lte($deadline),
+                'jam_tersisa' => $now->lte($deadline) ? $now->diffInHours($deadline) : null,
             ];
         }
 

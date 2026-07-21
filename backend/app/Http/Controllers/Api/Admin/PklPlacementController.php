@@ -8,6 +8,7 @@ use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Support\PklMode;
+use App\Support\TahunAjaran;
 use App\Traits\BuildsXlsxReports;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,18 +43,20 @@ class PklPlacementController extends Controller
         $notes = [
             'nama siswa (referensi saja)', 'NIS siswa — kunci pencocokan cadangan bila NISN kosong',
             'NISN siswa — kunci pencocokan utama', 'contoh: XII RPL A (harus kelas XII)',
-            'nomor HP siswa (opsional) — tampil ke pembimbing dgn tombol WhatsApp', 'nama tempat/DU-DI',
-            'alamat tempat PKL', 'YYYY-MM-DD', 'YYYY-MM-DD', 'nama lengkap guru pembimbing (harus persis)',
+            'nomor HP siswa (opsional) — tampil ke pembimbing dgn tombol WhatsApp',
+            'nama tempat/DU-DI — KOSONGKAN jika siswa belum dapat tempat (tetap dipetakan ke pembimbing)',
+            'alamat tempat PKL', 'YYYY-MM-DD (kosongkan jika belum diplot)', 'YYYY-MM-DD (kosongkan jika belum diplot)',
+            'nama lengkap guru pembimbing (WAJIB — harus persis)',
         ];
 
         $tempFile = tempnam(sys_get_temp_dir(), 'pkl_tpl_');
-        $writer   = new XlsxWriter();
+        $writer = new XlsxWriter;
         $writer->openToFile($tempFile);
         $writer->getOptions()->setColumnWidthForRange(24, 1, count(self::HEADERS));
 
         $writer->addRow(Row::fromValuesWithStyle(self::HEADERS, $this->xlsxHeaderStyle()));
         $writer->addRow(Row::fromValuesWithStyle($example, $this->xlsxCellStyle()));
-        $writer->addRow(Row::fromValuesWithStyle($notes, (new Style())->withFontItalic(true)->withFontColor('6B7280')));
+        $writer->addRow(Row::fromValuesWithStyle($notes, (new Style)->withFontItalic(true)->withFontColor('6B7280')));
         $writer->close();
 
         return response()->download($tempFile, 'template_pkl.xlsx', [
@@ -64,7 +67,7 @@ class PklPlacementController extends Controller
     public function import(Request $request): JsonResponse
     {
         $request->validate([
-            'file'      => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
+            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
             'decisions' => ['nullable', 'string'],
         ]);
 
@@ -75,43 +78,72 @@ class PklPlacementController extends Controller
         // admin atas perusahaan MIRIP yang ditahan pada unggahan sebelumnya.
         $decisions = json_decode($request->input('decisions', '{}'), true) ?: [];
 
-        $rows           = $this->readXlsx($request->file('file')->getRealPath());
-        $success        = 0;
-        $errors         = [];
+        $rows = $this->readXlsx($request->file('file')->getRealPath());
+        $success = 0;
+        $errors = [];
         $pendingMatches = [];
 
         foreach ($rows as $i => $row) {
-            $rowNum  = $i + 2;
-            $nis     = trim((string) ($row[1] ?? ''));
-            $nisn    = trim((string) ($row[2] ?? ''));
-            $kelas   = trim((string) ($row[3] ?? ''));
-            $telpon  = PklPlacement::normalizeTelpon($row[4] ?? null);
-            $tempat  = trim((string) ($row[5] ?? ''));
-            $alamat  = trim((string) ($row[6] ?? '')) ?: null;
-            $mulai   = $this->parseDate($row[7] ?? null);
+            $rowNum = $i + 2;
+            $nis = trim((string) ($row[1] ?? ''));
+            $nisn = trim((string) ($row[2] ?? ''));
+            $kelas = trim((string) ($row[3] ?? ''));
+            $telpon = PklPlacement::normalizeTelpon($row[4] ?? null);
+            $tempat = trim((string) ($row[5] ?? ''));
+            $alamat = trim((string) ($row[6] ?? '')) ?: null;
+            $mulai = $this->parseDate($row[7] ?? null);
             $selesai = $this->parseDate($row[8] ?? null);
-            $guru    = trim((string) ($row[9] ?? ''));
+            $guru = trim((string) ($row[9] ?? ''));
 
-            if ($nisn === '' && $nis === '' && $tempat === '') continue;
+            if ($nisn === '' && $nis === '' && $tempat === '' && $guru === '') {
+                continue;
+            }
 
-            if ($nisn === '' && $nis === '') { $errors[] = "Baris $rowNum: NISN atau NIS wajib diisi."; continue; }
-            if ($tempat === '') { $errors[] = "Baris $rowNum: Tempat PKL wajib diisi."; continue; }
-            if (! $mulai || ! $selesai) { $errors[] = "Baris $rowNum: Tanggal awal/akhir PKL tidak valid (YYYY-MM-DD)."; continue; }
-            if ($selesai->lt($mulai)) { $errors[] = "Baris $rowNum: Akhir PKL mendahului Awal PKL."; continue; }
+            if ($nisn === '' && $nis === '') {
+                $errors[] = "Baris $rowNum: NISN atau NIS wajib diisi.";
+
+                continue;
+            }
+
+            // Tempat KOSONG diperbolehkan = siswa BELUM diplot; ia tetap dipetakan ke
+            // pembimbing (kolom guru) sebagai placeholder, tempat & tanggal menyusul.
+            // Bila tempat DIISI, tanggal wajib valid seperti biasa.
+            $adaTempat = $tempat !== '';
+            if ($adaTempat) {
+                if (! $mulai || ! $selesai) {
+                    $errors[] = "Baris $rowNum: Tanggal awal/akhir PKL tidak valid (YYYY-MM-DD).";
+
+                    continue;
+                }
+                if ($selesai->lt($mulai)) {
+                    $errors[] = "Baris $rowNum: Akhir PKL mendahului Awal PKL.";
+
+                    continue;
+                }
+            }
 
             // NISN kunci utama; NIS kunci cadangan bila NISN kosong/tidak ketemu.
             $student = $nisn !== '' ? Student::where('nisn', $nisn)->first() : null;
             $student ??= $nis !== '' ? Student::where('nis', $nis)->first() : null;
             if (! $student) {
                 $errors[] = "Baris $rowNum: Siswa dengan NISN '$nisn'".($nis !== '' ? " / NIS '$nis'" : '').' tidak ditemukan.';
+
                 continue;
             }
 
             [$class, $classErr] = $this->resolvePklClass($kelas);
-            if (! $class) { $errors[] = "Baris $rowNum: $classErr"; continue; }
+            if (! $class) {
+                $errors[] = "Baris $rowNum: $classErr";
+
+                continue;
+            }
 
             [$teacher, $teacherErr] = $this->resolveTeacher($guru);
-            if (! $teacher) { $errors[] = "Baris $rowNum: $teacherErr"; continue; }
+            if (! $teacher) {
+                $errors[] = "Baris $rowNum: $teacherErr";
+
+                continue;
+            }
 
             // Satu siswa boleh beberapa tempat PKL. Baris menimpa penempatan lama bila
             // perusahaannya SAMA; perusahaan MIRIP ditahan dulu (tanya admin: timpa
@@ -120,42 +152,81 @@ class PklPlacementController extends Controller
                 ->where('academic_year_id', $ayId)
                 ->get();
 
-            $target = $existing->first(fn ($p) => $this->companyKey($p->tempat_pkl) === $this->companyKey($tempat));
+            // ── Belum diplot: petakan siswa → pembimbing (placeholder) ──────────
+            if (! $adaTempat) {
+                // Sudah punya tempat nyata → sudah diplot, baris kosong diabaikan (bukan error).
+                if ($existing->first(fn ($p) => filled($p->tempat_pkl))) {
+                    continue;
+                }
+                $ph = $existing->first(fn ($p) => blank($p->tempat_pkl));
+                if ($ph) {
+                    $ph->update([
+                        'class_id' => $class->id,
+                        'pembimbing_teacher_id' => $teacher->id,
+                        'telpon_siswa' => $telpon ?? $ph->telpon_siswa,
+                    ]);
+                } else {
+                    PklPlacement::create([
+                        'student_id' => $student->id,
+                        'academic_year_id' => $ayId,
+                        'class_id' => $class->id,
+                        'pembimbing_teacher_id' => $teacher->id,
+                        'telpon_siswa' => $telpon,
+                        'tempat_pkl' => null,
+                        'tanggal_mulai' => null,
+                        'tanggal_selesai' => null,
+                    ]);
+                }
+                $success++;
+
+                continue;
+            }
+
+            $target = $existing->first(fn ($p) => filled($p->tempat_pkl)
+                && $this->companyKey($p->tempat_pkl) === $this->companyKey($tempat));
 
             if (! $target) {
-                $mirip = $existing->first(fn ($p) => $this->companySimilar($p->tempat_pkl, $tempat));
+                $mirip = $existing->first(fn ($p) => filled($p->tempat_pkl) && $this->companySimilar($p->tempat_pkl, $tempat));
                 if ($mirip) {
-                    $key      = "pkl:{$student->uuid}:".$this->companyKey($tempat);
+                    $key = "pkl:{$student->uuid}:".$this->companyKey($tempat);
                     $decision = $decisions[$key] ?? null;
                     if ($decision === 'timpa') {
                         $target = $mirip;
                     } elseif ($decision !== 'baru') {
                         $pendingMatches[] = [
-                            'key'          => $key,
-                            'siswa'        => $student->user?->nama,
-                            'kelas'        => $kelas,
-                            'tempat_baru'  => $tempat,
-                            'tempat_lama'  => $mirip->tempat_pkl,
+                            'key' => $key,
+                            'siswa' => $student->user?->nama,
+                            'kelas' => $kelas,
+                            'tempat_baru' => $tempat,
+                            'tempat_lama' => $mirip->tempat_pkl,
                         ];
+
                         continue; // ditahan sampai admin memutuskan, baris lain jalan terus
                     }
                 }
             }
 
+            // Belum ada penempatan cocok → ISI placeholder "belum diplot" (bila ada) jadi
+            // penempatan nyata — bukan membuat baris baru — supaya tak menyisakan placeholder.
+            if (! $target) {
+                $target = $existing->first(fn ($p) => blank($p->tempat_pkl));
+            }
+
             if (PklPlacement::overlapExists($student->id, $ayId, $mulai->toDateString(), $selesai->toDateString(), $target?->id)) {
                 $errors[] = "Baris $rowNum: periode {$mulai->toDateString()} – {$selesai->toDateString()} bertumpuk dengan tempat PKL lain milik siswa ini (waktu bersamaan = ada kesalahan data).";
+
                 continue;
             }
 
             $attrs = [
-                'class_id'              => $class->id,
+                'class_id' => $class->id,
                 'pembimbing_teacher_id' => $teacher->id,
-                'tempat_pkl'            => $tempat,
+                'tempat_pkl' => $tempat,
                 // Melengkapi: kolom kosong di file tidak menghapus data yang sudah ada.
-                'alamat_pkl'            => $alamat ?? $target?->alamat_pkl,
-                'telpon_siswa'          => $telpon ?? $target?->telpon_siswa,
-                'tanggal_mulai'         => $mulai->toDateString(),
-                'tanggal_selesai'       => $selesai->toDateString(),
+                'alamat_pkl' => $alamat ?? $target?->alamat_pkl,
+                'telpon_siswa' => $telpon ?? $target?->telpon_siswa,
+                'tanggal_mulai' => $mulai->toDateString(),
+                'tanggal_selesai' => $selesai->toDateString(),
             ];
 
             if ($target) {
@@ -167,9 +238,9 @@ class PklPlacementController extends Controller
         }
 
         return response()->json([
-            'success_count'   => $success,
-            'error_count'     => count($errors),
-            'errors'          => $errors,
+            'success_count' => $success,
+            'error_count' => count($errors),
+            'errors' => $errors,
             'pending_matches' => $pendingMatches,
         ]);
     }
@@ -181,14 +252,14 @@ class PklPlacementController extends Controller
         abort_if(! $ayId, 422, 'Belum ada tahun ajaran aktif.');
 
         $data = $request->validate([
-            'nisn'            => ['nullable', 'string', 'max:20'],
-            'nis'             => ['nullable', 'string', 'max:20'],
-            'tempat_pkl'      => ['required', 'string', 'max:200'],
-            'alamat_pkl'      => ['nullable', 'string', 'max:300'],
-            'telpon'          => ['nullable', 'string', 'max:25'],
-            'tanggal_mulai'   => ['required', 'date'],
+            'nisn' => ['nullable', 'string', 'max:20'],
+            'nis' => ['nullable', 'string', 'max:20'],
+            'tempat_pkl' => ['required', 'string', 'max:200'],
+            'alamat_pkl' => ['nullable', 'string', 'max:300'],
+            'telpon' => ['nullable', 'string', 'max:25'],
+            'tanggal_mulai' => ['required', 'date'],
             'tanggal_selesai' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
-            'pembimbing'      => ['required', 'string', 'max:150'],
+            'pembimbing' => ['required', 'string', 'max:150'],
         ]);
 
         $student = ($data['nisn'] ?? '') !== '' ? Student::where('nisn', $data['nisn'])->first() : null;
@@ -206,15 +277,15 @@ class PklPlacementController extends Controller
         );
 
         $p = PklPlacement::create([
-            'student_id'            => $student->id,
-            'class_id'              => $student->class_id,
-            'academic_year_id'      => $ayId,
+            'student_id' => $student->id,
+            'class_id' => $student->class_id,
+            'academic_year_id' => $ayId,
             'pembimbing_teacher_id' => $teacher->id,
-            'tempat_pkl'            => $data['tempat_pkl'],
-            'alamat_pkl'            => $data['alamat_pkl'] ?? null,
-            'telpon_siswa'          => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
-            'tanggal_mulai'         => $data['tanggal_mulai'],
-            'tanggal_selesai'       => $data['tanggal_selesai'],
+            'tempat_pkl' => $data['tempat_pkl'],
+            'alamat_pkl' => $data['alamat_pkl'] ?? null,
+            'telpon_siswa' => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
+            'tanggal_mulai' => $data['tanggal_mulai'],
+            'tanggal_selesai' => $data['tanggal_selesai'],
         ]);
 
         return response()->json(['message' => 'Penempatan PKL ditambahkan.', 'id' => $p->uuid], 201);
@@ -226,12 +297,12 @@ class PklPlacementController extends Controller
         $p = PklPlacement::where('uuid', $uuid)->firstOrFail();
 
         $data = $request->validate([
-            'tempat_pkl'      => ['required', 'string', 'max:200'],
-            'alamat_pkl'      => ['nullable', 'string', 'max:300'],
-            'telpon'          => ['nullable', 'string', 'max:25'],
-            'tanggal_mulai'   => ['required', 'date'],
+            'tempat_pkl' => ['required', 'string', 'max:200'],
+            'alamat_pkl' => ['nullable', 'string', 'max:300'],
+            'telpon' => ['nullable', 'string', 'max:25'],
+            'tanggal_mulai' => ['required', 'date'],
             'tanggal_selesai' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
-            'pembimbing'      => ['nullable', 'string', 'max:150'],
+            'pembimbing' => ['nullable', 'string', 'max:150'],
         ]);
 
         abort_if(
@@ -241,10 +312,10 @@ class PklPlacementController extends Controller
         );
 
         $attrs = [
-            'tempat_pkl'      => $data['tempat_pkl'],
-            'alamat_pkl'      => $data['alamat_pkl'] ?? null,
-            'telpon_siswa'    => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
-            'tanggal_mulai'   => $data['tanggal_mulai'],
+            'tempat_pkl' => $data['tempat_pkl'],
+            'alamat_pkl' => $data['alamat_pkl'] ?? null,
+            'telpon_siswa' => PklPlacement::normalizeTelpon($data['telpon'] ?? null),
+            'tanggal_mulai' => $data['tanggal_mulai'],
             'tanggal_selesai' => $data['tanggal_selesai'],
         ];
 
@@ -274,7 +345,7 @@ class PklPlacementController extends Controller
             ->values();
 
         $tempFile = tempnam(sys_get_temp_dir(), 'pkl_export_');
-        $writer   = new XlsxWriter();
+        $writer = new XlsxWriter;
         $writer->openToFile($tempFile);
         $writer->getOptions()->setColumnWidthForRange(24, 1, count(self::HEADERS));
 
@@ -307,24 +378,23 @@ class PklPlacementController extends Controller
 
         $items = PklPlacement::when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
             ->with(['student.user', 'schoolClass', 'pembimbing.user'])
-            ->when($request->filled('class_id'), fn ($q) =>
-                $q->whereHas('schoolClass', fn ($c) => $c->where('uuid', $request->class_id)))
+            ->when($request->filled('class_id'), fn ($q) => $q->whereHas('schoolClass', fn ($c) => $c->where('uuid', $request->class_id)))
             ->get()
             ->sortBy(fn ($p) => [$p->schoolClass?->rombel, $p->student?->user?->nama])
             ->values()
             ->map(fn ($p) => [
-                'id'         => $p->uuid,
-                'nama'       => $p->student?->user?->nama,
-                'nis'        => $p->student?->nis,
-                'nisn'       => $p->student?->nisn,
-                'telpon'     => $p->telpon_siswa,
-                'class_id'   => $p->schoolClass?->uuid,
-                'kelas'      => $p->schoolClass
+                'id' => $p->uuid,
+                'nama' => $p->student?->user?->nama,
+                'nis' => $p->student?->nis,
+                'nisn' => $p->student?->nisn,
+                'telpon' => $p->telpon_siswa,
+                'class_id' => $p->schoolClass?->uuid,
+                'kelas' => $p->schoolClass
                     ? $p->schoolClass->label() : null,
                 'tempat_pkl' => $p->tempat_pkl,
                 'alamat_pkl' => $p->alamat_pkl,
-                'mulai'      => $p->tanggal_mulai?->toDateString(),
-                'selesai'    => $p->tanggal_selesai?->toDateString(),
+                'mulai' => $p->tanggal_mulai?->toDateString(),
+                'selesai' => $p->tanggal_selesai?->toDateString(),
                 'pembimbing' => $p->pembimbing?->user?->nama,
             ]);
 
@@ -350,7 +420,7 @@ class PklPlacementController extends Controller
             return [null, "Format kelas '$label' tidak valid. Contoh: XII RPL A"];
         }
         $tingkat = strtoupper(array_shift($parts));
-        $rombel  = array_pop($parts);
+        $rombel = array_pop($parts);
         $jurusan = implode(' ', $parts);
 
         if ($tingkat !== 'XII') {
@@ -358,7 +428,7 @@ class PklPlacementController extends Controller
         }
 
         // Terima kode program keahlian ("RPL") maupun nama jurusan lengkap (format lama).
-        $class = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())
+        $class = SchoolClass::where('academic_year_id', TahunAjaran::id())
             ->where('tingkat', $tingkat)->where('rombel', $rombel)
             ->get()
             ->first(fn ($c) => mb_strtolower($c->jurusan) === mb_strtolower($jurusan)
@@ -429,22 +499,29 @@ class PklPlacementController extends Controller
 
     private function readXlsx(string $path): array
     {
-        $reader = new XlsxReader();
+        $reader = new XlsxReader;
         $reader->open($path);
         $rows = [];
 
         foreach ($reader->getSheetIterator() as $sheet) {
             $firstRow = true;
             foreach ($sheet->getRowIterator() as $row) {
-                if ($firstRow) { $firstRow = false; continue; }
+                if ($firstRow) {
+                    $firstRow = false;
+
+                    continue;
+                }
                 $values = $row->toArray();
-                if (empty(array_filter($values, fn ($v) => $v !== '' && $v !== null))) continue;
+                if (empty(array_filter($values, fn ($v) => $v !== '' && $v !== null))) {
+                    continue;
+                }
                 $rows[] = $values;
             }
             break; // sheet pertama saja
         }
 
         $reader->close();
+
         return $rows;
     }
 }

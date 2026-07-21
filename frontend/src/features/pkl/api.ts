@@ -18,7 +18,8 @@ export interface PklStudentRow {
   nisn: string | null
   telpon: string | null
   wa: string | null
-  tempat_pkl: string
+  belum_diplot: boolean
+  tempat_pkl: string | null
   alamat_pkl: string
   mulai: string | null
   selesai: string | null

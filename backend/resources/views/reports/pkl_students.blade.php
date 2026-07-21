@@ -44,16 +44,16 @@
       <td class="text-center">{{ $r['nis'] }}</td>
       <td class="text-center">{{ $r['nisn'] }}</td>
       <td class="text-center" style="white-space:nowrap">{{ $r['telpon'] ?? '—' }}</td>
-      <td>{{ $r['tempat_pkl'] }}</td>
-      <td>{{ $r['alamat_pkl'] }}</td>
+      <td>{{ $r['belum_diplot'] ? 'Belum ada tempat' : $r['tempat_pkl'] }}</td>
+      <td>{{ $r['belum_diplot'] ? '' : $r['alamat_pkl'] }}</td>
       <td class="text-center" style="white-space:nowrap">{{ $r['mulai'] }}</td>
       <td class="text-center" style="white-space:nowrap">{{ $r['selesai'] }}</td>
-      <td class="text-center">{{ $r['hadir'] }}</td>
-      <td class="text-center">{{ $r['sakit'] }}</td>
-      <td class="text-center">{{ $r['izin'] }}</td>
-      <td class="text-center">{{ $r['alpha'] }}</td>
-      <td class="text-center">{{ $r['hari_kerja'] }}</td>
-      <td class="text-center">{{ $r['pct_hadir'] }}%</td>
+      <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['hadir'] }}</td>
+      <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['sakit'] }}</td>
+      <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['izin'] }}</td>
+      <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['alpha'] }}</td>
+      <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['hari_kerja'] }}</td>
+      <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['pct_hadir'].'%' }}</td>
     </tr>
     @empty
     <tr>
