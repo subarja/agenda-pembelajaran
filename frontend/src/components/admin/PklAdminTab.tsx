@@ -1,8 +1,10 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, Trash2, Upload, Download, Pencil, X, Check, AlertCircle, Search } from 'lucide-react'
+import { Loader2, Plus, Trash2, Upload, Download, Pencil, X, Check, AlertCircle, Search, Flag } from 'lucide-react'
 import { useDebounce } from '@/hooks/useDebounce'
 import { pklAdminApi, type PklAdminObjective, type PklImportResult, type PklPlacementRow } from '@/features/pkl/api'
+import PklStatusBadge from '@/components/pkl/PklStatusBadge'
+import PklStatusDialog, { type PklStatusTarget } from '@/components/pkl/PklStatusDialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
@@ -224,6 +226,7 @@ function PlacementsSection() {
   const [decisions, setDecisions] = useState<Record<string, 'timpa' | 'baru'>>({})
   const [editRow, setEditRow] = useState<PklPlacementRow | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [statusRow, setStatusRow] = useState<PklPlacementRow | null>(null)
 
   async function doImport(file: File, dec?: Record<string, 'timpa' | 'baru'>) {
     setUploading(true); setResult(null)
@@ -255,6 +258,11 @@ function PlacementsSection() {
   const del = useMutation({
     mutationFn: (id: string) => pklAdminApi.deletePlacement(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pkl-placements'] }),
+  })
+
+  const toTarget = (r: PklPlacementRow): PklStatusTarget => ({
+    id: r.id, nama: r.nama, mulai: r.mulai, selesai: r.selesai,
+    status: r.status, berakhir_aktual: r.berakhir_aktual, alasan_berakhir: r.alasan_berakhir,
   })
 
   return (
@@ -335,6 +343,19 @@ function PlacementsSection() {
         onSaved={() => { setAddOpen(false); setEditRow(null); qc.invalidateQueries({ queryKey: ['pkl-placements'] }) }}
       />
 
+      {/* Dialog ubah status (selesai / mundur / pindah / buka kembali) */}
+      <PklStatusDialog
+        open={statusRow !== null}
+        target={statusRow ? toTarget(statusRow) : null}
+        isAdmin
+        onClose={() => setStatusRow(null)}
+        onSubmit={async (payload) => {
+          if (!statusRow) return
+          await pklAdminApi.changeStatus(statusRow.id, payload)
+          qc.invalidateQueries({ queryKey: ['pkl-placements'] })
+        }}
+      />
+
       {/* Rekap absen per kelas */}
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <span className="text-sm text-muted-foreground">Rekap absen:</span>
@@ -389,16 +410,23 @@ function PlacementsSection() {
         {filtered.map((r) => (
           <div key={r.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
             <div className="flex-1 min-w-0">
-              <p className="font-medium truncate">{r.nama} <span className="text-xs text-muted-foreground">({r.kelas})</span></p>
+              <p className="font-medium truncate">
+                {r.nama} <span className="text-xs text-muted-foreground">({r.kelas})</span>
+                {r.status_efektif !== 'berlangsung' && (
+                  <PklStatusBadge status={r.status_efektif} label={r.status_label} className="ml-1.5 align-middle" />
+                )}
+              </p>
               <p className="text-xs text-muted-foreground truncate">
                 NIS {r.nis ?? '—'} · NISN {r.nisn ?? '—'} · <strong>{r.tempat_pkl}</strong>
                 {r.alamat_pkl ? ` — ${r.alamat_pkl}` : ''}
               </p>
               <p className="text-xs text-muted-foreground truncate">
-                {r.mulai} → {r.selesai} · Pemb.: {r.pembimbing ?? '—'}
+                {r.mulai} → {r.berakhir_aktual && r.berakhir_aktual !== r.selesai ? `${r.berakhir_aktual} (berhenti)` : r.selesai} · Pemb.: {r.pembimbing ?? '—'}
+                {r.alasan_berakhir ? ` · ${r.alasan_berakhir}` : ''}
               </p>
               {r.telpon && <WhatsAppLink telpon={r.telpon} className="text-xs text-muted-foreground" />}
             </div>
+            <button onClick={() => setStatusRow(r)} aria-label="Ubah status PKL" className="p-2 -m-1 shrink-0 text-muted-foreground hover:text-foreground"><Flag className="h-4 w-4" /></button>
             <button onClick={() => setEditRow(r)} aria-label="Edit penempatan" className="p-2 -m-1 shrink-0 text-muted-foreground hover:text-foreground"><Pencil className="h-4 w-4" /></button>
             <button onClick={() => del.mutate(r.id)} aria-label="Hapus penempatan" className="p-2 -m-1 shrink-0 text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
           </div>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Http\Controllers\Concerns\HandlesPklPlacementLifecycle;
 use App\Http\Controllers\Controller;
 use App\Models\PklPlacement;
 use App\Models\SchoolClass;
@@ -29,6 +30,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 class PklPlacementController extends Controller
 {
     use BuildsXlsxReports;
+    use HandlesPklPlacementLifecycle;
 
     private const HEADERS = [
         'Nama', 'NIS', 'NISN', 'Kelas', 'No. HP Siswa', 'Tempat PKL', 'Alamat PKL', 'Awal PKL', 'Akhir PKL', 'Guru Pembimbing',
@@ -395,10 +397,46 @@ class PklPlacementController extends Controller
                 'alamat_pkl' => $p->alamat_pkl,
                 'mulai' => $p->tanggal_mulai?->toDateString(),
                 'selesai' => $p->tanggal_selesai?->toDateString(),
+                'status' => $p->status?->value ?? 'berlangsung',
+                'status_efektif' => $p->effectiveStatus()->value,
+                'status_label' => $p->effectiveStatus()->label(),
+                'berakhir_aktual' => $p->tanggal_berakhir_aktual?->toDateString(),
+                'alasan_berakhir' => $p->alasan_berakhir,
                 'pembimbing' => $p->pembimbing?->user?->nama,
             ]);
 
         return response()->json(['data' => $items]);
+    }
+
+    /**
+     * POST /admin/pkl/placements/{uuid}/status — tandai penempatan selesai (bisa lebih
+     * awal), mengundurkan diri, dipindahkan, atau buka kembali. Opsi keluar_sekolah
+     * (khusus admin, hanya untuk mundur) sekaligus menonaktifkan siswa.
+     */
+    public function changeStatus(Request $request, string $uuid): JsonResponse
+    {
+        $p = PklPlacement::where('uuid', $uuid)->firstOrFail();
+
+        $data = $request->validate($this->pklLifecycleRules() + [
+            'keluar_sekolah' => ['nullable', 'boolean'],
+        ]);
+
+        $this->applyPklLifecycle($p, $data);
+
+        // "Mengundurkan diri" bisa berarti sekaligus keluar dari SEKOLAH (bukan cuma PKL).
+        // Ini keputusan admin, terpisah dari penutupan penempatan.
+        if ($data['status'] === 'mengundurkan_diri' && $request->boolean('keluar_sekolah')) {
+            $student = $p->student;
+            if ($student && $student->status !== 'keluar') {
+                $student->update([
+                    'status' => 'keluar',
+                    'tanggal_keluar' => $data['tanggal_berakhir_aktual']
+                        ?? Carbon::now(config('app.school_timezone'))->toDateString(),
+                ]);
+            }
+        }
+
+        return response()->json(['message' => 'Status penempatan PKL diperbarui.']);
     }
 
     public function destroy(string $uuid): JsonResponse

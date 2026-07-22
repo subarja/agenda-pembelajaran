@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\AttendanceStatus;
+use App\Http\Controllers\Concerns\HandlesPklPlacementLifecycle;
 use App\Http\Controllers\Controller;
 use App\Models\NonEffectiveDay;
 use App\Models\PklAgenda;
@@ -37,6 +38,7 @@ class PklController extends Controller
 {
     use BuildsXlsxReports;
     use HandlesPdfPreview;
+    use HandlesPklPlacementLifecycle;
 
     // ── Ringkasan & daftar siswa bimbingan ────────────────────────────────────
 
@@ -343,11 +345,11 @@ class PklController extends Controller
         }
 
         return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kelasLabel) {
-            $this->xlsxSetColumnWidths($w, [1 => 4, 2 => 26, 3 => 14, 4 => 14, 5 => 16, 6 => 26, 7 => 32, 8 => 12, 9 => 12, 10 => 6, 11 => 6, 12 => 6, 13 => 6, 14 => 9, 15 => 9]);
+            $this->xlsxSetColumnWidths($w, [1 => 4, 2 => 26, 3 => 14, 4 => 14, 5 => 16, 6 => 26, 7 => 32, 8 => 12, 9 => 12, 10 => 18, 11 => 6, 12 => 6, 13 => 6, 14 => 6, 15 => 9, 16 => 9]);
             $w->addRow(Row::fromValuesWithStyle(["Data & Rekap Kehadiran PKL — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                ['No', 'Nama', 'Kelas', 'NIS', 'NISN', 'No. WA', 'Industri', 'Alamat Industri', 'Awal PKL', 'Akhir PKL', 'H', 'S', 'I', 'A', 'Hari Kerja', '% Hadir'],
+                ['No', 'Nama', 'Kelas', 'NIS', 'NISN', 'No. WA', 'Industri', 'Alamat Industri', 'Awal PKL', 'Akhir PKL', 'Status', 'H', 'S', 'I', 'A', 'Hari Kerja', '% Hadir'],
                 $this->xlsxHeaderStyle()
             ));
             $center = $this->xlsxCellCenterStyle();
@@ -363,7 +365,8 @@ class PklController extends Controller
                     new StringCell($r['belum_diplot'] ? 'Belum ada tempat' : (string) $r['tempat_pkl'], $text),
                     new StringCell((string) $r['alamat_pkl'], $text),
                     new StringCell((string) $r['mulai'], $center),
-                    new StringCell((string) $r['selesai'], $center),
+                    new StringCell($this->pklAkhirLabel($r), $center),
+                    new StringCell($r['belum_diplot'] ? '—' : (string) $r['status_label'], $center),
                     new NumericCell($r['hadir'], $center),
                     new NumericCell($r['sakit'], $center),
                     new NumericCell($r['izin'], $center),
@@ -514,6 +517,25 @@ class PklController extends Controller
         return response()->json(['message' => 'Tempat PKL ditambahkan.', 'id' => $p->uuid], 201);
     }
 
+    /**
+     * POST /pkl/placements/{uuid}/status — pembimbing menandai penempatan siswa
+     * bimbingannya selesai (bisa lebih awal), mengundurkan diri, atau dipindahkan.
+     * Penonaktifan siswa dari sekolah TIDAK di sini (itu wewenang admin/wali).
+     */
+    public function changePlacementStatus(Request $request, string $uuid): JsonResponse
+    {
+        $teacher = $request->user()->teacher;
+        abort_if(! $teacher, 403);
+
+        $p = PklPlacement::where('uuid', $uuid)->firstOrFail();
+        abort_unless($p->pembimbing_teacher_id === $teacher->id, 403, 'Bukan siswa bimbingan Anda.');
+
+        $data = $request->validate($this->pklLifecycleRules());
+        $this->applyPklLifecycle($p, $data);
+
+        return response()->json(['message' => 'Status penempatan PKL diperbarui.']);
+    }
+
     // ── Helper internal ────────────────────────────────────────────────────────
 
     private function myPlacements(int $teacherId): Collection
@@ -577,8 +599,10 @@ class PklController extends Controller
     {
         $jumat = $senin->copy()->addDays(4);
 
+        // Batas kanan = tanggal EFEKTIF berakhir: siswa yang sudah mundur/pindah/selesai
+        // lebih awal tidak lagi ditagih agenda/absen pada minggu setelah tanggal berhentinya.
         return $placements->filter(fn ($p) => $p->tanggal_mulai && $p->tanggal_selesai
-            && $p->tanggal_mulai->lte($jumat) && $p->tanggal_selesai->gte($senin)
+            && $p->tanggal_mulai->lte($jumat) && $p->tanggalEfektifBerakhir()->gte($senin)
         )->values();
     }
 
@@ -650,6 +674,13 @@ class PklController extends Controller
             'alamat_pkl' => $p->alamat_pkl ?? '—',
             'mulai' => $p->tanggal_mulai?->toDateString(),
             'selesai' => $p->tanggal_selesai?->toDateString(),
+            // Siklus hidup penempatan (mundur/pindah/selesai). status_efektif sudah
+            // memperhitungkan "selesai otomatis" saat tanggal terlewati.
+            'status' => $p->status?->value ?? 'berlangsung',
+            'status_efektif' => $p->effectiveStatus()->value,
+            'status_label' => $p->effectiveStatus()->label(),
+            'berakhir_aktual' => $p->tanggal_berakhir_aktual?->toDateString(),
+            'alasan_berakhir' => $p->alasan_berakhir,
             // Kelas per baris — daftar bimbingan kini lintas kelas (filter di FE).
             'class_id' => $p->schoolClass?->uuid,
             'kelas' => $p->schoolClass?->label(),
@@ -679,7 +710,10 @@ class PklController extends Controller
 
         return $placements->map(function (PklPlacement $p) use ($attByStudent, $libur) {
             $mulai = $p->tanggal_mulai?->toDateString();
-            $selesai = $p->tanggal_selesai?->toDateString();
+            // Batas kanan rekap = tanggal efektif berakhir: absen setelah siswa
+            // mundur/pindah/selesai-awal tidak ikut dihitung, tapi riwayat sebelum
+            // tanggal itu tetap ada.
+            $selesai = $p->tanggalEfektifBerakhir()?->toDateString();
 
             $counts = ['hadir' => 0, 'sakit' => 0, 'izin' => 0, 'alpha' => 0];
             if ($mulai && $selesai) {
@@ -750,6 +784,16 @@ class PklController extends Controller
         }
 
         return $count;
+    }
+
+    /** Label "Akhir PKL" untuk export: tanggal berhenti NYATA bila berakhir lebih awal. */
+    private function pklAkhirLabel(array $r): string
+    {
+        if (! empty($r['berakhir_aktual']) && $r['berakhir_aktual'] !== ($r['selesai'] ?? null)) {
+            return $r['berakhir_aktual'].' (berhenti)';
+        }
+
+        return (string) ($r['selesai'] ?? '');
     }
 
     /** Normalkan nomor telepon ke format wa.me (62...). Null bila kosong. */

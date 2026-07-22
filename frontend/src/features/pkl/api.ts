@@ -10,7 +10,19 @@ export interface PklClass {
   sebagai?: 'pembimbing' | 'pengajar'
 }
 
-export interface PklStudentRow {
+// Siklus hidup penempatan PKL. 'berlangsung' bisa berarti "selesai otomatis" bila
+// tanggal sudah lewat — pakai status_efektif untuk tampilan.
+export type PklPlacementStatus = 'berlangsung' | 'selesai' | 'mengundurkan_diri' | 'dipindahkan'
+
+export interface PklLifecycleFields {
+  status: PklPlacementStatus
+  status_efektif: PklPlacementStatus
+  status_label: string
+  berakhir_aktual: string | null
+  alasan_berakhir: string | null
+}
+
+export interface PklStudentRow extends PklLifecycleFields {
   placement_id: string
   id: string
   nama: string
@@ -84,7 +96,7 @@ export interface PklAdminObjective {
   aktif: boolean
 }
 
-export interface PklPlacementRow {
+export interface PklPlacementRow extends PklLifecycleFields {
   id: string
   nama: string | null
   nis: string | null
@@ -97,6 +109,12 @@ export interface PklPlacementRow {
   mulai: string | null
   selesai: string | null
   pembimbing: string | null
+}
+
+export interface PklStatusPayload {
+  status: PklPlacementStatus
+  tanggal_berakhir_aktual?: string | null
+  alasan_berakhir?: string | null
 }
 
 export interface PklPendingMatch {
@@ -179,6 +197,9 @@ export const pklApi = {
     api.put(`/pkl/placements/${placementId}`, d),
   createPlacement: (d: PklPlacementPayload & { student_id: string }) =>
     api.post('/pkl/placements', d),
+  // Tandai selesai (lebih awal) / mengundurkan diri / dipindahkan / buka kembali.
+  changeStatus: (placementId: string, d: PklStatusPayload) =>
+    api.post(`/pkl/placements/${placementId}/status`, d),
 
   downloadRekap: (classId: string, filename: string) =>
     downloadBlob(`/pkl/rekap-absen/export?class_id=${classId}&format=excel`, filename),
@@ -211,6 +232,10 @@ export const pklAdminApi = {
     api.post('/admin/pkl/placements', d),
   updatePlacement: (id: string, d: PklPlacementPayload & { pembimbing?: string | null }) =>
     api.put(`/admin/pkl/placements/${id}`, d),
+  // Tandai selesai/mundur/pindah/buka kembali. keluar_sekolah (khusus mundur)
+  // sekaligus menonaktifkan siswa dari sekolah.
+  changeStatus: (id: string, d: PklStatusPayload & { keluar_sekolah?: boolean }) =>
+    api.post(`/admin/pkl/placements/${id}/status`, d),
   exportPlacements: () => downloadBlob('/admin/pkl/placements/export', 'peserta_pkl.xlsx'),
   downloadTemplate: () => downloadBlob('/admin/pkl/placements/template', 'template_pkl.xlsx'),
   downloadRekap: (classId: string, filename: string) =>

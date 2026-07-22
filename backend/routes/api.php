@@ -185,6 +185,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::get('pkl/rekap-absen/export', [PklController::class, 'exportRekapAbsen']);
     Route::post('pkl/placements', [PklController::class, 'storePlacement']);
     Route::put('pkl/placements/{uuid}', [PklController::class, 'updatePlacement']);
+    Route::post('pkl/placements/{uuid}/status', [PklController::class, 'changePlacementStatus']);
 
     // ── Kokurikuler (fasilitator = wali kelas; siswa: refleksi + dokumen tim) ──
     Route::get('kokurikuler/overview', [KokurikulerController::class, 'overview']);
@@ -387,6 +388,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::get('pkl/placements', [PklPlacementController::class, 'index']);
         Route::post('pkl/placements', [PklPlacementController::class, 'store']);
         Route::put('pkl/placements/{uuid}', [PklPlacementController::class, 'update']);
+        Route::post('pkl/placements/{uuid}/status', [PklPlacementController::class, 'changeStatus']);
         Route::delete('pkl/placements/{uuid}', [PklPlacementController::class, 'destroy']);
 
         // ── Kokurikuler (projek, kelas+fasilitator, dimensi, rekap) ───────────────

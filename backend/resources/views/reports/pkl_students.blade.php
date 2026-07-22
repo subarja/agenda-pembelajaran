@@ -27,6 +27,7 @@
       <th>Alamat Industri</th>
       <th style="width:58px">Awal</th>
       <th style="width:58px">Akhir</th>
+      <th style="width:72px">Status</th>
       <th style="width:18px">H</th>
       <th style="width:18px">S</th>
       <th style="width:18px">I</th>
@@ -47,7 +48,8 @@
       <td>{{ $r['belum_diplot'] ? 'Belum ada tempat' : $r['tempat_pkl'] }}</td>
       <td>{{ $r['belum_diplot'] ? '' : $r['alamat_pkl'] }}</td>
       <td class="text-center" style="white-space:nowrap">{{ $r['mulai'] }}</td>
-      <td class="text-center" style="white-space:nowrap">{{ $r['selesai'] }}</td>
+      <td class="text-center" style="white-space:nowrap">{{ !empty($r['berakhir_aktual']) && $r['berakhir_aktual'] !== $r['selesai'] ? $r['berakhir_aktual'] : $r['selesai'] }}</td>
+      <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['status_label'] }}</td>
       <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['hadir'] }}</td>
       <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['sakit'] }}</td>
       <td class="text-center">{{ $r['belum_diplot'] ? '—' : $r['izin'] }}</td>
@@ -57,7 +59,7 @@
     </tr>
     @empty
     <tr>
-      <td colspan="16" class="text-center" style="color:#94a3b8; padding:16px">Belum ada siswa bimbingan PKL.</td>
+      <td colspan="17" class="text-center" style="color:#94a3b8; padding:16px">Belum ada siswa bimbingan PKL.</td>
     </tr>
     @endforelse
   </tbody>

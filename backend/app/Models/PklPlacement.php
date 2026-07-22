@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Enums\PklPlacementStatus;
 use App\Traits\HasAuditTrail;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * Penempatan PKL satu siswa (tempat magang + rentang + guru pembimbing).
@@ -18,15 +20,47 @@ class PklPlacement extends Model
     protected $fillable = [
         'student_id', 'class_id', 'academic_year_id', 'pembimbing_teacher_id',
         'tempat_pkl', 'alamat_pkl', 'telpon_siswa', 'tanggal_mulai', 'tanggal_selesai',
+        'status', 'tanggal_berakhir_aktual', 'alasan_berakhir',
         'created_by', 'updated_by',
     ];
 
     protected function casts(): array
     {
         return [
-            'tanggal_mulai'   => 'date',
+            'tanggal_mulai' => 'date',
             'tanggal_selesai' => 'date',
+            'tanggal_berakhir_aktual' => 'date',
+            'status' => PklPlacementStatus::class,
         ];
+    }
+
+    /**
+     * Tanggal efektif berakhirnya PKL = tanggal berhenti nyata bila ada
+     * (mundur/pindah/selesai lebih awal), jika tidak pakai tanggal_selesai rencana.
+     * Inilah batas kanan untuk semua tagihan (agenda/absen) & rekap.
+     */
+    public function tanggalEfektifBerakhir(): ?Carbon
+    {
+        return $this->tanggal_berakhir_aktual ?? $this->tanggal_selesai;
+    }
+
+    /**
+     * Status yang DITAMPILKAN. Bila ditutup manual → status itu. Bila masih
+     * "berlangsung" tapi tanggal efektif sudah lewat → otomatis dianggap "selesai"
+     * (keputusan user: selesai sesuai tanggal = otomatis, tanpa perlu klik).
+     */
+    public function effectiveStatus(?string $today = null): PklPlacementStatus
+    {
+        if ($this->status && $this->status->isClosed()) {
+            return $this->status;
+        }
+        $today ??= Carbon::now(config('app.school_timezone'))->toDateString();
+        $akhir = $this->tanggalEfektifBerakhir()?->toDateString();
+        if ($akhir && $today > $akhir) {
+            return PklPlacementStatus::Selesai;
+        }
+
+        return PklPlacementStatus::Berlangsung;
     }
 
     public function student(): BelongsTo
@@ -84,7 +118,11 @@ class PklPlacement extends Model
             ->where('academic_year_id', $ayId)
             ->when($exceptId, fn ($q) => $q->where('id', '!=', $exceptId))
             ->whereDate('tanggal_mulai', '<=', $selesai)
-            ->whereDate('tanggal_selesai', '>=', $mulai)
+            // Batas kanan pakai tanggal EFEKTIF berakhir: penempatan yang sudah
+            // ditutup lebih awal (pindah/mundur) tidak boleh memblokir penempatan
+            // baru yang mulai setelah tanggal berhentinya, walau tanggal_selesai
+            // rencananya masih jauh ke depan.
+            ->whereRaw('COALESCE(tanggal_berakhir_aktual, tanggal_selesai) >= ?', [$mulai])
             ->exists();
     }
 }

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Briefcase, Download, FileText, CheckCircle2, Circle, Loader2, ChevronRight, ChevronDown, Pencil, Plus, X, Users } from 'lucide-react'
+import { Briefcase, Download, FileText, CheckCircle2, Circle, Loader2, ChevronRight, ChevronDown, Pencil, Plus, X, Users, Flag } from 'lucide-react'
 import { pklApi, type PklStudentRow, type PklWeek } from '@/features/pkl/api'
 import { usePdfPreview } from '@/hooks/usePdfPreview'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { WhatsAppLink } from '@/components/ui/whatsapp-link'
+import PklStatusBadge from '@/components/pkl/PklStatusBadge'
+import PklStatusDialog from '@/components/pkl/PklStatusDialog'
 
 export default function PklPage() {
   const navigate = useNavigate()
@@ -79,6 +81,7 @@ export default function PklPage() {
   } | null>(null)
   const [placeErr, setPlaceErr] = useState('')
   const [placeSaving, setPlaceSaving] = useState(false)
+  const [statusRow, setStatusRow] = useState<PklStudentRow | null>(null)
 
   function openEdit(s: PklStudentRow) {
     setPlaceErr('')
@@ -227,7 +230,12 @@ export default function PklPage() {
                 <div key={s.placement_id} className="rounded-lg border bg-card px-4 py-2.5 text-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-medium">{s.nama} {s.kelas && <span className="text-xs font-normal text-muted-foreground">· {s.kelas}</span>}</p>
+                      <p className="font-medium">
+                        {s.nama} {s.kelas && <span className="text-xs font-normal text-muted-foreground">· {s.kelas}</span>}
+                        {!s.belum_diplot && s.status_efektif !== 'berlangsung' && (
+                          <PklStatusBadge status={s.status_efektif} label={s.status_label} className="ml-1.5 align-middle" />
+                        )}
+                      </p>
                       <p className="text-xs text-muted-foreground break-words">NIS {s.nis ?? '—'} · NISN {s.nisn ?? '—'}</p>
                       {s.belum_diplot ? (
                         <p className="text-xs mt-0.5">
@@ -237,7 +245,10 @@ export default function PklPage() {
                         <>
                           <p className="text-xs text-muted-foreground break-words">{s.tempat_pkl}</p>
                           {s.alamat_pkl && s.alamat_pkl !== '—' && <p className="text-xs text-muted-foreground break-words">{s.alamat_pkl}</p>}
-                          <p className="text-xs text-muted-foreground">{s.mulai} → {s.selesai}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {s.mulai} → {s.berakhir_aktual && s.berakhir_aktual !== s.selesai ? `${s.berakhir_aktual} (berhenti)` : s.selesai}
+                          </p>
+                          {s.alasan_berakhir && <p className="text-xs text-muted-foreground italic break-words">{s.alasan_berakhir}</p>}
                         </>
                       )}
                       {s.telpon && <WhatsAppLink telpon={s.telpon} className="text-xs text-muted-foreground" />}
@@ -250,6 +261,9 @@ export default function PklPage() {
                       )}
                     </div>
                     <span className="flex items-center gap-0.5 text-muted-foreground shrink-0">
+                      {!s.belum_diplot && (
+                        <button onClick={() => setStatusRow(s)} aria-label="Ubah status PKL" title="Tandai selesai / mengundurkan diri / pindah" className="p-1.5 hover:text-foreground"><Flag className="h-3.5 w-3.5" /></button>
+                      )}
                       <button onClick={() => openEdit(s)} aria-label="Edit penempatan" className="p-1.5 hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
                       <button onClick={() => openAdd(s)} aria-label="Tambah tempat PKL" title="Tambah tempat PKL lain untuk siswa ini" className="p-1.5 hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
                     </span>
@@ -307,6 +321,21 @@ export default function PklPage() {
           </div>
         </div>
       )}
+
+      <PklStatusDialog
+        open={statusRow !== null}
+        target={statusRow ? {
+          id: statusRow.placement_id, nama: statusRow.nama, mulai: statusRow.mulai, selesai: statusRow.selesai,
+          status: statusRow.status, berakhir_aktual: statusRow.berakhir_aktual, alasan_berakhir: statusRow.alasan_berakhir,
+        } : null}
+        onClose={() => setStatusRow(null)}
+        onSubmit={async (payload) => {
+          if (!statusRow) return
+          await pklApi.changeStatus(statusRow.placement_id, payload)
+          qc.invalidateQueries({ queryKey: ['pkl-students'] })
+          qc.invalidateQueries({ queryKey: ['pkl-weeks'] })
+        }}
+      />
 
       {pdf.modal}
     </div>
