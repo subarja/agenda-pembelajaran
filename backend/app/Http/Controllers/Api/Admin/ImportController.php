@@ -669,11 +669,13 @@ class ImportController extends Controller
             }
 
             try {
+                // Status wali kelas = penugasan `wali_kelas_id` (sumber kebenaran),
+                // BUKAN role. Sengaja TIDAK menaikkan role ke 'wali_kelas': role lama
+                // itu warisan yang bikin frontend kehilangan menu (Jadwal Saya/Kalender/
+                // dst) karena cabang navigasinya tak lengkap. Kapabilitas is_wali_kelas
+                // diturunkan dari wali_kelas_id di TA aktif (UserResource), jadi role
+                // cukup tetap 'guru'.
                 $class->update(['wali_kelas_id' => $teacher->user_id]);
-                // Naikan role ke wali_kelas jika masih 'guru'
-                if ($teacher->user->role->value === 'guru') {
-                    $teacher->user->update(['role' => UserRole::WaliKelas]);
-                }
                 $success++;
             } catch (\Throwable $e) {
                 $errors[] = "Baris $rowNum: " . $e->getMessage();

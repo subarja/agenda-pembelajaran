@@ -641,7 +641,9 @@ function GuruDashboard() {
   const belumIsi       = perluDiisi.filter(s => s.bisa_diisi).length
   const lewatBatas      = perluDiisi.filter(s => !s.bisa_diisi).length
 
-  const greet = user?.role === 'wali_kelas' ? 'Pantau kelas Anda' : 'Selamat mengajar hari ini'
+  // Wali kelas dikenali dari KAPABILITAS (penugasan nyata), bukan role literal —
+  // guru wali kelas kini ber-role 'guru'. Lihat nav-config.
+  const greet = user?.kapabilitas?.is_wali_kelas ? 'Pantau kelas Anda' : 'Selamat mengajar hari ini'
 
   return (
     <div className="space-y-5">

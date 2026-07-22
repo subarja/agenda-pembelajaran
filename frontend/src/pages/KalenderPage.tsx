@@ -56,7 +56,9 @@ export default function KalenderPage() {
   const qc      = useQueryClient()
   const user    = useAuthStore(s => s.user)
   const isAdmin = user?.role === 'admin' || user?.role === 'wakasek'
-  const isGuru  = user?.role === 'guru'
+  // Semua akun berbasis guru (termasuk role LAMA wali_kelas/bk) memakai overlay
+  // "Hari Mengajar" — status guru bukan ditentukan role literal (lihat nav-config).
+  const isGuru  = user?.role === 'guru' || user?.role === 'wali_kelas' || user?.role === 'bk'
 
   const today = new Date()
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))

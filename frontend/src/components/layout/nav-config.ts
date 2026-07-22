@@ -53,9 +53,15 @@ export function getNavForUser(user: UserType): NavItem[] {
 
   const items: NavItem[] = [allNav.dashboard]
 
-  if (role === 'guru') {
-    // Riwayat Dokumen Penanganan SENGAJA tidak di sini — hanya untuk guru yang
-    // wali kelas dan/atau BK (lihat cabang kapabilitas). Guru biasa tidak dapat.
+  // Guru dan role LAMA 'wali_kelas'/'bk' ditangani SAMA: ketiganya akun berbasis
+  // guru. Status wali kelas / BK ditentukan KAPABILITAS (penugasan nyata di TA
+  // aktif — kap.is_wali_kelas/is_bk), BUKAN role. Dulu role lama punya cabang
+  // terpisah yang tak lengkap → guru wali kelas kehilangan Jadwal Saya, Kalender,
+  // Minggu Efektif, PKL, Kokurikuler. Akar: ImportController menaikkan role guru
+  // wali kelas ke 'wali_kelas'; backend sendiri sudah murni berbasis kapabilitas.
+  if (role === 'guru' || role === 'wali_kelas' || role === 'bk') {
+    // Menu dasar guru (Riwayat Dokumen Penanganan SENGAJA tidak di sini — hanya
+    // untuk yang wali kelas dan/atau BK, lihat cabang kapabilitas di bawah).
     items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan, allNav.kalender, allNav.hariEfektif, allNav.jadwalSaya, allNav.bebanMengajar)
 
     // Menu PKL hanya saat Mode PKL aktif DAN guru ini benar-benar seorang pembimbing.
@@ -93,21 +99,6 @@ export function getNavForUser(user: UserType): NavItem[] {
         allNav.catatanBK, allNav.riwayatDokumen,
       )
     }
-  } else if (role === 'wali_kelas') {
-    // Legacy role — backward compat
-    items.push(allNav.agenda, allNav.tp, allNav.presensi, allNav.karakter, allNav.nilaiTambah, allNav.inval, allNav.laporan, allNav.bebanMengajar)
-    if (user.kokurikuler?.is_fasilitator) items.push(allNav.kokurikuler)
-    items.push(
-      withSection(allNav.presensiHarian, 'Menu Wali Kelas'),
-      allNav.ews, allNav.siswa, allNav.refleksi, allNav.riwayatDokumen,
-    )
-  } else if (role === 'bk') {
-    // Legacy role — backward compat (sama alasan seperti di atas, BK tidak dapat siswa)
-    items.push(allNav.laporan)
-    items.push(
-      withSection(allNav.ewsBk, 'Menu BK'),
-      allNav.catatanBK, allNav.riwayatDokumen,
-    )
   } else if (role === 'admin' || role === 'wakasek') {
     items.push(allNav.ews, allNav.ewsGuru, allNav.laporan, allNav.rekapPerkembangan, allNav.kalender, allNav.hariEfektif, allNav.riwayatDokumen, allNav.admin)
   } else if (role === 'siswa') {

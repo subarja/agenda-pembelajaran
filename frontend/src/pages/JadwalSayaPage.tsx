@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, FileX, Loader2 } from 'lucide-react'
+import { Download, FileX, Loader2, ExternalLink } from 'lucide-react'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
 
@@ -54,12 +54,19 @@ export default function JadwalSayaPage() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-bold">Jadwal Saya</h2>
         {blobUrl && (
-          <Button size="sm" onClick={download}>
-            <Download className="h-4 w-4 mr-1.5" /> Unduh PDF
-          </Button>
+          <div className="flex gap-2">
+            {/* Banyak HP (Chrome Android) tidak bisa merender PDF di dalam iframe —
+                tombol ini membukanya di tab baru lewat viewer PDF bawaan browser. */}
+            <Button size="sm" variant="outline" onClick={() => window.open(blobUrl, '_blank', 'noopener')}>
+              <ExternalLink className="h-4 w-4 mr-1.5" /> Buka di Tab Baru
+            </Button>
+            <Button size="sm" onClick={download}>
+              <Download className="h-4 w-4 mr-1.5" /> Unduh PDF
+            </Button>
+          </div>
         )}
       </div>
 
@@ -78,9 +85,15 @@ export default function JadwalSayaPage() {
       )}
 
       {!loading && !error && blobUrl && (
-        <div className="rounded-xl border overflow-hidden shadow-sm">
-          <iframe src={blobUrl} title="Jadwal Saya" className="w-full h-[80vh] border-0" />
-        </div>
+        <>
+          <div className="rounded-xl border overflow-hidden shadow-sm bg-muted/30">
+            <iframe src={blobUrl} title="Jadwal Saya" className="w-full h-[80vh] border-0" />
+          </div>
+          <p className="text-xs text-muted-foreground text-center">
+            Pratinjau tidak muncul di HP? Sebagian browser (Android) tak bisa menampilkan PDF di
+            halaman — gunakan <strong>Buka di Tab Baru</strong> atau <strong>Unduh PDF</strong> di atas.
+          </p>
+        </>
       )}
     </div>
   )
