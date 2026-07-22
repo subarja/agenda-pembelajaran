@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
-  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles, Clock, Siren,
+  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles, Clock, Siren, DoorOpen, ScanLine,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -39,6 +39,8 @@ const allNav: Record<string, NavItem> = {
   inval:         { label: 'Guru Inval',      path: '/inval',           icon: UserPlus },
   pkl:           { label: 'PKL',             path: '/pkl',             icon: Briefcase },
   piket:         { label: 'Piket',           path: '/piket',           icon: Siren },
+  izinKeluar:    { label: 'Izin Keluar',     path: '/izin-keluar',     icon: DoorOpen },
+  sekuritiScan:  { label: 'Pindai QR',       path: '/sekuriti/scan',   icon: ScanLine },
   kokurikuler:   { label: 'Kokurikuler',     path: '/kokurikuler',     icon: Sparkles },
   refleksi:      { label: 'Refleksi Mingguan', path: '/refleksi-mingguan', icon: BookOpenCheck },
   riwayatDokumen: { label: 'Riwayat Dokumen Penanganan', path: '/riwayat-dokumen-penanganan', icon: FolderOpen },
@@ -103,9 +105,12 @@ export function getNavForUser(user: UserType): NavItem[] {
   } else if (role === 'admin' || role === 'wakasek') {
     items.push(allNav.ews, allNav.ewsGuru, allNav.laporan, allNav.rekapPerkembangan, allNav.kalender, allNav.hariEfektif, allNav.riwayatDokumen, allNav.admin)
   } else if (role === 'siswa') {
-    items.push(allNav.jadwalSaya)
+    items.push(allNav.jadwalSaya, allNav.izinKeluar)
     // Menu Kokurikuler hanya saat kelas siswa jadi peserta projek aktif.
     if (user.kokurikuler?.is_peserta) items.push(allNav.kokurikuler)
+  } else if (role === 'sekuriti') {
+    // Sekuriti hanya memindai QR izin keluar (+ profil di akhir).
+    items.push(allNav.sekuritiScan)
   } else if (role === 'orang_tua') {
     // minimal — hanya dashboard + profil
   }

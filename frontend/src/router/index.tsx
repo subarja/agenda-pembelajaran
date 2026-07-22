@@ -5,6 +5,8 @@ import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/LoginPage'
 import KioskBelPage from '@/pages/KioskBelPage'
 import PiketPage from '@/pages/PiketPage'
+import IzinKeluarSiswaPage from '@/pages/IzinKeluarSiswaPage'
+import SekuritiScanPage from '@/pages/SekuritiScanPage'
 import DashboardPage from '@/pages/DashboardPage'
 import ProfilePage from '@/pages/ProfilePage'
 import PlaceholderPage from '@/pages/PlaceholderPage'
@@ -69,6 +71,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// Beranda per peran: sekuriti tak punya dashboard guru/siswa → langsung ke pemindai.
+function RoleHome() {
+  const role = useAuthStore((s) => s.user?.role)
+  if (role === 'sekuriti') return <Navigate to="/sekuriti/scan" replace />
+  return <DashboardPage />
+}
+
 function GuestRoute({ children }: { children: React.ReactNode }) {
   const hasHydrated = useAuthStore((s) => s.hasHydrated)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -99,7 +108,7 @@ export default function AppRouter() {
       <Route path="/ganti-password"     element={<ProtectedRoute><GantiPasswordWajibPage /></ProtectedRoute>} />
 
       <Route element={<ProtectedRoute><RequireAcademicYear><AppLayout /></RequireAcademicYear></ProtectedRoute>}>
-        <Route index                            element={<DashboardPage />} />
+        <Route index                            element={<RoleHome />} />
 
         <Route path="agenda"                    element={<AgendaPage />} />
         <Route path="agenda/baru"               element={<AgendaFormPage />} />
@@ -142,6 +151,8 @@ export default function AppRouter() {
         <Route path="pkl/agenda"                element={<PklAgendaFormPage />} />
         <Route path="kokurikuler"               element={<KokurikulerPage />} />
         <Route path="piket"                     element={<PiketPage />} />
+        <Route path="izin-keluar"               element={<IzinKeluarSiswaPage />} />
+        <Route path="sekuriti/scan"             element={<SekuritiScanPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -39,7 +39,9 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Admin\PiketAssignmentController;
 use App\Http\Controllers\Api\BellPlayerController;
 use App\Http\Controllers\Api\BrandingController;
+use App\Http\Controllers\Api\IzinKeluarController;
 use App\Http\Controllers\Api\PiketController;
+use App\Http\Controllers\Api\SekuritiController;
 use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\CharacterManualNoteController;
 use App\Http\Controllers\Api\DailyAttendanceController;
@@ -311,6 +313,20 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
 
     // ── Piket (guru piket hari itu; guard PiketAccess di dalam controller) ─────
     Route::get('piket/ringkasan', [PiketController::class, 'ringkasan']);
+    Route::get('piket/izin-keluar', [PiketController::class, 'izinKeluar']);
+    Route::get('piket/izin-keluar/log', [PiketController::class, 'izinKeluarLog']);
+    Route::post('piket/izin-keluar/{uuid}/proses', [PiketController::class, 'prosesIzinKeluar']);
+
+    // ── Izin Keluar (siswa) ────────────────────────────────────────────────────
+    Route::post('izin-keluar', [IzinKeluarController::class, 'store']);
+    Route::get('izin-keluar/aktif', [IzinKeluarController::class, 'aktif']);
+    Route::post('izin-keluar/{uuid}/batal', [IzinKeluarController::class, 'batal']);
+
+    // ── Sekuriti (pemindai QR) ─────────────────────────────────────────────────
+    Route::middleware('role:sekuriti')->group(function () {
+        Route::post('sekuriti/scan', [SekuritiController::class, 'scan']);
+        Route::get('sekuriti/log', [SekuritiController::class, 'log']);
+    });
 
     // ── Admin (hanya admin & wakasek) ─────────────────────────────────────────
     Route::middleware('role:admin,wakasek')->prefix('admin')->group(function () {
