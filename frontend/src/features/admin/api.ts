@@ -50,7 +50,7 @@ export interface AdminSubject {
 }
 
 export interface AdminSchedule {
-  id: string; hari: string; jam_mulai: string; jam_selesai: string; aktif: boolean
+  id: string; hari: string; jam_mulai: string; jam_selesai: string; ruangan: string | null; aktif: boolean
   kelas: { id: string; label: string }
   mapel: { id: string; nama: string }
   guru:  { id: string; nama: string }

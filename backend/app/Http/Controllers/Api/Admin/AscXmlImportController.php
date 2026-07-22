@@ -8,13 +8,15 @@ use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicYear;
 use App\Models\BellPeriod;
+use App\Models\PasswordDefaultSetting;
 use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\Teacher;
-use App\Models\PasswordDefaultSetting;
+use App\Models\TeachingAssignment;
 use App\Models\User;
 use App\Support\BellSchedule;
+use App\Support\TahunAjaran;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -85,7 +87,7 @@ class AscXmlImportController extends Controller
         }
         libxml_clear_errors();
 
-        $ay = \App\Support\TahunAjaran::current();
+        $ay = TahunAjaran::current();
         if (! $ay) {
             return response()->json([
                 'message' => 'Tidak ada tahun ajaran aktif. Buat tahun ajaran terlebih dahulu di tab Tahun Ajaran.',
@@ -545,31 +547,46 @@ class AscXmlImportController extends Controller
             $xmlClassMap[(string) $c['id']] = $kelas?->id;
         }
 
+        // Peta ruangan aSc: id XML → nama (mis. "Ruang E1"). Dipakai untuk mengisi kolom
+        // `schedules.ruangan` supaya lokasi sesi tampil di "Jadwal Saya".
+        $classroomMap = [];
+        if (isset($xml->classrooms->classroom)) {
+            foreach ($xml->classrooms->classroom as $cr) {
+                $classroomMap[(string) $cr['id']] = trim((string) $cr['name']);
+            }
+        }
+
         // Kartu → hari konkret. Bitmask `days` aSc bisa multi-hari ('11100' = Sen–Rab)
         // dan bisa 6 digit (mencakup Sabtu) — dulu hanya one-hot 5 hari yang dikenali,
         // selain itu di-skip diam-diam sehingga sebagian jadwal hilang tanpa jejak.
+        // Ruangan ikut ditangkap per (lesson, hari) — ambil classroomid pertama yang terisi.
         $lessonCards = [];
+        $lessonCardRooms = [];
         foreach ($xml->cards->card as $card) {
             $lessonId = (string) $card['lessonid'];
             $period = (int) $card['period'];
+            $roomId = trim(explode(',', (string) $card['classroomids'])[0] ?? '');
             foreach ($this->daysFromMask((string) $card['days']) as $hari) {
                 $lessonCards[$lessonId][$hari][] = $period;
+                if ($roomId !== '' && empty($lessonCardRooms[$lessonId][$hari])) {
+                    $lessonCardRooms[$lessonId][$hari] = $classroomMap[$roomId] ?? null;
+                }
             }
         }
 
         $skipDetail = [
             'mapel_tak_dikenal' => 0,
             'kelas_tak_dikenal' => 0,
-            'tanpa_guru'        => 0,
-            'guru_tak_dikenal'  => 0,
-            'jam_tak_dikenal'   => 0,
+            'tanpa_guru' => 0,
+            'guru_tak_dikenal' => 0,
+            'jam_tak_dikenal' => 0,
         ];
         $dinonaktifkan = 0;
         $penugasan = 0;
 
         // Penugasan mengajar diisi ulang penuh untuk kelas-kelas yang ada di file —
         // import adalah sumber kebenaran ploting, jadi sisa penugasan lama ikut hilang.
-        \App\Models\TeachingAssignment::whereIn('class_id', array_values(array_filter($xmlClassMap)))->delete();
+        TeachingAssignment::whereIn('class_id', array_values(array_filter($xmlClassMap)))->delete();
 
         // Process each lesson
         foreach ($xml->lessons->lesson as $lesson) {
@@ -577,6 +594,10 @@ class AscXmlImportController extends Controller
             $classIds = explode(',', (string) $lesson['classids']);
             $subjectId = (string) $lesson['subjectid'];
             $teacherIds = array_filter(explode(',', (string) $lesson['teacherids']));
+
+            // Ruangan cadangan dari lesson (dipakai bila kartu tak menyebut ruangan).
+            $lessonRoomId = trim(explode(',', (string) $lesson['classroomids'])[0] ?? '');
+            $lessonRoomFallback = $lessonRoomId !== '' ? ($classroomMap[$lessonRoomId] ?? null) : null;
 
             $dbSubjectId = $xmlSubjectMap[$subjectId] ?? null;
             if (! $dbSubjectId) {
@@ -620,8 +641,8 @@ class AscXmlImportController extends Controller
                 // yang BELUM diplot ke hari/jam (tanpa kartu). Beban Mengajar guru
                 // membaca ini sebagai baris "belum diplot" agar bebannya tetap terlihat.
                 foreach ($dbTeacherIds as $dbTeacherId) {
-                    $assignment = \App\Models\TeachingAssignment::firstOrNew([
-                        'class_id'   => $dbClassId,
+                    $assignment = TeachingAssignment::firstOrNew([
+                        'class_id' => $dbClassId,
                         'subject_id' => $dbSubjectId,
                         'teacher_id' => $dbTeacherId,
                     ]);
@@ -645,6 +666,7 @@ class AscXmlImportController extends Controller
                     $jamKeSelesai = max($periodNums);
                     $jamMulai = $periods[$jamKeMulai]['start'] ?? null;
                     $jamSelesai = $periods[$jamKeSelesai]['end'] ?? null;
+                    $ruangan = $lessonCardRooms[$lessonId][$hari] ?? $lessonRoomFallback;
                     if (! $jamMulai || ! $jamSelesai) {
                         $skipped++;
                         $skipDetail['jam_tak_dikenal']++;
@@ -673,6 +695,7 @@ class AscXmlImportController extends Controller
                                 'jam_ke_mulai' => $jamKeMulai,
                                 'jam_ke_selesai' => $jamKeSelesai,
                                 'jam_selesai' => $jamSelesai,
+                                'ruangan' => $ruangan,
                                 'aktif' => true,
                                 'updated_by' => $actor->id,
                             ]);
@@ -687,6 +710,7 @@ class AscXmlImportController extends Controller
                                 'jam_ke_selesai' => $jamKeSelesai,
                                 'jam_mulai' => $jamMulai,
                                 'jam_selesai' => $jamSelesai,
+                                'ruangan' => $ruangan,
                                 'aktif' => true,
                                 'created_by' => $actor->id,
                             ]);

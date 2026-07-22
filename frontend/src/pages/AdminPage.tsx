@@ -1236,7 +1236,7 @@ function JadwalTab() {
     enabled: salinOpen,
   })
   const [selected, setSelected] = useState<AdminSchedule | null>(null)
-  const [form, setForm] = useState({ class_id: '', subject_id: '', teacher_id: '', hari: 'senin', jam_mulai: '08:00', jam_selesai: '09:30' })
+  const [form, setForm] = useState({ class_id: '', subject_id: '', teacher_id: '', hari: 'senin', jam_mulai: '08:00', jam_selesai: '09:30', ruangan: '' })
   const [filterKelas, setFilterKelas] = useState('')
   const [filterHari, setFilterHari] = useState('')
   const [err, setErr] = useState('')
@@ -1300,7 +1300,7 @@ function JadwalTab() {
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="mr-1 h-4 w-4" />Import Excel
           </Button>
-          <Button size="sm" onClick={() => { setSelected(null); setErr(''); setForm({ class_id: '', subject_id: '', teacher_id: '', hari: 'senin', jam_mulai: '08:00', jam_selesai: '09:30' }); setModal('add') }}>
+          <Button size="sm" onClick={() => { setSelected(null); setErr(''); setForm({ class_id: '', subject_id: '', teacher_id: '', hari: 'senin', jam_mulai: '08:00', jam_selesai: '09:30', ruangan: '' }); setModal('add') }}>
             <Plus className="mr-1 h-4 w-4" />Tambah Jadwal
           </Button>
         </div>
@@ -1315,6 +1315,7 @@ function JadwalTab() {
                 <Th label="#" />
                 <Th label="Hari" />
                 <Th label="Jam" />
+                <Th label="Ruangan" />
                 <Th label="Kelas" />
                 <Th label="Mapel" />
                 <Th label="Guru" />
@@ -1327,18 +1328,19 @@ function JadwalTab() {
                   <td className="w-10 px-3 py-2 text-center text-muted-foreground">{perPage === 'semua' ? i + 1 : (page - 1) * (data?.meta?.per_page ?? 25) + i + 1}</td>
                   <td className="px-3 py-2 capitalize font-medium">{s.hari}</td>
                   <td className="px-3 py-2 text-muted-foreground">{s.jam_mulai}–{s.jam_selesai}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{s.ruangan ?? '—'}</td>
                   <td className="px-3 py-2">{s.kelas.label}</td>
                   <td className="px-3 py-2">{s.mapel.nama}</td>
                   <td className="px-3 py-2">{s.guru.nama}</td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">
-                      <button onClick={() => { setSelected(s); setErr(''); setForm({ class_id: s.kelas.id, subject_id: s.mapel.id, teacher_id: s.guru.id, hari: s.hari, jam_mulai: s.jam_mulai, jam_selesai: s.jam_selesai }); setModal('edit') }} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => { setSelected(s); setErr(''); setForm({ class_id: s.kelas.id, subject_id: s.mapel.id, teacher_id: s.guru.id, hari: s.hari, jam_mulai: s.jam_mulai, jam_selesai: s.jam_selesai, ruangan: s.ruangan ?? '' }); setModal('edit') }} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5" /></button>
                       <button onClick={() => window.confirm('Hapus jadwal ini?') && del.mutate(s.id)} className="rounded p-1 hover:bg-red-100 text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1377,6 +1379,7 @@ function JadwalTab() {
             <Field label="Jam Mulai"><input className={inputCls} type="time" value={form.jam_mulai} onChange={e => setForm(f => ({ ...f, jam_mulai: e.target.value }))} /></Field>
             <Field label="Jam Selesai"><input className={inputCls} type="time" value={form.jam_selesai} onChange={e => setForm(f => ({ ...f, jam_selesai: e.target.value }))} /></Field>
           </div>
+          <Field label="Ruangan (opsional)"><input className={inputCls} type="text" placeholder="mis. Ruang E1" value={form.ruangan} onChange={e => setForm(f => ({ ...f, ruangan: e.target.value }))} /></Field>
           {err && <ErrMsg msg={err} />}
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setModal(null)}>Batal</Button>
@@ -5082,8 +5085,13 @@ function DeployToolsTab() {
     onSuccess: (data: { log: string[] }) => { onResult(data); setSeederOpen(false) },
     onError: onErr,
   })
+  const pruneMut = useMutation({
+    mutationFn: async () => (await api.post('/admin/deploy-tools/prune-jadwal-pdf')).data as { message: string },
+    onSuccess: (d) => { setLog([d.message]); setError(null); setVerifyResult(null) },
+    onError: onErr,
+  })
 
-  const anyPending = deployMut.isPending || buildDistMut.isPending || buildVendorMut.isPending || migrateMut.isPending || seedMut.isPending || verifyMut.isPending || schemaMut.isPending
+  const anyPending = deployMut.isPending || buildDistMut.isPending || buildVendorMut.isPending || migrateMut.isPending || seedMut.isPending || pruneMut.isPending || verifyMut.isPending || schemaMut.isPending
 
   const actions: Array<{
     key: string; label: string; icon: typeof RefreshCw; tone: 'green' | 'yellow' | 'blue'
@@ -5112,6 +5120,12 @@ function DeployToolsTab() {
       desc: 'Backup DB otomatis → migrate --force (aditif, tidak menghapus data).',
       confirm: 'Jalankan migrasi database?\n\nBackup otomatis dibuat dulu, lalu migrate --force (hanya menambah kolom/tabel — data lama aman).',
       mut: migrateMut,
+    },
+    {
+      key: 'prune-jadwal', label: 'Bersihkan PDF Jadwal Yatim', icon: Trash2, tone: 'yellow',
+      desc: 'Hapus berkas PDF jadwal yang tak lagi tertaut ke guru/kelas (sisa reset/re-import DB).',
+      confirm: 'Hapus berkas PDF jadwal yatim?\n\nHanya berkas yang TIDAK direferensikan guru/kelas mana pun yang dihapus. Berkas yang masih dipakai tetap aman.',
+      mut: pruneMut,
     },
   ]
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Support\DatabaseDumper;
+use App\Support\JadwalPdfMaintenance;
 use App\Support\SchemaSnapshot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -132,6 +133,29 @@ class DeployToolController extends Controller
         ]);
 
         return response()->json(['log' => $log]);
+    }
+
+    // POST /admin/deploy-tools/prune-jadwal-pdf — hapus berkas PDF jadwal yatim (tak
+    // direferensikan guru/kelas). Body opsional: { dry: bool } untuk pratinjau saja.
+    // Antisipasi menumpuknya berkas sisa reset/re-import DB tanpa perlu hapus manual di server.
+    public function pruneJadwalPdf(Request $request): JsonResponse
+    {
+        $this->ensureAdmin($request);
+
+        $dry = $request->boolean('dry');
+        $r = JadwalPdfMaintenance::pruneOrphans($dry);
+
+        return response()->json([
+            'data' => $r,
+            'message' => sprintf(
+                '%d berkas yatim %s, %d masih dipakai (~%d KB %s).',
+                $r['dihapus'],
+                $dry ? 'akan dihapus' : 'dihapus',
+                $r['dipakai'],
+                $r['freed_kb'],
+                $dry ? 'akan dibebaskan' : 'dibebaskan',
+            ),
+        ]);
     }
 
     // POST /admin/deploy-tools/deploy — backup DULU → migrate + seeder master + extract

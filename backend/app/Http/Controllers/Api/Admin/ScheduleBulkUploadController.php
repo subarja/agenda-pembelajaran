@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\SchoolClass;
 use App\Models\Teacher;
+use App\Support\TahunAjaran;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * Upload masal jadwal (file PDF resmi, mis. hasil export aSc) — admin browse banyak file
@@ -28,34 +32,39 @@ class ScheduleBulkUploadController extends Controller
         $request->validate(['files' => ['required', 'array', 'min:1']]);
 
         $berhasil = [];
-        $gagal    = [];
+        $gagal = [];
 
         foreach ($request->file('files', []) as $file) {
             $filename = $file->getClientOriginalName();
 
             if ($err = $this->validateFile($file)) {
                 $gagal[] = ['file' => $filename, 'alasan' => $err];
+
                 continue;
             }
 
             $base = pathinfo($filename, PATHINFO_FILENAME);
-            $nip  = preg_replace('/\D/', '', explode('-', $base)[0] ?? '');
+            $nip = preg_replace('/\D/', '', explode('-', $base)[0] ?? '');
 
             if ($nip === '') {
                 $gagal[] = ['file' => $filename, 'alasan' => 'Nama file harus diawali NIP (format "NIP-Nama.pdf").'];
+
                 continue;
             }
 
             $teacher = Teacher::where('nip', $nip)->with('user')->first();
             if (! $teacher) {
                 $gagal[] = ['file' => $filename, 'alasan' => "Tidak ada guru dengan NIP \"{$nip}\"."];
+
                 continue;
             }
 
+            // Nama file DETERMINISTIK berbasis NIP — jelas tautannya (mudah ditelusuri &
+            // dihapus), dan re-upload menimpa berkas yang sama alih-alih menumpuk yatim.
             if ($teacher->jadwal_pdf && Storage::disk('public')->exists($teacher->jadwal_pdf)) {
                 Storage::disk('public')->delete($teacher->jadwal_pdf);
             }
-            $path = $file->store('jadwal_guru', 'public');
+            $path = $file->storeAs('jadwal_guru', "guru-{$nip}.pdf", 'public');
             $teacher->update(['jadwal_pdf' => $path]);
 
             $berhasil[] = ['file' => $filename, 'nama' => $teacher->user->nama, 'nip' => $nip];
@@ -69,33 +78,37 @@ class ScheduleBulkUploadController extends Controller
     {
         $request->validate(['files' => ['required', 'array', 'min:1']]);
 
-        $classes = SchoolClass::where('academic_year_id', \App\Support\TahunAjaran::id())->get();
+        $classes = SchoolClass::where('academic_year_id', TahunAjaran::id())->get();
+        $tahunSlug = Str::slug((string) (AcademicYear::where('aktif', true)->value('tahun') ?? 'ta'));
 
         $berhasil = [];
-        $gagal    = [];
+        $gagal = [];
 
         foreach ($request->file('files', []) as $file) {
             $filename = $file->getClientOriginalName();
 
             if ($err = $this->validateFile($file)) {
                 $gagal[] = ['file' => $filename, 'alasan' => $err];
+
                 continue;
             }
 
-            $base  = pathinfo($filename, PATHINFO_FILENAME);
+            $base = pathinfo($filename, PATHINFO_FILENAME);
             $parts = preg_split('/[-_\s]+/', trim($base));
 
             if (count($parts) < 2) {
                 $gagal[] = ['file' => $filename, 'alasan' => 'Nama file harus format "Tingkat-KodeJurusan-Rombel.pdf" (mis. "XII-RPL-A.pdf").'];
+
                 continue;
             }
 
-            $tingkat     = mb_strtoupper($parts[0]);
-            $rombel      = mb_strtoupper(end($parts));
-            $jurusanTok  = mb_strtoupper(implode('', array_slice($parts, 1, -1)));
+            $tingkat = mb_strtoupper($parts[0]);
+            $rombel = mb_strtoupper(end($parts));
+            $jurusanTok = mb_strtoupper(implode('', array_slice($parts, 1, -1)));
 
             if (! in_array($tingkat, ['X', 'XI', 'XII'], true)) {
                 $gagal[] = ['file' => $filename, 'alasan' => "Tingkat \"{$tingkat}\" tidak dikenali (harus X/XI/XII)."];
+
                 continue;
             }
 
@@ -108,13 +121,17 @@ class ScheduleBulkUploadController extends Controller
                     ? "Tidak ada kelas {$tingkat} rombel {$rombel} di tahun ajaran aktif."
                     : "Tidak bisa menentukan jurusan \"{$jurusanTok}\" untuk kelas {$tingkat} {$rombel} — cek kolom \"Inisial Kelas\" di Program Keahlian, atau sesuaikan nama file.";
                 $gagal[] = ['file' => $filename, 'alasan' => $reason];
+
                 continue;
             }
 
+            // Nama file DETERMINISTIK: kelas-{tahun}-{tingkat}-{kode}-{rombel}.pdf — jelas
+            // tautannya & unik per tahun ajaran (kelas TA berbeda tak saling menimpa).
+            $key = Str::slug($match->tingkat->value.'-'.($match->programKeahlianKode() ?? $match->jurusan).'-'.$match->rombel);
             if ($match->jadwal_pdf && Storage::disk('public')->exists($match->jadwal_pdf)) {
                 Storage::disk('public')->delete($match->jadwal_pdf);
             }
-            $path = $file->store('jadwal_kelas', 'public');
+            $path = $file->storeAs('jadwal_kelas', "kelas-{$tahunSlug}-{$key}.pdf", 'public');
             $match->update(['jadwal_pdf' => $path]);
 
             $berhasil[] = ['file' => $filename, 'kelas' => $match->label()];
@@ -124,21 +141,29 @@ class ScheduleBulkUploadController extends Controller
     }
 
     /**
-     * @param \Illuminate\Support\Collection<int, SchoolClass> $candidates kelas dengan
-     *   tingkat+rombel yang sudah cocok — tinggal tentukan jurusan mana lewat token nama file.
+     * @param  Collection<int, SchoolClass>  $candidates  kelas dengan
+     *                                                    tingkat+rombel yang sudah cocok — tinggal tentukan jurusan mana lewat token nama file.
      */
     private function matchClass($candidates, string $jurusanTok): ?SchoolClass
     {
-        if ($candidates->isEmpty()) return null;
-        if ($candidates->count() === 1 && $jurusanTok === '') return $candidates->first();
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+        if ($candidates->count() === 1 && $jurusanTok === '') {
+            return $candidates->first();
+        }
 
         // Prioritas 1: cocok persis dengan "Inisial Kelas" (kolom kode di program_keahlians).
         $byKode = $candidates->first(fn ($c) => $c->programKeahlianKode() && mb_strtoupper($c->programKeahlianKode()) === $jurusanTok);
-        if ($byKode) return $byKode;
+        if ($byKode) {
+            return $byKode;
+        }
 
         // Prioritas 2: cocok persis dengan nama jurusan penuh (tanpa spasi).
         $byJurusan = $candidates->first(fn ($c) => mb_strtoupper(preg_replace('/\s+/', '', $c->jurusan)) === $jurusanTok);
-        if ($byJurusan) return $byJurusan;
+        if ($byJurusan) {
+            return $byJurusan;
+        }
 
         return null;
     }
@@ -166,12 +191,12 @@ class ScheduleBulkUploadController extends Controller
         return [
             'message' => "Proses upload jadwal {$label} selesai.",
             'summary' => [
-                'total'    => count($berhasil) + count($gagal),
+                'total' => count($berhasil) + count($gagal),
                 'berhasil' => count($berhasil),
-                'gagal'    => count($gagal),
+                'gagal' => count($gagal),
             ],
             'berhasil' => $berhasil,
-            'gagal'    => $gagal,
+            'gagal' => $gagal,
         ];
     }
 }

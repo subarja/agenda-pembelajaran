@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Hari;
+use App\Support\TahunAjaran;
 use App\Traits\HasAuditTrail;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,17 +18,17 @@ class Schedule extends Model
 
     protected $fillable = [
         'class_id', 'subject_id', 'teacher_id',
-        'hari', 'jam_ke_mulai', 'jam_ke_selesai', 'jam_mulai', 'jam_selesai', 'aktif',
+        'hari', 'jam_ke_mulai', 'jam_ke_selesai', 'jam_mulai', 'jam_selesai', 'ruangan', 'aktif',
         'created_by', 'updated_by',
     ];
 
     protected function casts(): array
     {
         return [
-            'hari'           => Hari::class,
-            'jam_ke_mulai'   => 'integer',
+            'hari' => Hari::class,
+            'jam_ke_mulai' => 'integer',
             'jam_ke_selesai' => 'integer',
-            'aktif'          => 'boolean',
+            'aktif' => 'boolean',
         ];
     }
 
@@ -41,7 +42,7 @@ class Schedule extends Model
      */
     public function scopeTahunAjaran(Builder $q, ?int $academicYearId = null): Builder
     {
-        $ayId = $academicYearId ?? \App\Support\TahunAjaran::id();
+        $ayId = $academicYearId ?? TahunAjaran::id();
 
         // Instalasi baru tanpa TA sama sekali: jangan menyaring apa pun (tidak ada
         // data lintas tahun yang mungkin bocor).

@@ -2084,6 +2084,10 @@
                 "type": "text",
                 "nullable": true
             },
+            "alasan_berakhir": {
+                "type": "varchar(300)",
+                "nullable": true
+            },
             "class_id": {
                 "type": "bigint unsigned",
                 "nullable": false
@@ -2108,9 +2112,17 @@
                 "type": "bigint unsigned",
                 "nullable": false
             },
+            "status": {
+                "type": "enum('berlangsung','selesai','mengundurkan_diri','dipindahkan')",
+                "nullable": false
+            },
             "student_id": {
                 "type": "bigint unsigned",
                 "nullable": false
+            },
+            "tanggal_berakhir_aktual": {
+                "type": "date",
+                "nullable": true
             },
             "tanggal_mulai": {
                 "type": "date",
@@ -2517,6 +2529,10 @@
             "jam_selesai": {
                 "type": "time",
                 "nullable": false
+            },
+            "ruangan": {
+                "type": "varchar(100)",
+                "nullable": true
             },
             "subject_id": {
                 "type": "bigint unsigned",

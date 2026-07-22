@@ -4,9 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ScheduleResource;
+use App\Models\PklPlacement;
 use App\Models\Schedule;
+use App\Models\TeachingAssignment;
 use App\Support\BellSchedule;
+use App\Support\KokurikulerMode;
 use App\Support\PklMode;
+use App\Support\TahunAjaran;
 use App\Traits\ServesStoredPdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,13 +45,13 @@ class ScheduleController extends Controller
                 $s = $group->first();
 
                 return [
-                    'kelas'       => $s->schoolClass
+                    'kelas' => $s->schoolClass
                         ? $s->schoolClass->label()
                         : '—',
                     // Nama mapel ASLI, bukan label PKL — beban mengajar adalah dokumen
                     // ploting; penugasan PKL dilaporkan terpisah di bawah.
-                    'mapel'       => $s->subject->nama ?? '—',
-                    'hari'        => $group->pluck('hari')
+                    'mapel' => $s->subject->nama ?? '—',
+                    'hari' => $group->pluck('hari')
                         ->map(fn ($h) => $h->value)
                         ->unique()
                         ->sortBy(fn ($h) => $hariOrder[$h] ?? 9)
@@ -55,7 +59,7 @@ class ScheduleController extends Controller
                         ->values()
                         ->join(', '),
                     'jumlah_sesi' => $group->count(),
-                    'jp'          => $group->sum(fn ($x) => $this->hitungJp($x)),
+                    'jp' => $group->sum(fn ($x) => $this->hitungJp($x)),
                 ];
             })
             ->sortBy([['kelas', 'asc'], ['mapel', 'asc']])
@@ -64,19 +68,19 @@ class ScheduleController extends Controller
         // Penugasan mengajar yang BELUM diplot ke hari/jam (lesson aSc tanpa kartu) —
         // beban guru tetap tampil walau jadwalnya belum ditempatkan di grid.
         $plotted = $schedules->map(fn ($s) => $s->class_id.'|'.$s->subject_id)->flip();
-        $belumDiplot = \App\Models\TeachingAssignment::where('teacher_id', $teacher->id)
-            ->whereHas('schoolClass', fn ($q) => $q->where('academic_year_id', \App\Support\TahunAjaran::id()))
+        $belumDiplot = TeachingAssignment::where('teacher_id', $teacher->id)
+            ->whereHas('schoolClass', fn ($q) => $q->where('academic_year_id', TahunAjaran::id()))
             ->with(['subject', 'schoolClass'])
             ->get()
             ->filter(fn ($a) => ! $plotted->has($a->class_id.'|'.$a->subject_id))
             ->map(fn ($a) => [
-                'kelas'       => $a->schoolClass
+                'kelas' => $a->schoolClass
                     ? $a->schoolClass->label()
                     : '—',
-                'mapel'       => $a->subject->nama ?? '—',
-                'hari'        => 'Belum diplot',
+                'mapel' => $a->subject->nama ?? '—',
+                'hari' => 'Belum diplot',
                 'jumlah_sesi' => 0,
-                'jp'          => (int) round($a->jp_per_minggu),
+                'jp' => (int) round($a->jp_per_minggu),
             ]);
 
         $rows = $rows->concat($belumDiplot)
@@ -85,26 +89,26 @@ class ScheduleController extends Controller
 
         // Penugasan PKL: dari placement (pembimbing), terlepas dari ploting jadwal.
         $ayId = PklMode::activeAcademicYearId();
-        $pkl = \App\Models\PklPlacement::where('pembimbing_teacher_id', $teacher->id)
+        $pkl = PklPlacement::where('pembimbing_teacher_id', $teacher->id)
             ->when($ayId, fn ($q) => $q->where('academic_year_id', $ayId))
             ->with('schoolClass')
             ->get()
             ->groupBy('class_id')
             ->map(fn ($group) => [
-                'kelas'        => $group->first()->schoolClass
+                'kelas' => $group->first()->schoolClass
                     ? $group->first()->schoolClass->label()
                     : '—',
                 'jumlah_siswa' => $group->count(),
-                'periode'      => Carbon::parse($group->min('tanggal_mulai'))->locale('id')->isoFormat('D MMM YYYY')
+                'periode' => Carbon::parse($group->min('tanggal_mulai'))->locale('id')->isoFormat('D MMM YYYY')
                     .' – '.Carbon::parse($group->max('tanggal_selesai'))->locale('id')->isoFormat('D MMM YYYY'),
             ])
             ->sortBy('kelas')
             ->values();
 
         return response()->json(['data' => [
-            'rows'     => $rows,
+            'rows' => $rows,
             'total_jp' => $rows->sum('jp'),
-            'pkl'      => $pkl,
+            'pkl' => $pkl,
         ]]);
     }
 
@@ -138,16 +142,18 @@ class ScheduleController extends Controller
                 return $this->jadwalBelumAda($request);
             }
             $filename = 'Jadwal - '.Str::slug($teacher->user->nama).'.pdf';
+
             return $this->storedPdfResponse($teacher->jadwal_pdf, $filename, $request);
         }
 
         if ($user->role->value === 'siswa') {
             $student = $user->student;
-            $class   = $student?->schoolClass;
+            $class = $student?->schoolClass;
             if (! $class || ! $class->jadwal_pdf) {
                 return $this->jadwalBelumAda($request);
             }
             $filename = 'Jadwal - '.Str::slug($class->label()).'.pdf';
+
             return $this->storedPdfResponse($class->jadwal_pdf, $filename, $request);
         }
 
@@ -168,9 +174,9 @@ class ScheduleController extends Controller
 
         return response()->json([
             'available' => false,
-            'base64'    => null,
-            'filename'  => null,
-            'message'   => 'Jadwal PDF belum diunggah admin.',
+            'base64' => null,
+            'filename' => null,
+            'message' => 'Jadwal PDF belum diunggah admin.',
         ]);
     }
 
@@ -204,7 +210,7 @@ class ScheduleController extends Controller
             // KBM reguler disembunyikan dari "hari ini" — konsisten dengan pembebasan
             // tagihan perlu-diisi (bukan blanket saklar: XII tanpa penempatan tetap tampil).
             ->reject(fn ($s) => PklMode::isAgendaExempt($s->class_id, $todayDate)
-                || \App\Support\KokurikulerMode::isAgendaExempt($s->class_id, $todayDate))
+                || KokurikulerMode::isAgendaExempt($s->class_id, $todayDate))
             ->values();
 
         return response()->json([
@@ -223,7 +229,7 @@ class ScheduleController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $hariOrder   = ['senin' => 0, 'selasa' => 1, 'rabu' => 2, 'kamis' => 3, 'jumat' => 4, 'sabtu' => 5, 'minggu' => 6];
+        $hariOrder = ['senin' => 0, 'selasa' => 1, 'rabu' => 2, 'kamis' => 3, 'jumat' => 4, 'sabtu' => 5, 'minggu' => 6];
         $startOfWeek = Carbon::now('Asia/Jakarta')->startOfWeek(Carbon::MONDAY);
 
         $schedules = $teacher->schedules()
@@ -235,23 +241,132 @@ class ScheduleController extends Controller
             ->values()
             ->map(function ($s) use ($startOfWeek, $hariOrder) {
                 $tanggal = $startOfWeek->copy()->addDays($hariOrder[$s->hari->value] ?? 0);
-                $jam     = BellSchedule::resolve($s, $tanggal->toDateString());
+                $jam = BellSchedule::resolve($s, $tanggal->toDateString());
 
                 return [
-                    'id'          => $s->uuid,
-                    'hari'        => $s->hari->value,
-                    'tanggal'     => $tanggal->toDateString(),
-                    'jam_mulai'   => $jam['jam_mulai'],
+                    'id' => $s->uuid,
+                    'hari' => $s->hari->value,
+                    'tanggal' => $tanggal->toDateString(),
+                    'jam_mulai' => $jam['jam_mulai'],
                     'jam_selesai' => $jam['jam_selesai'],
-                    'subject'     => ['id' => $s->subject->uuid, 'kode' => $s->subject->kode, 'nama' => PklMode::subjectLabelFor($s)],
-                    'class'       => [
-                        'id'    => $s->schoolClass->uuid,
+                    'subject' => ['id' => $s->subject->uuid, 'kode' => $s->subject->kode, 'nama' => PklMode::subjectLabelFor($s)],
+                    'class' => [
+                        'id' => $s->schoolClass->uuid,
                         'label' => $s->schoolClass->label(),
                     ],
                 ];
             });
 
         return response()->json(['data' => $schedules->values()]);
+    }
+
+    /**
+     * GET /schedules/my-week — jadwal mingguan TERSTRUKTUR (Senin–Sabtu) untuk halaman
+     * "Jadwal Saya". Dirender sebagai tabel HTML ringan di FE (bukan embed PDF) supaya
+     * tampil baik & ringan di Android maupun desktop. Melayani dua peran:
+     *   - guru  → seluruh jadwal mengajar yang diampu sendiri (kolom "Kelas")
+     *   - siswa → seluruh jadwal kelasnya (kolom "Guru")
+     * `has_pdf` menandai apakah PDF resmi aSc sudah diunggah admin, supaya FE cukup
+     * menampilkan tombol Unduh/Buka-Tab-Baru bila ada — tanpa harus fetch PDF berat dulu.
+     */
+    public function myWeek(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $hariUrut = ['senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
+
+        if ($user->role->value === 'guru') {
+            $teacher = $user->teacher;
+            if (! $teacher) {
+                return $this->jadwalMingguKosongResponse('guru', $hariUrut, false);
+            }
+            $schedules = $teacher->schedules()
+                ->tahunAjaran()
+                ->where('aktif', true)
+                ->with(['subject', 'schoolClass'])
+                ->get();
+
+            return response()->json([
+                'data' => $this->weekRowsGrouped($schedules, false, $hariUrut),
+                'hari' => $hariUrut,
+                'role' => 'guru',
+                'has_pdf' => (bool) $teacher->jadwal_pdf,
+            ]);
+        }
+
+        if ($user->role->value === 'siswa') {
+            $student = $user->student;
+            $class = $student?->schoolClass;
+            if (! $student || ! $student->class_id || ! $class) {
+                return $this->jadwalMingguKosongResponse('siswa', $hariUrut, false);
+            }
+            $schedules = Schedule::where('class_id', $student->class_id)
+                ->tahunAjaran()
+                ->where('aktif', true)
+                ->with(['subject', 'schoolClass', 'teacher.user:id,nama'])
+                ->get();
+
+            return response()->json([
+                'data' => $this->weekRowsGrouped($schedules, true, $hariUrut),
+                'hari' => $hariUrut,
+                'role' => 'siswa',
+                'has_pdf' => (bool) $class->jadwal_pdf,
+            ]);
+        }
+
+        abort(403, 'Hanya guru dan siswa yang punya jadwal pribadi.');
+    }
+
+    private function jadwalMingguKosongResponse(string $role, array $hariUrut, bool $hasPdf): JsonResponse
+    {
+        return response()->json([
+            'data' => array_fill_keys($hariUrut, []),
+            'hari' => $hariUrut,
+            'role' => $role,
+            'has_pdf' => $hasPdf,
+        ]);
+    }
+
+    /**
+     * Kelompokkan koleksi Schedule per hari (Senin–Sabtu), sudah diurutkan jam mulai.
+     * Jam efektif diselesaikan lewat BellSchedule pada tanggal konkret hari itu di minggu
+     * berjalan — supaya mode Apel/Tanpa-Apel per tanggal ikut benar (bukan pakai hari ini).
+     */
+    private function weekRowsGrouped($schedules, bool $forSiswa, array $hariUrut): array
+    {
+        $hariOrder = array_flip($hariUrut);
+        $startOfWeek = Carbon::now('Asia/Jakarta')->startOfWeek(Carbon::MONDAY);
+        $grouped = array_fill_keys($hariUrut, []);
+
+        foreach ($schedules as $s) {
+            $hari = $s->hari->value;
+            if (! array_key_exists($hari, $grouped)) {
+                continue; // lewati Minggu / hari di luar Senin–Sabtu
+            }
+            $tanggal = $startOfWeek->copy()->addDays($hariOrder[$hari]);
+            $jam = BellSchedule::resolve($s, $tanggal->toDateString());
+
+            $row = [
+                'id' => $s->uuid,
+                'jam_mulai' => $jam['jam_mulai'],
+                'jam_selesai' => $jam['jam_selesai'],
+                'jam_ke_mulai' => $s->jam_ke_mulai,
+                'jam_ke_selesai' => $s->jam_ke_selesai,
+                'ruangan' => $s->ruangan,
+                'subject' => ['nama' => PklMode::subjectLabelFor($s), 'kode' => $s->subject->kode],
+            ];
+            $row[$forSiswa ? 'guru' : 'kelas'] = $forSiswa
+                ? ($s->teacher?->user?->nama ?? '—')
+                : $s->schoolClass->label();
+
+            $grouped[$hari][] = $row;
+        }
+
+        foreach ($grouped as $hari => $rows) {
+            usort($rows, fn ($a, $b) => strcmp((string) $a['jam_mulai'], (string) $b['jam_mulai']));
+            $grouped[$hari] = $rows;
+        }
+
+        return $grouped;
     }
 
     // Jadwal hari ini untuk siswa — berdasarkan kelas yang dimiliki
@@ -267,7 +382,7 @@ class ScheduleController extends Controller
             0 => 'minggu', 1 => 'senin', 2 => 'selasa',
             3 => 'rabu',   4 => 'kamis', 5 => 'jumat', 6 => 'sabtu',
         ];
-        $today     = $hariMap[Carbon::now('Asia/Jakarta')->dayOfWeek];
+        $today = $hariMap[Carbon::now('Asia/Jakarta')->dayOfWeek];
         $todayDate = Carbon::now('Asia/Jakarta')->toDateString();
 
         $schedules = Schedule::where('class_id', $student->class_id)
@@ -283,17 +398,17 @@ class ScheduleController extends Controller
             ->orderBy('jam_mulai')
             ->get()
             ->map(fn ($s) => [
-                'id'          => $s->uuid,
-                'hari'        => $s->hari->value,
+                'id' => $s->uuid,
+                'hari' => $s->hari->value,
                 ...BellSchedule::resolve($s, $todayDate),
-                'subject'     => ['nama' => PklMode::subjectLabelFor($s), 'kode' => $s->subject->kode],
-                'guru'        => $s->teacher?->user?->nama ?? '—',
+                'subject' => ['nama' => PklMode::subjectLabelFor($s), 'kode' => $s->subject->kode],
+                'guru' => $s->teacher?->user?->nama ?? '—',
                 'agenda_hari_ini' => $s->agendas->first() ? [
-                    'id'     => $s->agendas->first()->uuid,
+                    'id' => $s->agendas->first()->uuid,
                     'status' => $s->agendas->first()->status->value,
                     'resume' => $s->agendas->first()->resume_kbm,
-                    'tp'     => $s->agendas->first()->learningObjectives
-                        ->map(fn ($lo) => $lo->kode . ' — ' . $lo->deskripsi)
+                    'tp' => $s->agendas->first()->learningObjectives
+                        ->map(fn ($lo) => $lo->kode.' — '.$lo->deskripsi)
                         ->join('; '),
                 ] : null,
             ]);

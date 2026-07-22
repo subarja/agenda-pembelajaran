@@ -6,6 +6,7 @@ use App\Enums\Semester;
 use App\Enums\UserRole;
 use App\Models\AcademicYear;
 use App\Models\Schedule;
+use App\Models\TeachingAssignment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -60,13 +61,16 @@ class AscXmlImportScheduleTest extends TestCase
   <classes>
     <class id="C1" name="XII-ANM-A"/>
   </classes>
+  <classrooms>
+    <classroom id="R1" name="Meka Lab. Animasi" short="LA"/>
+  </classrooms>
   <lessons>
-    <lesson id="L1" classids="C1" subjectid="S1" teacherids="T1,T2" periodsperweek="4"/>
+    <lesson id="L1" classids="C1" subjectid="S1" teacherids="T1,T2" classroomids="R1" periodsperweek="4"/>
     <lesson id="L2" classids="C1" subjectid="S2" teacherids="T1" periodsperweek="6"/>
   </lessons>
   <cards>
-    <card lessonid="L1" days="11000" period="1"/>
-    <card lessonid="L1" days="11000" period="2"/>
+    <card lessonid="L1" classroomids="R1" days="11000" period="1"/>
+    <card lessonid="L1" classroomids="R1" days="11000" period="2"/>
   </cards>
 </timetable>
 XML;
@@ -93,6 +97,16 @@ XML;
         $this->assertSame(0, Schedule::where('jam_ke_mulai', 1)->where('jam_ke_selesai', 2)->count() - 4);
     }
 
+    public function test_import_mengisi_ruangan_dari_classroomids(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $this->post('/api/v1/admin/import/asc-xml', ['file' => $this->xmlFile()])->assertOk();
+
+        // Semua baris jadwal L1 (2 hari × 2 guru) mendapat ruangan dari classroomids.
+        $this->assertSame(4, Schedule::where('ruangan', 'Meka Lab. Animasi')->count());
+        $this->assertSame(0, Schedule::whereNull('ruangan')->count());
+    }
+
     public function test_reimport_file_sama_idempotent(): void
     {
         Sanctum::actingAs($this->admin);
@@ -105,8 +119,8 @@ XML;
         $this->assertSame(4, Schedule::count());
 
         // Penugasan diisi ulang penuh setiap import — tidak menggandakan JP.
-        $this->assertSame(3, \App\Models\TeachingAssignment::count());
-        $this->assertEquals(6.0, \App\Models\TeachingAssignment::whereHas('subject', fn ($q) => $q->where('nama', 'Pilihan Animasi 12'))->value('jp_per_minggu'));
+        $this->assertSame(3, TeachingAssignment::count());
+        $this->assertEquals(6.0, TeachingAssignment::whereHas('subject', fn ($q) => $q->where('nama', 'Pilihan Animasi 12'))->value('jp_per_minggu'));
     }
 
     public function test_lesson_tanpa_kartu_tetap_terekam_dan_tampil_di_beban_mengajar(): void
@@ -116,7 +130,7 @@ XML;
 
         // Lesson L2 (Pilihan Animasi 12, 6 JP) tidak punya kartu → tidak jadi baris
         // schedules, tapi penugasannya terekam: 2 guru L1 + 1 guru L2 = 3 baris.
-        $this->assertSame(3, \App\Models\TeachingAssignment::count());
+        $this->assertSame(3, TeachingAssignment::count());
         $this->assertSame(4, Schedule::count());
 
         // Beban Mengajar guru T1 menampilkan ploting L1 DAN penugasan belum-diplot L2.

@@ -101,6 +101,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     // ── Jadwal ────────────────────────────────────────────────────────────────
     Route::get('schedules/today', [ScheduleController::class, 'today']);
     Route::get('schedules/this-week', [ScheduleController::class, 'thisWeek']);
+    Route::get('schedules/my-week', [ScheduleController::class, 'myWeek']);
     Route::get('schedules/today-student', [ScheduleController::class, 'todayStudent']);
     Route::get('schedules/my-pdf', [ScheduleController::class, 'myPdf']);
     Route::get('beban-mengajar', [ScheduleController::class, 'bebanMengajar']);
@@ -454,6 +455,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
             Route::post('deploy-tools/build-vendor', [DeployToolController::class, 'buildVendor']);
             Route::post('deploy-tools/build-dist', [DeployToolController::class, 'buildDist']);
             Route::post('deploy-tools/seed', [DeployToolController::class, 'seed']);
+            Route::post('deploy-tools/prune-jadwal-pdf', [DeployToolController::class, 'pruneJadwalPdf']);
             Route::post('deploy-tools/deploy', [DeployToolController::class, 'deploy']);
         });
 
