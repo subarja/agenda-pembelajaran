@@ -53,6 +53,7 @@ export default function PiketAdminTab() {
 
       <TambahSection onSaved={refresh} />
       <ImportSection onSaved={refresh} />
+      <TierSection />
 
       <Card><CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -144,6 +145,61 @@ function TambahSection({ onSaved }: { onSaved: () => void }) {
           ))}
         </div>
       )}
+      {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+    </CardContent></Card>
+  )
+}
+
+// ── Tier poin keterlambatan (kesiangan) ──────────────────────────────────────
+interface Tier { menit_min: number; menit_max: number | null; poin: number }
+
+function TierSection() {
+  const qc = useQueryClient()
+  const [rows, setRows] = useState<Tier[]>([])
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const { data } = useQuery<{ data: Tier[] }>({
+    queryKey: ['admin-kesiangan-tiers'],
+    queryFn: () => api.get('/admin/kesiangan-tiers').then(r => r.data),
+  })
+  useEffect(() => { if (data?.data) setRows(data.data.map(t => ({ ...t }))) }, [data])
+
+  const save = useMutation({
+    mutationFn: () => api.put('/admin/kesiangan-tiers', { tiers: rows }).then(r => r.data),
+    onSuccess: (d) => { setMsg(d.message); qc.invalidateQueries({ queryKey: ['admin-kesiangan-tiers'] }) },
+    onError: (e: any) => setMsg(e.response?.data?.message ?? 'Gagal menyimpan.'),
+  })
+
+  const set = (i: number, k: keyof Tier, v: string) =>
+    setRows(rs => rs.map((r, idx) => idx === i ? { ...r, [k]: v === '' ? (k === 'menit_max' ? null : 0) : Number(v) } : r))
+
+  return (
+    <Card><CardContent className="p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-sm">Tier Poin Keterlambatan</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Poin negatif otomatis per rentang menit keterlambatan (kesiangan). Kosongkan "s.d." pada baris terakhir = tak terbatas.
+        </p>
+      </div>
+      <div className="space-y-2">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-2 flex-wrap text-sm">
+            <input type="number" min={0} className={inputCls + ' w-20'} value={r.menit_min} onChange={e => set(i, 'menit_min', e.target.value)} />
+            <span className="text-xs text-muted-foreground">s.d.</span>
+            <input type="number" min={0} className={inputCls + ' w-20'} value={r.menit_max ?? ''} placeholder="∞" onChange={e => set(i, 'menit_max', e.target.value)} />
+            <span className="text-xs text-muted-foreground">menit →</span>
+            <input type="number" max={0} className={inputCls + ' w-20'} value={r.poin} onChange={e => set(i, 'poin', e.target.value)} />
+            <span className="text-xs text-muted-foreground">poin</span>
+            <Button size="icon" variant="ghost" onClick={() => setRows(rs => rs.filter((_, idx) => idx !== i))}><span className="text-red-500">✕</span></Button>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <Button size="sm" variant="outline" onClick={() => setRows([...rows, { menit_min: 0, menit_max: null, poin: 0 }])}><Plus className="h-4 w-4 mr-1" /> Tambah Tier</Button>
+        <Button size="sm" onClick={() => { setMsg(null); save.mutate() }} disabled={save.isPending}>
+          {save.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Simpan Tier
+        </Button>
+      </div>
       {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
     </CardContent></Card>
   )

@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Agenda;
+use App\Models\IzinKesiangan;
 use App\Models\Student;
 use App\Models\StudentAttendance;
 use App\Models\TeacherAttendance;
 use App\Services\AlphaAlertService;
+use App\Support\SemesterLock;
+use App\Support\SessionTeacher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use App\Support\SessionTeacher;
 
 class PresensiController extends Controller
 {
@@ -28,29 +30,41 @@ class PresensiController extends Controller
         $students = $agenda->schedule->schoolClass->students;
         $existing = $agenda->studentAttendances->keyBy('student_id');
 
-        $records = $students->map(fn ($student) => [
-            'student_id'        => $student->uuid,
-            'nama'              => $student->user->nama,
-            'nis'               => $student->nis,
-            'status'            => $existing->has($student->id)
-                                    ? $existing[$student->id]->status->value
-                                    : 'hadir',
-            'durasi_terlambat'  => $existing[$student->id]?->durasi_terlambat ?? 0,
-            'catatan'           => $existing[$student->id]?->catatan ?? null,
-            'sudah_diisi'       => $existing->has($student->id),
-        ]);
+        // Siswa yang kesiangan hari itu: default TIDAK hadir sampai guru menyatakan hadir
+        // (lalu otomatis "hadir terlambat X menit"). Belum diisi = default alpha, bukan hadir.
+        $kesiangan = IzinKesiangan::whereDate('tanggal', $agenda->tanggal)
+            ->whereIn('student_id', $students->pluck('id'))
+            ->get()->keyBy('student_id');
+
+        $records = $students->map(function ($student) use ($existing, $kesiangan) {
+            $adaKesiangan = $kesiangan->has($student->id);
+            $sudah = $existing->has($student->id);
+
+            return [
+                'student_id' => $student->uuid,
+                'nama' => $student->user->nama,
+                'nis' => $student->nis,
+                'status' => $sudah
+                                        ? $existing[$student->id]->status->value
+                                        : ($adaKesiangan ? 'alpha' : 'hadir'),
+                'durasi_terlambat' => $existing[$student->id]?->durasi_terlambat ?? 0,
+                'catatan' => $existing[$student->id]?->catatan ?? null,
+                'sudah_diisi' => $sudah,
+                'kesiangan_menit' => $adaKesiangan ? $kesiangan[$student->id]->terlambat_menit : null,
+            ];
+        });
 
         return response()->json([
             'data' => [
-                'agenda'        => [
-                    'id'      => $agenda->uuid,
+                'agenda' => [
+                    'id' => $agenda->uuid,
                     'tanggal' => $agenda->tanggal->format('Y-m-d'),
                     'subject' => $agenda->schedule->subject->nama,
-                    'class'   => $agenda->schedule->schoolClass->label(),
+                    'class' => $agenda->schedule->schoolClass->label(),
                 ],
-                'records'       => $records,
-                'total_siswa'   => $students->count(),
-                'sudah_diisi'   => $existing->count() > 0,
+                'records' => $records,
+                'total_siswa' => $students->count(),
+                'sudah_diisi' => $existing->count() > 0,
             ],
         ]);
     }
@@ -60,7 +74,7 @@ class PresensiController extends Controller
         $agenda = Agenda::where('uuid', $agendaUuid)
             ->with('schedule.schoolClass')
             ->firstOrFail();
-        \App\Support\SemesterLock::assertClassWritable($agenda->schedule?->class_id);
+        SemesterLock::assertClassWritable($agenda->schedule?->class_id);
 
         $teacher = $request->user()->teacher;
         // Presensi mengikuti siapa yang benar-benar mengajar sesi itu — termasuk guru
@@ -68,24 +82,36 @@ class PresensiController extends Controller
         abort_if(! $teacher || ! SessionTeacher::isResponsibleForAgenda($teacher->id, $agenda), 403);
 
         $data = $request->validate([
-            'records'                      => ['required', 'array', 'min:1'],
-            'records.*.student_id'         => ['required', 'string'],
-            'records.*.status'             => ['required', 'in:hadir,sakit,izin,alpha'],
-            'records.*.durasi_terlambat'   => ['nullable', 'integer', 'min:0'],
-            'records.*.catatan'            => ['nullable', 'string', 'max:500'],
+            'records' => ['required', 'array', 'min:1'],
+            'records.*.student_id' => ['required', 'string'],
+            'records.*.status' => ['required', 'in:hadir,sakit,izin,alpha'],
+            'records.*.durasi_terlambat' => ['nullable', 'integer', 'min:0'],
+            'records.*.catatan' => ['nullable', 'string', 'max:500'],
         ]);
+
+        // Kesiangan hari itu: bila guru menandai HADIR, durasi_terlambat mengikuti hitungan
+        // sistem (guru boleh menaikkan manual, tidak menurunkan) -> tampil "hadir terlambat X".
+        $kesiangan = IzinKesiangan::whereDate('tanggal', $agenda->tanggal)
+            ->get()->keyBy('student_id');
 
         $saved = 0;
         foreach ($data['records'] as $record) {
             $student = Student::where('uuid', $record['student_id'])->first();
-            if (! $student) continue;
+            if (! $student) {
+                continue;
+            }
+
+            $durasi = $record['durasi_terlambat'] ?? 0;
+            if ($record['status'] === 'hadir' && $kesiangan->has($student->id)) {
+                $durasi = max($durasi, $kesiangan[$student->id]->terlambat_menit);
+            }
 
             StudentAttendance::updateOrCreate(
                 ['agenda_id' => $agenda->id, 'student_id' => $student->id],
                 [
-                    'status'           => $record['status'],
-                    'durasi_terlambat' => $record['durasi_terlambat'] ?? 0,
-                    'catatan'          => $record['catatan'] ?? null,
+                    'status' => $record['status'],
+                    'durasi_terlambat' => $durasi,
+                    'catatan' => $record['catatan'] ?? null,
                 ],
             );
             $saved++;
@@ -100,14 +126,14 @@ class PresensiController extends Controller
         $hadir = collect($data['records'])->where('status', 'hadir')->count();
         $alpha = collect($data['records'])->where('status', 'alpha')->count();
         $sakit = collect($data['records'])->where('status', 'sakit')->count();
-        $izin  = collect($data['records'])->where('status', 'izin')->count();
+        $izin = collect($data['records'])->where('status', 'izin')->count();
 
         // Cek alert alpha berturut-turut setelah presensi disimpan
         $alerts = app(AlphaAlertService::class)->checkClass($agenda->schedule->class_id);
 
         return response()->json([
             'message' => "Presensi {$saved} siswa berhasil disimpan.",
-            'data'    => array_merge(compact('hadir', 'alpha', 'sakit', 'izin'), ['alerts' => $alerts]),
+            'data' => array_merge(compact('hadir', 'alpha', 'sakit', 'izin'), ['alerts' => $alerts]),
         ]);
     }
 }

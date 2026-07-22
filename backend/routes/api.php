@@ -316,11 +316,17 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::get('piket/izin-keluar', [PiketController::class, 'izinKeluar']);
     Route::get('piket/izin-keluar/log', [PiketController::class, 'izinKeluarLog']);
     Route::post('piket/izin-keluar/{uuid}/proses', [PiketController::class, 'prosesIzinKeluar']);
+    Route::get('piket/kesiangan', [PiketController::class, 'kesiangan']);
+    Route::post('piket/kesiangan/{uuid}/verifikasi', [PiketController::class, 'verifikasiKesiangan']);
 
     // ── Izin Keluar (siswa) ────────────────────────────────────────────────────
     Route::post('izin-keluar', [IzinKeluarController::class, 'store']);
     Route::get('izin-keluar/aktif', [IzinKeluarController::class, 'aktif']);
     Route::post('izin-keluar/{uuid}/batal', [IzinKeluarController::class, 'batal']);
+
+    // ── Izin Kesiangan (siswa) ─────────────────────────────────────────────────
+    Route::post('izin-kesiangan', [\App\Http\Controllers\Api\IzinKesianganController::class, 'store']);
+    Route::get('izin-kesiangan/hari-ini', [\App\Http\Controllers\Api\IzinKesianganController::class, 'hariIni']);
 
     // ── Sekuriti (pemindai QR) ─────────────────────────────────────────────────
     Route::middleware('role:sekuriti')->group(function () {
@@ -428,6 +434,10 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::delete('piket/assignments/{assignment}', [PiketAssignmentController::class, 'destroy']);
         Route::get('piket/template', [PiketAssignmentController::class, 'template']);
         Route::post('piket/import', [PiketAssignmentController::class, 'import']);
+
+        // ── Tier poin keterlambatan (kesiangan) ───────────────────────────────────
+        Route::get('kesiangan-tiers', [\App\Http\Controllers\Api\Admin\KesianganTierController::class, 'show']);
+        Route::put('kesiangan-tiers', [\App\Http\Controllers\Api\Admin\KesianganTierController::class, 'update']);
 
         // ── Mode PKL (saklar, TP khusus, penempatan) ──────────────────────────────
         Route::get('pkl/setting', [PklSettingController::class, 'show']);

@@ -6,6 +6,7 @@ import LoginPage from '@/pages/LoginPage'
 import KioskBelPage from '@/pages/KioskBelPage'
 import PiketPage from '@/pages/PiketPage'
 import IzinKeluarSiswaPage from '@/pages/IzinKeluarSiswaPage'
+import IzinKesianganSiswaPage from '@/pages/IzinKesianganSiswaPage'
 import SekuritiScanPage from '@/pages/SekuritiScanPage'
 import DashboardPage from '@/pages/DashboardPage'
 import ProfilePage from '@/pages/ProfilePage'
@@ -152,6 +153,7 @@ export default function AppRouter() {
         <Route path="kokurikuler"               element={<KokurikulerPage />} />
         <Route path="piket"                     element={<PiketPage />} />
         <Route path="izin-keluar"               element={<IzinKeluarSiswaPage />} />
+        <Route path="izin-kesiangan"            element={<IzinKesianganSiswaPage />} />
         <Route path="sekuriti/scan"             element={<SekuritiScanPage />} />
       </Route>
 

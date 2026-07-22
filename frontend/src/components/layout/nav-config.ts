@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
-  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles, Clock, Siren, DoorOpen, ScanLine,
+  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles, Clock, Siren, DoorOpen, ScanLine, AlarmClock,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -40,6 +40,7 @@ const allNav: Record<string, NavItem> = {
   pkl:           { label: 'PKL',             path: '/pkl',             icon: Briefcase },
   piket:         { label: 'Piket',           path: '/piket',           icon: Siren },
   izinKeluar:    { label: 'Izin Keluar',     path: '/izin-keluar',     icon: DoorOpen },
+  izinKesiangan: { label: 'Izin Kesiangan',  path: '/izin-kesiangan',  icon: AlarmClock },
   sekuritiScan:  { label: 'Pindai QR',       path: '/sekuriti/scan',   icon: ScanLine },
   kokurikuler:   { label: 'Kokurikuler',     path: '/kokurikuler',     icon: Sparkles },
   refleksi:      { label: 'Refleksi Mingguan', path: '/refleksi-mingguan', icon: BookOpenCheck },
@@ -105,7 +106,7 @@ export function getNavForUser(user: UserType): NavItem[] {
   } else if (role === 'admin' || role === 'wakasek') {
     items.push(allNav.ews, allNav.ewsGuru, allNav.laporan, allNav.rekapPerkembangan, allNav.kalender, allNav.hariEfektif, allNav.riwayatDokumen, allNav.admin)
   } else if (role === 'siswa') {
-    items.push(allNav.jadwalSaya, allNav.izinKeluar)
+    items.push(allNav.jadwalSaya, allNav.izinKeluar, allNav.izinKesiangan)
     // Menu Kokurikuler hanya saat kelas siswa jadi peserta projek aktif.
     if (user.kokurikuler?.is_peserta) items.push(allNav.kokurikuler)
   } else if (role === 'sekuriti') {

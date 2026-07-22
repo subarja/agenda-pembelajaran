@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\CharacterSign;
+use App\Enums\CharacterSumber;
+use App\Support\TahunAjaran;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,14 +13,27 @@ class CharacterInput extends Model
 {
     protected $fillable = [
         'academic_year_id', 'student_id', 'subitem_id', 'teacher_id',
-        'agenda_id', 'sign', 'catatan',
+        'agenda_id', 'sign', 'catatan', 'sumber', 'tanggal_kejadian', 'poin_override',
     ];
 
     protected function casts(): array
     {
         return [
             'sign' => CharacterSign::class,
+            'sumber' => CharacterSumber::class,
+            'tanggal_kejadian' => 'date',
+            'poin_override' => 'integer',
         ];
+    }
+
+    /** Besar poin (magnitude, selalu >= 0) untuk baris ini: override bila ada, jika tidak dari bobot subitem. */
+    public function poinMagnitude(): int
+    {
+        if ($this->poin_override !== null) {
+            return abs($this->poin_override);
+        }
+
+        return abs($this->subitem?->bobot ?? 0);
     }
 
     // Poin karakter dihitung & dilaporkan per semester (selaras ews_statuses per TA).
@@ -27,7 +42,7 @@ class CharacterInput extends Model
     protected static function booted(): void
     {
         static::creating(function (self $m) {
-            $m->academic_year_id ??= \App\Support\TahunAjaran::id();
+            $m->academic_year_id ??= TahunAjaran::id();
         });
     }
 
@@ -39,7 +54,7 @@ class CharacterInput extends Model
     /** Scope ke TA tertentu (default TA aktif) — semua tampilan/laporan poin per semester. */
     public function scopeTahunAjaran(Builder $q, ?int $academicYearId = null): Builder
     {
-        $ayId = $academicYearId ?? \App\Support\TahunAjaran::id();
+        $ayId = $academicYearId ?? TahunAjaran::id();
 
         return $ayId === null ? $q : $q->where('academic_year_id', $ayId);
     }

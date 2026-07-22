@@ -28,7 +28,7 @@ export function SummaryChip({
 export function PresensiToggleList({
   students, records, onCycle, onSetAllHadir, showSummary = true,
 }: {
-  students: { student_id: string; nama: string; nis: string }[]
+  students: { student_id: string; nama: string; nis: string; kesiangan_menit?: number | null }[]
   records: Record<string, PresensiSubmitRecord>
   onCycle: (studentId: string) => void
   onSetAllHadir?: () => void
@@ -79,6 +79,11 @@ export function PresensiToggleList({
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{student.nama}</p>
                 <p className="text-xs opacity-70">{student.nis}</p>
+                {student.kesiangan_menit != null && (
+                  <p className="text-[11px] font-medium text-amber-700">
+                    Kesiangan {student.kesiangan_menit} mnt{current === 'hadir' ? ' → hadir terlambat' : ' (default alpha)'}
+                  </p>
+                )}
               </div>
               <span className={cn(
                 'shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold border-2',

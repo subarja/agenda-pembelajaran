@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\IzinKeluarStatus;
+use App\Enums\IzinKesianganStatus;
 use App\Http\Controllers\Controller;
 use App\Models\IzinKeluar;
+use App\Models\IzinKesiangan;
 use App\Models\PiketAssignment;
+use App\Services\KesianganService;
 use App\Support\BellRingPlan;
 use App\Support\PiketAccess;
 use Illuminate\Http\JsonResponse;
@@ -132,6 +135,52 @@ class PiketController extends Controller
             ]);
 
         return response()->json(['data' => $log]);
+    }
+
+    // ── GET /piket/kesiangan — verifikasi kesiangan hari ini (foto tampil) ───
+    public function kesiangan(Request $request): JsonResponse
+    {
+        $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
+        $this->pastikanPetugas($request, $tanggal);
+
+        $daftar = IzinKesiangan::tahunAjaran()
+            ->with('student.user', 'student.schoolClass')
+            ->where('tanggal', $tanggal)
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn ($i) => [
+                'id' => $i->uuid,
+                'nama' => $i->student?->user?->nama,
+                'kelas' => $i->student?->schoolClass?->label(),
+                'foto_url' => $i->student?->foto ? Storage::disk('public')->url($i->student->foto) : null,
+                'alasan' => $i->alasan,
+                'waktu_tiba' => $i->waktu_tiba?->format('H:i'),
+                'terlambat_menit' => $i->terlambat_menit,
+                'status' => $i->status->value,
+                'status_label' => $i->status->label(),
+            ]);
+
+        return response()->json(['data' => $daftar]);
+    }
+
+    // ── POST /piket/kesiangan/{uuid}/verifikasi — setujui/tolak (+ poin otomatis) ──
+    public function verifikasiKesiangan(Request $request, string $uuid): JsonResponse
+    {
+        $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
+        $this->pastikanPetugas($request, $tanggal);
+
+        $data = $request->validate(['aksi' => ['required', Rule::in(['setujui', 'tolak'])]]);
+        $izin = IzinKesiangan::tahunAjaran()->where('uuid', $uuid)->firstOrFail();
+
+        $izin->update([
+            'status' => $data['aksi'] === 'setujui' ? IzinKesianganStatus::Disetujui : IzinKesianganStatus::Ditolak,
+            'diverifikasi_oleh' => $request->user()->teacher?->id,
+        ]);
+
+        // Poin negatif otomatis dikenakan baik disetujui maupun ditolak (keputusan user).
+        app(KesianganService::class)->terapkanPoin($izin->fresh());
+
+        return response()->json(['message' => 'Kesiangan diverifikasi. Poin keterlambatan tercatat otomatis.']);
     }
 
     private function presentIzin(IzinKeluar $i): array

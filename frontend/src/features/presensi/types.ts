@@ -8,6 +8,7 @@ export interface PresensiRecord {
   durasi_terlambat: number
   catatan: string | null
   sudah_diisi: boolean
+  kesiangan_menit?: number | null
 }
 
 export interface PresensiData {

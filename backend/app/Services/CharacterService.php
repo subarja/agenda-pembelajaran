@@ -49,8 +49,8 @@ class CharacterService
             ->with('subitem')
             ->get()
             ->sum(fn ($inp) => $inp->sign->value === 'positif'
-                    ? abs($inp->subitem?->bobot ?? 0)
-                    : -abs($inp->subitem?->bobot ?? 0)
+                    ? $inp->poinMagnitude()
+                    : -$inp->poinMagnitude()
             );
     }
 
