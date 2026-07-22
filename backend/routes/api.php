@@ -318,6 +318,11 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::post('piket/izin-keluar/{uuid}/proses', [PiketController::class, 'prosesIzinKeluar']);
     Route::get('piket/kesiangan', [PiketController::class, 'kesiangan']);
     Route::post('piket/kesiangan/{uuid}/verifikasi', [PiketController::class, 'verifikasiKesiangan']);
+    Route::get('piket/absensi', [PiketController::class, 'absensi']);
+    Route::post('piket/absensi', [PiketController::class, 'simpanAbsensi']);
+    Route::get('piket/resume', [PiketController::class, 'resume']);
+    Route::post('piket/resume', [PiketController::class, 'simpanResume']);
+    Route::get('piket/resume/export', [PiketController::class, 'exportResume']);
 
     // ── Izin Keluar (siswa) ────────────────────────────────────────────────────
     Route::post('izin-keluar', [IzinKeluarController::class, 'store']);

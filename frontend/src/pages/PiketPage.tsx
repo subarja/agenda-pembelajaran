@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Siren, Clock, DoorOpen, AlarmClock, ClipboardList, FileText, Check, X, LogOut, LogIn } from 'lucide-react'
+import { Siren, Clock, DoorOpen, AlarmClock, ClipboardList, FileText, Check, X, LogOut, LogIn, Loader2, Download } from 'lucide-react'
 import api from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { PresensiToggleList } from '@/components/presensi/PresensiToggleList'
+import { usePdfPreview } from '@/hooks/usePdfPreview'
+import type { PresensiSubmitRecord, StatusPresensi } from '@/features/presensi/types'
 
 /**
  * Dashboard Piket — guru piket hari itu. Sprint 3: pandangan bel real-time (bel berjalan,
@@ -107,12 +110,132 @@ export default function PiketPage() {
       {/* Izin Masuk Kesiangan */}
       <KesianganSection />
 
-      {/* Placeholder fitur sprint berikutnya */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <SoonCard icon={ClipboardList} title="Absensi Harian" desc="Absen manual seluruh kelas oleh petugas piket." />
-        <SoonCard icon={FileText} title="Resume Piket" desc="Ringkasan & kejadian penting harian + ekspor." />
-      </div>
+      {/* Absensi Harian */}
+      <AbsensiSection />
+
+      {/* Resume Piket */}
+      <ResumeSection />
     </div>
+  )
+}
+
+// ── Absensi Harian: pilih kelas -> absen (tap-cycle) -> simpan ───────────────
+const STATUS_CYCLE: StatusPresensi[] = ['hadir', 'alpha', 'sakit', 'izin']
+
+function AbsensiSection() {
+  const qc = useQueryClient()
+  const [classId, setClassId] = useState('')
+  const [records, setRecords] = useState<Record<string, PresensiSubmitRecord>>({})
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const { data: classes } = useQuery<{ data: { id: string; label: string }[] }>({
+    queryKey: ['piket-classes'],
+    queryFn: () => api.get('/character/classes', { params: { scope: 'semua' } }).then(r => r.data),
+  })
+
+  const { data, isFetching } = useQuery<{ data: { kelas: { label: string }; is_filled: boolean; records: { student_id: string; nama: string; nis: string; status: StatusPresensi }[] } }>({
+    queryKey: ['piket-absensi', classId],
+    queryFn: () => api.get('/piket/absensi', { params: { class_id: classId } }).then(r => r.data),
+    enabled: !!classId,
+  })
+
+  useEffect(() => {
+    if (!data) return
+    const init: Record<string, PresensiSubmitRecord> = {}
+    data.data.records.forEach(r => { init[r.student_id] = { student_id: r.student_id, status: r.status, durasi_terlambat: 0, catatan: '' } })
+    setRecords(init)
+  }, [data])
+
+  const cycle = (id: string) => setRecords(prev => {
+    const cur = prev[id]?.status ?? 'hadir'
+    const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length]
+    return { ...prev, [id]: { ...prev[id], student_id: id, status: next, durasi_terlambat: 0, catatan: '' } }
+  })
+  const semuaHadir = () => setRecords(prev => Object.fromEntries(Object.keys(prev).map(id => [id, { student_id: id, status: 'hadir' as StatusPresensi, durasi_terlambat: 0, catatan: '' }])))
+
+  const save = useMutation({
+    mutationFn: () => api.post('/piket/absensi', { class_id: classId, records: Object.values(records) }).then(r => r.data),
+    onSuccess: (d) => { setMsg(d.message); qc.invalidateQueries({ queryKey: ['piket-absensi', classId] }) },
+    onError: (e: any) => setMsg(e.response?.data?.message ?? 'Gagal menyimpan.'),
+  })
+
+  const students = data?.data.records ?? []
+
+  return (
+    <Card><CardContent className="p-4 space-y-3">
+      <div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4" /> Absensi Harian</div>
+      <select className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={classId} onChange={e => setClassId(e.target.value)}>
+        <option value="">— pilih kelas —</option>
+        {(classes?.data ?? []).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+      </select>
+
+      {classId && data?.data.is_filled && <p className="text-xs text-amber-700">Kelas ini sudah pernah diabsen hari ini. Menyimpan akan menimpa data terakhir.</p>}
+
+      {classId && (isFetching ? <div className="h-24 rounded bg-muted animate-pulse" /> : students.length > 0 ? (
+        <>
+          <PresensiToggleList students={students} records={records} onCycle={cycle} onSetAllHadir={semuaHadir} />
+          <Button size="sm" className="w-full" onClick={() => { setMsg(null); save.mutate() }} disabled={save.isPending}>
+            {save.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Simpan Absensi {data?.data.kelas.label}
+          </Button>
+        </>
+      ) : <p className="text-xs text-muted-foreground">Tidak ada siswa di kelas ini.</p>)}
+      {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+    </CardContent></Card>
+  )
+}
+
+// ── Resume Piket: ringkasan + kejadian penting + ekspor ──────────────────────
+function ResumeSection() {
+  const qc = useQueryClient()
+  const [ringkasan, setRingkasan] = useState('')
+  const [kejadian, setKejadian] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const pdf = usePdfPreview({ printSettings: true })
+
+  const { data } = useQuery<{ data: { ringkasan: string | null; kejadian_penting: string | null; penyunting: string | null } }>({
+    queryKey: ['piket-resume'],
+    queryFn: () => api.get('/piket/resume').then(r => r.data),
+  })
+  useEffect(() => { if (data) { setRingkasan(data.data.ringkasan ?? ''); setKejadian(data.data.kejadian_penting ?? '') } }, [data])
+
+  const save = useMutation({
+    mutationFn: () => api.post('/piket/resume', { ringkasan, kejadian_penting: kejadian || null }).then(r => r.data),
+    onSuccess: (d) => { setMsg(d.message); qc.invalidateQueries({ queryKey: ['piket-resume'] }) },
+    onError: (e: any) => setMsg(e.response?.data?.message ?? 'Gagal menyimpan.'),
+  })
+
+  async function exportXlsx() {
+    const res = await api.get('/piket/resume/export', { params: { format: 'xlsx' }, responseType: 'blob' })
+    const href = URL.createObjectURL(new Blob([res.data]))
+    const a = document.createElement('a'); a.href = href; a.download = 'Resume_Piket.xlsx'
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(href), 60_000)
+  }
+
+  const cls = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
+  return (
+    <Card><CardContent className="p-4 space-y-3">
+      <div className="flex items-center gap-2 text-sm font-medium"><FileText className="h-4 w-4" /> Resume Piket</div>
+      {data?.data.penyunting && <p className="text-xs text-muted-foreground">Terakhir disunting: {data.data.penyunting}</p>}
+      <div>
+        <label className="text-xs text-muted-foreground">Ringkasan kegiatan</label>
+        <textarea className={cls} rows={3} value={ringkasan} onChange={e => setRingkasan(e.target.value)} />
+      </div>
+      <div>
+        <label className="text-xs text-muted-foreground">Kejadian penting (opsional)</label>
+        <textarea className={cls} rows={2} value={kejadian} onChange={e => setKejadian(e.target.value)} />
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button size="sm" onClick={() => { setMsg(null); save.mutate() }} disabled={save.isPending || !ringkasan.trim()}>
+          {save.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Simpan
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => pdf.openPreview('/piket/resume/export?format=pdf', 'Resume_Piket.pdf')}>
+          <FileText className="h-4 w-4 mr-1" /> PDF
+        </Button>
+        <Button size="sm" variant="outline" onClick={exportXlsx}><Download className="h-4 w-4 mr-1" /> Excel</Button>
+      </div>
+      {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+      {pdf.modal}{pdf.loadingOverlay}
+    </CardContent></Card>
   )
 }
 
@@ -249,16 +372,5 @@ function PengajuanCard({ row, onProses, pending }: { row: IzinRow; onProses: (bo
         </Button>
       </div>
     </div>
-  )
-}
-
-function SoonCard({ icon: Icon, title, desc }: { icon: React.ElementType; title: string; desc: string }) {
-  return (
-    <Card className="opacity-70">
-      <CardContent className="p-4 space-y-1">
-        <div className="flex items-center gap-2 text-sm font-medium"><Icon className="h-4 w-4" /> {title} <Badge variant="outline" className="ml-auto text-[10px]">Segera</Badge></div>
-        <p className="text-xs text-muted-foreground">{desc}</p>
-      </CardContent>
-    </Card>
   )
 }
