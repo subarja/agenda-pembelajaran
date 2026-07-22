@@ -29,11 +29,11 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at'    => 'datetime',
-            'password'             => 'hashed',
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
             'must_change_password' => 'boolean',
-            'role'                 => UserRole::class,
-            'status'               => UserStatus::class,
+            'role' => UserRole::class,
+            'status' => UserStatus::class,
         ];
     }
 
@@ -48,7 +48,7 @@ class User extends Authenticatable
     }
 
     // Untuk orang_tua: siswa yang dipantau
-    public function linkedStudent(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function linkedStudent(): BelongsTo
     {
         return $this->belongsTo(Student::class, 'linked_student_id');
     }
@@ -98,9 +98,9 @@ class User extends Authenticatable
             UserRole::WaliKelas,
             UserRole::BK,
             UserRole::Wakasek => $this->load('teacher'),
-            UserRole::Siswa   => $this->load(['student', 'student.schoolClass']),
+            UserRole::Siswa => $this->load(['student', 'student.schoolClass']),
             UserRole::OrangTua => $this->load(['linkedStudent', 'linkedStudent.schoolClass']),
-            default           => $this,
+            default => $this,
         };
     }
 }

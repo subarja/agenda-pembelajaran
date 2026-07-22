@@ -6,6 +6,7 @@ export type UserRole =
   | 'wakasek'
   | 'bk'
   | 'orang_tua'
+  | 'sekuriti'
 
 export type UserStatus = 'aktif' | 'nonaktif'
 
@@ -25,11 +26,18 @@ export interface User {
   current_academic_year?: AcademicYearOption | null
   pkl?: PklStatus | null
   kokurikuler?: KokurikulerStatus | null
+  piket?: PiketStatus | null
 }
 
 export interface PklStatus {
   mode_aktif: boolean
   is_pembimbing: boolean
+}
+
+export interface PiketStatus {
+  is_petugas_hari_ini: boolean
+  tanggal: string
+  ids_assignment: number[]
 }
 
 export interface KokurikulerStatus {

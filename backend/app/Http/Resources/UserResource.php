@@ -5,10 +5,12 @@ namespace App\Http\Resources;
 use App\Models\ArchiveWriteSetting;
 use App\Models\SchoolClass;
 use App\Support\KokurikulerMode;
+use App\Support\PiketAccess;
 use App\Support\PklMode;
 use App\Support\TahunAjaran;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 class UserResource extends JsonResource
@@ -69,6 +71,10 @@ class UserResource extends JsonResource
             // yang melibatkan user ini (fasilitator kelas peserta / siswa kelas peserta).
             'kokurikuler' => KokurikulerMode::statusFor($this->resource),
 
+            // Kapabilitas Piket — menu Piket muncul HANYA bila user bertugas piket HARI INI
+            // (meniru pola pkl.is_pembimbing). loadMissing('teacher') wajib (lihat pkl di atas).
+            'piket' => $this->piketStatus(),
+
             'student' => $this->whenLoaded('student', fn () => [
                 'id' => $this->student->uuid,
                 'nis' => $this->student->nis,
@@ -100,6 +106,19 @@ class UserResource extends JsonResource
                     ]
                     : null,
             ] : null),
+        ];
+    }
+
+    /** @return array{is_petugas_hari_ini: bool, tanggal: string, ids_assignment: array<int>} */
+    private function piketStatus(): array
+    {
+        $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
+        $ids = PiketAccess::assignmentIds($this->resource->loadMissing('teacher'), $tanggal);
+
+        return [
+            'is_petugas_hari_ini' => ! empty($ids),
+            'tanggal' => $tanggal,
+            'ids_assignment' => $ids,
         ];
     }
 

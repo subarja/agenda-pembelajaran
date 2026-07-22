@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/auth'
 import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/LoginPage'
 import KioskBelPage from '@/pages/KioskBelPage'
+import PiketPage from '@/pages/PiketPage'
 import DashboardPage from '@/pages/DashboardPage'
 import ProfilePage from '@/pages/ProfilePage'
 import PlaceholderPage from '@/pages/PlaceholderPage'
@@ -140,6 +141,7 @@ export default function AppRouter() {
         <Route path="pkl"                       element={<PklPage />} />
         <Route path="pkl/agenda"                element={<PklAgendaFormPage />} />
         <Route path="kokurikuler"               element={<KokurikulerPage />} />
+        <Route path="piket"                     element={<PiketPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

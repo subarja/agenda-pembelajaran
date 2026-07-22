@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
-  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles, Clock,
+  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles, Clock, Siren,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -38,6 +38,7 @@ const allNav: Record<string, NavItem> = {
   bebanMengajar: { label: 'Beban Mengajar',  path: '/beban-mengajar',  icon: Clock },
   inval:         { label: 'Guru Inval',      path: '/inval',           icon: UserPlus },
   pkl:           { label: 'PKL',             path: '/pkl',             icon: Briefcase },
+  piket:         { label: 'Piket',           path: '/piket',           icon: Siren },
   kokurikuler:   { label: 'Kokurikuler',     path: '/kokurikuler',     icon: Sparkles },
   refleksi:      { label: 'Refleksi Mingguan', path: '/refleksi-mingguan', icon: BookOpenCheck },
   riwayatDokumen: { label: 'Riwayat Dokumen Penanganan', path: '/riwayat-dokumen-penanganan', icon: FolderOpen },
@@ -107,6 +108,12 @@ export function getNavForUser(user: UserType): NavItem[] {
     if (user.kokurikuler?.is_peserta) items.push(allNav.kokurikuler)
   } else if (role === 'orang_tua') {
     // minimal — hanya dashboard + profil
+  }
+
+  // Menu Piket muncul HANYA bila user bertugas piket HARI INI (kapabilitas, bukan role) —
+  // berlaku untuk semua akun berbasis guru. Guru yang tidak bertugas tidak melihatnya.
+  if (user.piket?.is_petugas_hari_ini) {
+    items.push(allNav.piket)
   }
 
   // Deduplikasi (is_bk dan is_wali_kelas bisa punya item yang sama)

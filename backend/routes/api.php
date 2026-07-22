@@ -36,8 +36,10 @@ use App\Http\Controllers\Api\Admin\TeacherEwsController;
 use App\Http\Controllers\Api\Admin\UserAdminController;
 use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\Admin\PiketAssignmentController;
 use App\Http\Controllers\Api\BellPlayerController;
 use App\Http\Controllers\Api\BrandingController;
+use App\Http\Controllers\Api\PiketController;
 use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\CharacterManualNoteController;
 use App\Http\Controllers\Api\DailyAttendanceController;
@@ -307,6 +309,9 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::put('print-settings', [PrintSettingController::class, 'update']);
     Route::get('print-settings/preview', [PrintSettingController::class, 'preview']);
 
+    // ── Piket (guru piket hari itu; guard PiketAccess di dalam controller) ─────
+    Route::get('piket/ringkasan', [PiketController::class, 'ringkasan']);
+
     // ── Admin (hanya admin & wakasek) ─────────────────────────────────────────
     Route::middleware('role:admin,wakasek')->prefix('admin')->group(function () {
 
@@ -400,6 +405,13 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::delete('bell-custom-rings/{ring}', [BellAudioController::class, 'destroyCustomRing']);
         Route::post('bell-devices', [BellAudioController::class, 'storeDevice']);
         Route::delete('bell-devices/{device}', [BellAudioController::class, 'destroyDevice']);
+
+        // ── Piket: penugasan guru piket per tanggal ───────────────────────────────
+        Route::get('piket/assignments', [PiketAssignmentController::class, 'index']);
+        Route::post('piket/assignments', [PiketAssignmentController::class, 'store']);
+        Route::delete('piket/assignments/{assignment}', [PiketAssignmentController::class, 'destroy']);
+        Route::get('piket/template', [PiketAssignmentController::class, 'template']);
+        Route::post('piket/import', [PiketAssignmentController::class, 'import']);
 
         // ── Mode PKL (saklar, TP khusus, penempatan) ──────────────────────────────
         Route::get('pkl/setting', [PklSettingController::class, 'show']);
