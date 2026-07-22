@@ -18,7 +18,8 @@ import type { PresensiSubmitRecord, StatusPresensi } from '@/features/presensi/t
  */
 
 interface PiketEvent { waktu: string; jenis_label: string; audio_nama: string | null; custom: boolean }
-interface PiketRingkasan { tanggal: string; server_time: string; petugas: string[]; events: PiketEvent[] }
+interface PiketShiftInfo { nama_shift: string; jam_mulai: string; jam_selesai: string; petugas: string[]; aktif_sekarang: boolean }
+interface PiketRingkasan { tanggal: string; server_time: string; petugas: string[]; shifts: PiketShiftInfo[]; events: PiketEvent[] }
 
 const toSec = (hms: string) => { const [h, m, s] = hms.split(':').map(Number); return h * 3600 + m * 60 + (s || 0) }
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -63,6 +64,21 @@ export default function PiketPage() {
           </p>
         </div>
       </div>
+
+      {/* Shift hari ini — shift aktif ditonjolkan */}
+      {(data?.shifts?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {data!.shifts.map((s, i) => (
+            <div key={i} className={`rounded-lg border px-3 py-2 text-xs ${s.aktif_sekarang ? 'border-primary bg-primary/10' : 'bg-muted/40'}`}>
+              <div className="flex items-center gap-1.5 font-medium">
+                {s.nama_shift} <span className="text-muted-foreground font-normal">{s.jam_mulai}–{s.jam_selesai}</span>
+                {s.aktif_sekarang && <Badge variant="default" className="text-[10px]">aktif</Badge>}
+              </div>
+              <div className="text-muted-foreground mt-0.5">{s.petugas.length ? s.petugas.join(', ') : 'Belum ada petugas'}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Bel real-time */}
       <Card>

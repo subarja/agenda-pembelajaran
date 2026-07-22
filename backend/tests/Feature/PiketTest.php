@@ -6,7 +6,7 @@ use App\Enums\Semester;
 use App\Enums\UserRole;
 use App\Models\AcademicYear;
 use App\Models\BellPeriod;
-use App\Models\PiketAssignment;
+use App\Models\PiketShift;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Support\BellSchedule;
@@ -55,18 +55,53 @@ class PiketTest extends TestCase
         $this->assertSame('sekuriti', $u->fresh()->role->value);
     }
 
-    public function test_kapabilitas_piket_hanya_saat_bertugas(): void
+    public function test_kapabilitas_piket_berbasis_hari_dalam_seminggu(): void
     {
         $user = $this->guru->user;
-        $hariIni = Carbon::now('Asia/Jakarta')->toDateString();
 
-        $this->assertFalse(PiketAccess::isPetugas($user));
+        $this->assertFalse(PiketAccess::isPetugas($user, '2026-03-09'));
 
-        PiketAssignment::create(['tanggal' => $hariIni, 'teacher_id' => $this->guru->id]);
-        $this->assertTrue(PiketAccess::isPetugas($user));
+        // Shift hari Senin -> petugas pada Senin mana pun (pola mingguan), bukan tanggal spesifik.
+        $shift = PiketShift::create(['hari' => 'senin', 'nama_shift' => 'Pagi', 'jam_mulai' => '06:00', 'jam_selesai' => '11:00']);
+        $shift->teachers()->attach($this->guru->id);
 
-        // Bukan petugas untuk tanggal lain.
-        $this->assertFalse(PiketAccess::isPetugas($user, '2026-03-02'));
+        $this->assertTrue(PiketAccess::isPetugas($user, '2026-03-09'));  // Senin
+        $this->assertTrue(PiketAccess::isPetugas($user, '2026-03-16'));  // Senin berikutnya
+
+        // Bukan petugas pada hari tanpa shift.
+        $this->assertFalse(PiketAccess::isPetugas($user, '2026-03-10')); // Selasa
+    }
+
+    public function test_petugas_users_presisi_shift_aktif_dengan_fallback(): void
+    {
+        $u2 = User::create(['nama' => 'Bu Siang', 'email' => 'siang@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Guru]);
+        $guru2 = Teacher::create(['user_id' => $u2->id, 'is_bk' => false]);
+
+        $pagi = PiketShift::create(['hari' => 'senin', 'nama_shift' => 'Pagi', 'jam_mulai' => '06:00', 'jam_selesai' => '11:00']);
+        $pagi->teachers()->attach($this->guru->id);
+        $siang = PiketShift::create(['hari' => 'senin', 'nama_shift' => 'Siang', 'jam_mulai' => '11:00', 'jam_selesai' => '15:00']);
+        $siang->teachers()->attach($guru2->id);
+
+        // Jam 09:00 -> hanya petugas shift Pagi.
+        $this->assertEquals(
+            [$this->guru->user->id],
+            PiketAccess::petugasUsers('2026-03-09', '09:00:00')->pluck('id')->all(),
+        );
+
+        // Batas eksklusif: tepat 11:00 masuk shift Siang, bukan Pagi.
+        $this->assertEquals(
+            [$guru2->user->id],
+            PiketAccess::petugasUsers('2026-03-09', '11:00:00')->pluck('id')->all(),
+        );
+
+        // Di luar semua jam shift (05:00) -> fallback ke seluruh petugas hari itu.
+        $this->assertEqualsCanonicalizing(
+            [$this->guru->user->id, $guru2->user->id],
+            PiketAccess::petugasUsers('2026-03-09', '05:00:00')->pluck('id')->all(),
+        );
+
+        // Hari tanpa shift (Selasa) -> kosong.
+        $this->assertTrue(PiketAccess::petugasUsers('2026-03-10', '09:00:00')->isEmpty());
     }
 
     public function test_ringkasan_403_untuk_bukan_petugas(): void
@@ -79,41 +114,75 @@ class PiketTest extends TestCase
     {
         // Pilih hari Senin sebagai "hari ini" supaya ada bel.
         Carbon::setTestNow('2026-03-09 07:10:00');
-        PiketAssignment::create(['tanggal' => '2026-03-09', 'teacher_id' => $this->guru->id]);
+        $shift = PiketShift::create(['hari' => 'senin', 'nama_shift' => 'Pagi', 'jam_mulai' => '06:00', 'jam_selesai' => '11:00']);
+        $shift->teachers()->attach($this->guru->id);
 
         Sanctum::actingAs($this->guru->user);
         $res = $this->getJson('/api/v1/piket/ringkasan')->assertOk();
         Carbon::setTestNow();
 
         $res->assertJsonPath('data.tanggal', '2026-03-09')
-            ->assertJsonPath('data.petugas.0', 'Pak Piket');
+            ->assertJsonPath('data.petugas.0', 'Pak Piket')
+            ->assertJsonPath('data.shifts.0.nama_shift', 'Pagi')
+            ->assertJsonPath('data.shifts.0.aktif_sekarang', true);
         $this->assertNotEmpty($res->json('data.events'));
     }
 
-    public function test_admin_menugaskan_dan_melihat_piket(): void
+    public function test_admin_membuat_shift_set_petugas_dan_melihat(): void
     {
         Sanctum::actingAs($this->admin());
 
-        $this->postJson('/api/v1/admin/piket/assignments', [
-            'tanggal' => '2026-03-09',
-            'teacher_uuid' => [$this->guru->uuid],
+        $create = $this->postJson('/api/v1/admin/piket/shifts', [
+            'hari' => 'senin', 'nama_shift' => 'Pagi', 'jam_mulai' => '06:00', 'jam_selesai' => '11:00',
         ])->assertCreated();
+        $shiftId = $create->json('data.id');
 
-        $this->assertDatabaseHas('piket_assignments', ['tanggal' => '2026-03-09', 'teacher_id' => $this->guru->id]);
+        $this->assertDatabaseHas('piket_shifts', ['hari' => 'senin', 'nama_shift' => 'Pagi']);
 
-        $this->getJson('/api/v1/admin/piket/assignments?dari=2026-03-01&sampai=2026-03-31')
+        $this->putJson("/api/v1/admin/piket/shifts/{$shiftId}/petugas", [
+            'teacher_uuid' => [$this->guru->uuid],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('piket_shift_teacher', ['piket_shift_id' => $shiftId, 'teacher_id' => $this->guru->id]);
+
+        $this->getJson('/api/v1/admin/piket/shifts')
             ->assertOk()
-            ->assertJsonPath('data.0.nama_guru', 'Pak Piket');
+            ->assertJsonPath('data.0.nama_shift', 'Pagi')
+            ->assertJsonPath('data.0.petugas.0.nama', 'Pak Piket');
     }
 
-    public function test_menugaskan_ulang_idempoten(): void
+    public function test_shift_tumpang_tindih_ditolak(): void
     {
         Sanctum::actingAs($this->admin());
-        $payload = ['tanggal' => '2026-03-09', 'teacher_uuid' => [$this->guru->uuid]];
 
-        $this->postJson('/api/v1/admin/piket/assignments', $payload)->assertCreated();
-        $this->postJson('/api/v1/admin/piket/assignments', $payload)->assertCreated();
+        $this->postJson('/api/v1/admin/piket/shifts', [
+            'hari' => 'senin', 'nama_shift' => 'Pagi', 'jam_mulai' => '06:00', 'jam_selesai' => '11:00',
+        ])->assertCreated();
 
-        $this->assertSame(1, PiketAssignment::count());
+        // Jam bertumpuk pada hari yang sama -> 422.
+        $this->postJson('/api/v1/admin/piket/shifts', [
+            'hari' => 'senin', 'nama_shift' => 'Pagi 2', 'jam_mulai' => '10:00', 'jam_selesai' => '13:00',
+        ])->assertStatus(422);
+
+        // Batas [mulai, selesai): shift mulai tepat saat yang lain selesai -> boleh.
+        $this->postJson('/api/v1/admin/piket/shifts', [
+            'hari' => 'senin', 'nama_shift' => 'Siang', 'jam_mulai' => '11:00', 'jam_selesai' => '15:00',
+        ])->assertCreated();
+
+        $this->assertSame(2, PiketShift::count());
+    }
+
+    public function test_set_petugas_idempoten(): void
+    {
+        Sanctum::actingAs($this->admin());
+        $shiftId = $this->postJson('/api/v1/admin/piket/shifts', [
+            'hari' => 'senin', 'nama_shift' => 'Pagi', 'jam_mulai' => '06:00', 'jam_selesai' => '11:00',
+        ])->json('data.id');
+
+        $payload = ['teacher_uuid' => [$this->guru->uuid]];
+        $this->putJson("/api/v1/admin/piket/shifts/{$shiftId}/petugas", $payload)->assertOk();
+        $this->putJson("/api/v1/admin/piket/shifts/{$shiftId}/petugas", $payload)->assertOk();
+
+        $this->assertSame(1, PiketShift::find($shiftId)->teachers()->count());
     }
 }

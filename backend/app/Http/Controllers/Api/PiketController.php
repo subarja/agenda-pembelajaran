@@ -8,8 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Models\DailyAttendance;
 use App\Models\IzinKeluar;
 use App\Models\IzinKesiangan;
-use App\Models\PiketAssignment;
 use App\Models\PiketResume;
+use App\Models\PiketShift;
 use App\Models\PrintSetting;
 use App\Models\SchoolClass;
 use App\Models\Student;
@@ -24,6 +24,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -45,17 +46,28 @@ class PiketController extends Controller
         $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
         $this->pastikanPetugas($request, $tanggal);
 
-        $petugas = PiketAssignment::tahunAjaran()
-            ->with('teacher.user')
-            ->where('tanggal', $tanggal)
-            ->get()
-            ->map(fn ($a) => $a->teacher?->user?->nama)
-            ->filter()->values();
+        $now = Carbon::now('Asia/Jakarta');
+        $jamNow = $now->format('H:i:s');
+        $shiftModels = $this->shiftsHariIni($tanggal);
+
+        $shifts = $shiftModels->map(fn ($s) => [
+            'nama_shift' => $s->nama_shift,
+            'jam_mulai' => Carbon::parse($s->jam_mulai)->format('H:i'),
+            'jam_selesai' => Carbon::parse($s->jam_selesai)->format('H:i'),
+            'petugas' => $s->teachers->map(fn ($t) => $t->user?->nama)->filter()->values(),
+            'aktif_sekarang' => Carbon::parse($s->jam_mulai)->format('H:i:s') <= $jamNow
+                && $jamNow < Carbon::parse($s->jam_selesai)->format('H:i:s'),
+        ])->values();
+
+        $petugas = $shiftModels
+            ->flatMap(fn ($s) => $s->teachers->map(fn ($t) => $t->user?->nama))
+            ->filter()->unique()->values();
 
         return response()->json(['data' => [
             'tanggal' => $tanggal,
-            'server_time' => Carbon::now('Asia/Jakarta')->format('H:i:s'),
+            'server_time' => $now->format('H:i:s'),
             'petugas' => $petugas,
+            'shifts' => $shifts,
             'events' => BellRingPlan::forDate($tanggal),
         ]]);
     }
@@ -311,8 +323,9 @@ class PiketController extends Controller
         $request->validate(['format' => ['required', Rule::in(['pdf', 'xlsx'])]]);
 
         $resume = PiketResume::tahunAjaran()->where('tanggal', $tanggal)->first();
-        $petugas = PiketAssignment::tahunAjaran()->with('teacher.user')->where('tanggal', $tanggal)->get()
-            ->map(fn ($a) => $a->teacher?->user?->nama)->filter()->values();
+        $petugas = $this->shiftsHariIni($tanggal)
+            ->flatMap(fn ($s) => $s->teachers->map(fn ($t) => $t->user?->nama))
+            ->filter()->unique()->values();
         $tglLabel = Carbon::parse($tanggal)->locale('id')->isoFormat('dddd, D MMMM YYYY');
         $filename = 'Resume_Piket_'.$tanggal;
 
@@ -383,5 +396,22 @@ class PiketController extends Controller
     private function pastikanPetugas(Request $request, string $tanggal): void
     {
         abort_unless(PiketAccess::isPetugas($request->user(), $tanggal), 403, 'Anda tidak bertugas piket hari ini.');
+    }
+
+    /** Shift piket pada hari-dalam-seminggu dari tanggal (dengan petugas). Kosong bila Sabtu/Minggu. */
+    private function shiftsHariIni(string $tanggal): Collection
+    {
+        $iso = Carbon::parse($tanggal)->dayOfWeekIso;   // 1=Senin .. 7=Minggu
+        $hari = [1 => 'senin', 2 => 'selasa', 3 => 'rabu', 4 => 'kamis', 5 => 'jumat', 6 => 'sabtu'][$iso] ?? null;
+        if (! $hari) {
+            return collect();
+        }
+
+        return PiketShift::tahunAjaran()
+            ->where('hari', $hari)
+            ->with('teachers.user')
+            ->orderBy('urutan')
+            ->orderBy('jam_mulai')
+            ->get();
     }
 }

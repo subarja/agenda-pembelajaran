@@ -36,7 +36,7 @@ use App\Http\Controllers\Api\Admin\TeacherEwsController;
 use App\Http\Controllers\Api\Admin\UserAdminController;
 use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\Admin\PiketAssignmentController;
+use App\Http\Controllers\Api\Admin\PiketShiftController;
 use App\Http\Controllers\Api\BellPlayerController;
 use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\IzinKeluarController;
@@ -433,12 +433,14 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::post('bell-devices', [BellAudioController::class, 'storeDevice']);
         Route::delete('bell-devices/{device}', [BellAudioController::class, 'destroyDevice']);
 
-        // ── Piket: penugasan guru piket per tanggal ───────────────────────────────
-        Route::get('piket/assignments', [PiketAssignmentController::class, 'index']);
-        Route::post('piket/assignments', [PiketAssignmentController::class, 'store']);
-        Route::delete('piket/assignments/{assignment}', [PiketAssignmentController::class, 'destroy']);
-        Route::get('piket/template', [PiketAssignmentController::class, 'template']);
-        Route::post('piket/import', [PiketAssignmentController::class, 'import']);
+        // ── Piket: pola mingguan petugas per hari × shift ─────────────────────────
+        Route::get('piket/shifts', [PiketShiftController::class, 'index']);
+        Route::post('piket/shifts', [PiketShiftController::class, 'store']);
+        Route::put('piket/shifts/{shift}', [PiketShiftController::class, 'update']);
+        Route::put('piket/shifts/{shift}/petugas', [PiketShiftController::class, 'setPetugas']);
+        Route::delete('piket/shifts/{shift}', [PiketShiftController::class, 'destroy']);
+        Route::get('piket/template', [PiketShiftController::class, 'template']);
+        Route::post('piket/import', [PiketShiftController::class, 'import']);
 
         // ── Tier poin keterlambatan (kesiangan) ───────────────────────────────────
         Route::get('kesiangan-tiers', [\App\Http\Controllers\Api\Admin\KesianganTierController::class, 'show']);

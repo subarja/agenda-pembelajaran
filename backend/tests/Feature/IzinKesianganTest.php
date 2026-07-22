@@ -11,7 +11,7 @@ use App\Models\CharacterCategory;
 use App\Models\CharacterInput;
 use App\Models\CharacterSubitem;
 use App\Models\IzinKesiangan;
-use App\Models\PiketAssignment;
+use App\Models\PiketShift;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Teacher;
@@ -60,7 +60,8 @@ class IzinKesianganTest extends TestCase
 
         $pu = User::create(['nama' => 'Pak Piket', 'email' => 'piket@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Guru]);
         $this->piket = Teacher::create(['user_id' => $pu->id, 'is_bk' => false]);
-        PiketAssignment::create(['tanggal' => '2026-03-09', 'teacher_id' => $this->piket->id]);
+        $shift = PiketShift::create(['hari' => 'senin', 'nama_shift' => 'Pagi', 'jam_mulai' => '06:00', 'jam_selesai' => '15:00']);
+        $shift->teachers()->attach($this->piket->id);
     }
 
     protected function tearDown(): void
