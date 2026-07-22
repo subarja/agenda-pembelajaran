@@ -152,20 +152,22 @@ function TambahSection({ onSaved }: { onSaved: () => void }) {
 
 // ── Tier poin keterlambatan (kesiangan) ──────────────────────────────────────
 interface Tier { menit_min: number; menit_max: number | null; poin: number }
+interface TierData { tiers: Tier[]; subitem_id: number | null; subitems: { id: number; label: string }[] }
 
 function TierSection() {
   const qc = useQueryClient()
   const [rows, setRows] = useState<Tier[]>([])
+  const [subitemId, setSubitemId] = useState<string>('')
   const [msg, setMsg] = useState<string | null>(null)
 
-  const { data } = useQuery<{ data: Tier[] }>({
+  const { data } = useQuery<{ data: TierData }>({
     queryKey: ['admin-kesiangan-tiers'],
     queryFn: () => api.get('/admin/kesiangan-tiers').then(r => r.data),
   })
-  useEffect(() => { if (data?.data) setRows(data.data.map(t => ({ ...t }))) }, [data])
+  useEffect(() => { if (data?.data) { setRows(data.data.tiers.map(t => ({ ...t }))); setSubitemId(data.data.subitem_id ? String(data.data.subitem_id) : '') } }, [data])
 
   const save = useMutation({
-    mutationFn: () => api.put('/admin/kesiangan-tiers', { tiers: rows }).then(r => r.data),
+    mutationFn: () => api.put('/admin/kesiangan-tiers', { tiers: rows, subitem_id: subitemId ? Number(subitemId) : null }).then(r => r.data),
     onSuccess: (d) => { setMsg(d.message); qc.invalidateQueries({ queryKey: ['admin-kesiangan-tiers'] }) },
     onError: (e: any) => setMsg(e.response?.data?.message ?? 'Gagal menyimpan.'),
   })
@@ -176,10 +178,19 @@ function TierSection() {
   return (
     <Card><CardContent className="p-4 space-y-3">
       <div>
-        <h3 className="font-semibold text-sm">Tier Poin Keterlambatan</h3>
+        <h3 className="font-semibold text-sm">Poin Kesiangan Otomatis</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Poin negatif otomatis per rentang menit keterlambatan (kesiangan). Kosongkan "s.d." pada baris terakhir = tak terbatas.
+          Poin negatif otomatis per rentang menit keterlambatan. Kosongkan "s.d." pada baris terakhir = tak terbatas.
         </p>
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground">Sub-karakter untuk poin kesiangan</label>
+        <select className={inputCls} value={subitemId} onChange={e => setSubitemId(e.target.value)}>
+          <option value="">— pilih sub-karakter —</option>
+          {(data?.data.subitems ?? []).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        {!subitemId && <p className="text-[11px] text-amber-700 mt-0.5">Wajib dipilih, jika kosong poin kesiangan tidak akan tercatat.</p>}
       </div>
       <div className="space-y-2">
         {rows.map((r, i) => (

@@ -51,7 +51,9 @@ class IzinKesianganTest extends TestCase
         \App\Models\BellPeriod::create(['hari' => 'senin', 'jam_ke' => 1, 'jam_mulai' => '07:00', 'jam_selesai' => '07:45']);
 
         $cat = CharacterCategory::create(['nama' => 'Kedisiplinan', 'aktif' => true]);
-        $this->kd04 = CharacterSubitem::create(['category_id' => $cat->id, 'kode' => 'KD-04', 'deskripsi' => 'Terlambat masuk kelas', 'bobot' => -5, 'sifat' => CharacterSifat::Negatif, 'aktif' => true]);
+        // Kode SENGAJA bukan 'KD-04' — membuktikan poin kesiangan pakai setting admin, bukan hardcode.
+        $this->kd04 = CharacterSubitem::create(['category_id' => $cat->id, 'kode' => 'KD-99', 'deskripsi' => 'Terlambat masuk kelas', 'bobot' => -5, 'sifat' => CharacterSifat::Negatif, 'aktif' => true]);
+        \App\Models\KesianganSetting::instance()->update(['subitem_id' => $this->kd04->id]);
 
         $su = User::create(['nama' => 'Andi Siswa', 'email' => 'andi@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Siswa]);
         $this->siswa = Student::create(['user_id' => $su->id, 'nis' => '12345', 'class_id' => $kelas->id]);
@@ -97,6 +99,21 @@ class IzinKesianganTest extends TestCase
         // Verifikasi ulang tidak menggandakan poin.
         $this->postJson("/api/v1/piket/kesiangan/{$uuid}/verifikasi", ['aksi' => 'setujui'])->assertOk();
         $this->assertSame(1, CharacterInput::where('sumber', 'sistem')->count());
+    }
+
+    public function test_tanpa_subitem_terkonfigurasi_tak_ada_poin(): void
+    {
+        \App\Models\KesianganSetting::instance()->update(['subitem_id' => null]);
+
+        Sanctum::actingAs($this->siswa->user);
+        $this->postJson('/api/v1/izin-kesiangan', [])->assertCreated();
+        $uuid = IzinKesiangan::first()->uuid;
+
+        Sanctum::actingAs($this->piket->user);
+        $this->postJson("/api/v1/piket/kesiangan/{$uuid}/verifikasi", ['aksi' => 'setujui'])->assertOk();
+
+        // Tidak ada poin sistem tercipta (bukan diam-diam salah kode).
+        $this->assertSame(0, CharacterInput::where('sumber', 'sistem')->count());
     }
 
     public function test_ditolak_tetap_kena_poin(): void

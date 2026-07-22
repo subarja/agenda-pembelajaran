@@ -8,6 +8,8 @@ use App\Models\CharacterInput;
 use App\Models\CharacterSubitem;
 use App\Models\IzinKesiangan;
 use App\Models\KesianganPointTier;
+use App\Models\KesianganSetting;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Menerapkan poin negatif OTOMATIS untuk kesiangan ke sub-karakter KD-04 (Terlambat).
@@ -25,9 +27,15 @@ class KesianganService
             return;
         }
 
-        $subitem = CharacterSubitem::where('kode', 'KD-04')->first();
+        // Sub-karakter terlambat DIPILIH admin (kode beda tiap sekolah), bukan hardcode 'KD-04'.
+        $subitemId = KesianganSetting::instance()->subitem_id;
+        $subitem = $subitemId ? CharacterSubitem::find($subitemId) : null;
         if (! $subitem) {
-            return; // sekolah belum mengonfigurasi sub-karakter Terlambat
+            Log::warning('Kesiangan: sub-karakter untuk poin otomatis belum dikonfigurasi (Admin > Piket).', [
+                'izin_kesiangan_id' => $izin->id,
+            ]);
+
+            return; // belum dikonfigurasi -> tidak membuat poin (tidak diam-diam salah)
         }
 
         $poin = KesianganPointTier::poinUntuk($izin->terlambat_menit);
