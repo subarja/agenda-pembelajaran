@@ -154,6 +154,60 @@ class BellScheduleTest extends TestCase
         );
     }
 
+    // ── Istirahat terkunci (tidak bergeser oleh mode) ────────────────────────
+
+    /**
+     * Periode terkunci (istirahat) mempertahankan jam dindingnya walau mode
+     * Tanpa Apel menggeser awal hari −60. Jam pelajaran biasa tetap ikut bergeser.
+     */
+    public function test_periode_terkunci_tidak_bergeser_oleh_mode(): void
+    {
+        // Istirahat jam ke-5, 10:00–10:15, terkunci pada jam dinding.
+        BellPeriod::create([
+            'hari' => 'senin', 'jam_ke' => 5, 'jam_mulai' => '10:00', 'jam_selesai' => '10:15',
+            'is_istirahat' => true, 'terkunci_offset' => true,
+        ]);
+        $istirahat = Schedule::create([
+            'class_id' => $this->senin->class_id, 'subject_id' => $this->senin->subject_id,
+            'teacher_id' => $this->senin->teacher_id, 'hari' => 'senin',
+            'jam_ke_mulai' => 5, 'jam_ke_selesai' => 5,
+            'jam_mulai' => '10:00', 'jam_selesai' => '10:15', 'aktif' => true,
+        ]);
+
+        BellMode::where('nama', 'Apel')->update(['is_default' => false]);
+        BellMode::where('nama', 'Tanpa Apel')->update(['is_default' => true]);
+        BellSchedule::flush();
+
+        // Jam pelajaran biasa bergeser −60 …
+        $this->assertSame('06:00:00', BellSchedule::resolve($this->senin, '2026-03-09')['jam_mulai']);
+        // … tapi istirahat terkunci tetap di jam dinding aslinya.
+        $this->assertSame(
+            ['jam_mulai' => '10:00:00', 'jam_selesai' => '10:15:00'],
+            BellSchedule::resolve($istirahat, '2026-03-09'),
+        );
+    }
+
+    // ── Jam masuk sekolah (basis keterlambatan) ──────────────────────────────
+
+    public function test_jam_masuk_sekolah_ikut_mode_apel_dan_tanpa_apel(): void
+    {
+        // Apel (default) → jam ke-1 senin mulai 07:00.
+        $this->assertSame('07:00:00', BellSchedule::jamMasukSekolah('2026-03-09'));
+
+        BellMode::where('nama', 'Apel')->update(['is_default' => false]);
+        BellMode::where('nama', 'Tanpa Apel')->update(['is_default' => true]);
+        BellSchedule::flush();
+
+        // Tanpa Apel → maju −60 menit.
+        $this->assertSame('06:00:00', BellSchedule::jamMasukSekolah('2026-03-09'));
+    }
+
+    public function test_jam_masuk_sekolah_null_untuk_hari_tanpa_bel(): void
+    {
+        // Minggu (2026-03-15) tidak punya bel jam ke-1.
+        $this->assertNull(BellSchedule::jamMasukSekolah('2026-03-15'));
+    }
+
     // ── API admin ────────────────────────────────────────────────────────────
 
     public function test_admin_bisa_mengganti_bel_satu_hari(): void

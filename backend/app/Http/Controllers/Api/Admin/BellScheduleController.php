@@ -35,9 +35,11 @@ class BellScheduleController extends Controller
             'periods' => BellPeriod::orderBy('jam_ke')->get()
                 ->groupBy(fn ($p) => $p->hari->value)
                 ->map(fn ($rows) => $rows->map(fn ($p) => [
-                    'jam_ke'      => $p->jam_ke,
-                    'jam_mulai'   => substr($p->jam_mulai, 0, 5),
-                    'jam_selesai' => substr($p->jam_selesai, 0, 5),
+                    'jam_ke'          => $p->jam_ke,
+                    'jam_mulai'       => substr($p->jam_mulai, 0, 5),
+                    'jam_selesai'     => substr($p->jam_selesai, 0, 5),
+                    'is_istirahat'    => (bool) $p->is_istirahat,
+                    'terkunci_offset' => (bool) $p->terkunci_offset,
                 ])->values()),
             'modes' => BellMode::orderBy('id')->get()
                 ->map(fn ($m) => [
@@ -63,20 +65,24 @@ class BellScheduleController extends Controller
     public function updatePeriods(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'hari'                   => ['required', Rule::in(self::HARI)],
-            'periods'                => ['present', 'array'],
-            'periods.*.jam_ke'       => ['required', 'integer', 'min:0', 'max:20', 'distinct'],
-            'periods.*.jam_mulai'    => ['required', 'date_format:H:i'],
-            'periods.*.jam_selesai'  => ['required', 'date_format:H:i', 'after:periods.*.jam_mulai'],
+            'hari'                        => ['required', Rule::in(self::HARI)],
+            'periods'                     => ['present', 'array'],
+            'periods.*.jam_ke'            => ['required', 'integer', 'min:0', 'max:20', 'distinct'],
+            'periods.*.jam_mulai'         => ['required', 'date_format:H:i'],
+            'periods.*.jam_selesai'       => ['required', 'date_format:H:i', 'after:periods.*.jam_mulai'],
+            'periods.*.is_istirahat'      => ['sometimes', 'boolean'],
+            'periods.*.terkunci_offset'   => ['sometimes', 'boolean'],
         ]);
 
         BellPeriod::where('hari', $data['hari'])->delete();
         foreach ($data['periods'] as $p) {
             BellPeriod::create([
-                'hari'        => $data['hari'],
-                'jam_ke'      => $p['jam_ke'],
-                'jam_mulai'   => $p['jam_mulai'],
-                'jam_selesai' => $p['jam_selesai'],
+                'hari'            => $data['hari'],
+                'jam_ke'          => $p['jam_ke'],
+                'jam_mulai'       => $p['jam_mulai'],
+                'jam_selesai'     => $p['jam_selesai'],
+                'is_istirahat'    => $p['is_istirahat'] ?? false,
+                'terkunci_offset' => $p['terkunci_offset'] ?? false,
             ]);
         }
         BellSchedule::flush();
@@ -200,12 +206,15 @@ class BellScheduleController extends Controller
     // ── GET /admin/bell-schedule/template — template Excel jam bel ───────────
     public function template(): BinaryFileResponse
     {
-        $headers = ['hari', 'jam_ke', 'jam_mulai', 'jam_selesai'];
+        $headers = ['hari', 'jam_ke', 'jam_mulai', 'jam_selesai', 'is_istirahat', 'terkunci_offset'];
         // Baris contoh (bisa ditimpa admin) — hari valid + waktu HH:MM sebagai teks.
+        // Kolom is_istirahat/terkunci_offset: isi "ya" bila periode itu istirahat / jam
+        // dinding tetap saat mode menggeser awal hari (kosong = tidak).
         $example = [
-            ['senin', 1, '07:00', '07:45'],
-            ['senin', 2, '07:45', '08:30'],
-            ['jumat', 1, '07:00', '07:40'],
+            ['senin', 1, '07:00', '07:45', '', ''],
+            ['senin', 2, '07:45', '08:30', '', ''],
+            ['senin', 5, '10:00', '10:15', 'ya', 'ya'],
+            ['jumat', 1, '07:00', '07:40', '', ''],
         ];
 
         $tempFile = tempnam(sys_get_temp_dir(), 'bel_tpl_');
@@ -243,6 +252,8 @@ class BellScheduleController extends Controller
             $jamKe       = trim((string) ($row[1] ?? ''));
             $jamMulai    = $this->normalizeTime($row[2] ?? '');
             $jamSelesai  = $this->normalizeTime($row[3] ?? '');
+            $isIstirahat = $this->truthy($row[4] ?? '');
+            $terkunci    = $this->truthy($row[5] ?? '');
 
             if (! in_array($hari, self::HARI, true)) {
                 $errors[] = "Baris $rowNum: hari '$hari' tidak valid (senin–sabtu).";
@@ -265,7 +276,13 @@ class BellScheduleController extends Controller
                 continue;
             }
 
-            $perHari[$hari][(int) $jamKe] = ['jam_ke' => (int) $jamKe, 'jam_mulai' => $jamMulai, 'jam_selesai' => $jamSelesai];
+            $perHari[$hari][(int) $jamKe] = [
+                'jam_ke'          => (int) $jamKe,
+                'jam_mulai'       => $jamMulai,
+                'jam_selesai'     => $jamSelesai,
+                'is_istirahat'    => $isIstirahat,
+                'terkunci_offset' => $terkunci,
+            ];
         }
 
         if (empty($perHari)) {
@@ -295,6 +312,12 @@ class BellScheduleController extends Controller
             'error_count' => count($errors),
             'errors'      => $errors,
         ]);
+    }
+
+    /** Sel boolean Excel: "ya"/"y"/"1"/"true"/"x"/"v" (case-insensitive) → true; selain itu false. */
+    private function truthy(mixed $val): bool
+    {
+        return in_array(strtolower(trim((string) $val)), ['ya', 'y', '1', 'true', 'x', 'v', 'yes'], true);
     }
 
     /** Normalisasi nilai waktu dari sel Excel (string "07:00"/"7:00:00" atau serial waktu) → "H:i" atau null. */

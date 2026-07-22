@@ -17,7 +17,7 @@ async function downloadBlob(url: string, filename: string) {
 
 const HARI = ['senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'] as const
 
-interface BelPeriodRow { jam_ke: number; jam_mulai: string; jam_selesai: string }
+interface BelPeriodRow { jam_ke: number; jam_mulai: string; jam_selesai: string; is_istirahat?: boolean; terkunci_offset?: boolean }
 interface BelMode { id: number; nama: string; offset_menit: number; is_default: boolean }
 interface BelOverride { id: number; tanggal: string; mode_id: number; mode_nama: string | null; keterangan: string | null }
 interface BelData {
@@ -102,7 +102,7 @@ function BelHariSection({ data }: { data: BelData }) {
     onError: (e: any) => setMsg(e.response?.data?.message ?? 'Gagal menyimpan.'),
   })
 
-  const set = (i: number, k: keyof BelPeriodRow, v: string | number) =>
+  const set = (i: number, k: keyof BelPeriodRow, v: string | number | boolean) =>
     setRows(rs => rs.map((r, idx) => idx === i ? { ...r, [k]: v } : r))
 
   const tambah = () => {
@@ -111,6 +111,8 @@ function BelHariSection({ data }: { data: BelData }) {
       jam_ke: (last?.jam_ke ?? 0) + 1,
       jam_mulai: last?.jam_selesai ?? '07:00',
       jam_selesai: last?.jam_selesai ?? '07:45',
+      is_istirahat: false,
+      terkunci_offset: false,
     }])
   }
 
@@ -126,7 +128,7 @@ function BelHariSection({ data }: { data: BelData }) {
       {/* Import Excel — mengisi banyak hari sekaligus (kolom: hari, jam_ke, jam_mulai, jam_selesai) */}
       <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
         <p className="text-xs text-muted-foreground">
-          Impor semua hari sekaligus dari Excel. Kolom: <code>hari</code>, <code>jam_ke</code>, <code>jam_mulai</code>, <code>jam_selesai</code> (satu baris = satu jam bel). Setiap hari yang ada di file <b>menggantikan</b> bel hari itu; hari yang tak ada di file tidak berubah.
+          Impor semua hari sekaligus dari Excel. Kolom: <code>hari</code>, <code>jam_ke</code>, <code>jam_mulai</code>, <code>jam_selesai</code>, <code>is_istirahat</code>, <code>terkunci_offset</code> (satu baris = satu jam bel; dua kolom terakhir isi "ya" bila istirahat / jam dikunci). Setiap hari yang ada di file <b>menggantikan</b> bel hari itu; hari yang tak ada di file tidak berubah.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={() => downloadBlob('/admin/bell-schedule/template', 'template_jam_bel.xlsx')}>
@@ -155,6 +157,11 @@ function BelHariSection({ data }: { data: BelData }) {
         </p>
       )}
 
+      <p className="text-xs text-muted-foreground">
+        Tandai <b>Istirahat</b> untuk periode bukan jam pelajaran, dan <b>Kunci jam</b> agar jam dindingnya
+        tetap walau mode menggeser awal hari (mis. istirahat 15 menit setelah jam ke-4 dan istirahat siang
+        12.00–13.00 tidak ikut maju saat Tanpa Apel).
+      </p>
       <div className="space-y-2">
         {rows.map((r, i) => (
           <div key={i} className="flex items-center gap-2 flex-wrap">
@@ -166,6 +173,14 @@ function BelHariSection({ data }: { data: BelData }) {
             <span className="text-xs text-muted-foreground">s.d.</span>
             <input type="time" className={`${belInputCls} w-28`} value={r.jam_selesai}
               onChange={e => set(i, 'jam_selesai', e.target.value)} />
+            <label className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+              <input type="checkbox" checked={!!r.is_istirahat} onChange={e => set(i, 'is_istirahat', e.target.checked)} />
+              Istirahat
+            </label>
+            <label className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+              <input type="checkbox" checked={!!r.terkunci_offset} onChange={e => set(i, 'terkunci_offset', e.target.checked)} />
+              Kunci jam
+            </label>
             <Button size="icon" variant="ghost" className="shrink-0" onClick={() => setRows(rs => rs.filter((_, idx) => idx !== i))}>
               <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
