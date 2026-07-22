@@ -77,11 +77,11 @@ class BellRingPlan
                 return null;
             }
 
-            return ['id' => $map->audio->id, 'nama' => $map->audio->nama, 'url' => $map->audio->url()];
+            return ['id' => $map->audio->id, 'nama' => $map->audio->nama, 'url' => $map->audio->url(), 'volume' => $map->audio->volume ?? 100];
         };
     }
 
-    /** @return array{waktu:string, jenis_event:string, jenis_label:string, bell_audio_id:?int, audio_nama:?string, audio_url:?string} */
+    /** @return array{waktu:string, jenis_event:string, jenis_label:string, bell_audio_id:?int, audio_nama:?string, audio_url:?string, volume:int, custom:bool} */
     private static function event(string $waktu, BellEvent $jenis, callable $mapper): array
     {
         $audio = $mapper($jenis);
@@ -93,6 +93,8 @@ class BellRingPlan
             'bell_audio_id' => $audio['id'] ?? null,
             'audio_nama' => $audio['nama'] ?? null,
             'audio_url' => $audio['url'] ?? null,
+            'volume' => $audio['volume'] ?? 100,
+            'custom' => false,
         ];
     }
 }

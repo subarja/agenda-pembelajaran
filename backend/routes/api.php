@@ -395,6 +395,9 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::delete('bell-audios/{audio}', [BellAudioController::class, 'destroy']);
         Route::post('bell-audios/{uuid}/restore', [BellAudioController::class, 'restore']);
         Route::put('bell-audio-maps', [BellAudioController::class, 'upsertMap']);
+        Route::post('bell-custom-rings', [BellAudioController::class, 'storeCustomRing']);
+        Route::put('bell-custom-rings/{ring}', [BellAudioController::class, 'updateCustomRing']);
+        Route::delete('bell-custom-rings/{ring}', [BellAudioController::class, 'destroyCustomRing']);
         Route::post('bell-devices', [BellAudioController::class, 'storeDevice']);
         Route::delete('bell-devices/{device}', [BellAudioController::class, 'destroyDevice']);
 

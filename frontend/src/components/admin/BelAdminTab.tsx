@@ -57,6 +57,7 @@ export default function BelAdminTab() {
       <DayDefaultSection data={data} />
       <OverrideSection data={data} />
       <AudioBankSection />
+      <CustomRingSection />
       <EventMapSection />
       <DeviceSection />
     </div>
@@ -69,16 +70,18 @@ export default function BelAdminTab() {
 
 interface BelAudio {
   id: number; uuid: string; nama: string; kategori: string; kategori_label: string
-  durasi_detik: number | null; ukuran_byte: number; aktif: boolean; url: string | null
+  durasi_detik: number | null; volume: number; ukuran_byte: number; aktif: boolean; url: string | null
 }
 interface BelAudioMap { id: number; bell_mode_id: number | null; jenis_event: string; bell_audio_id: number; aktif: boolean }
 interface BelEventOpt { value: string; label: string }
 interface BelDevice { id: number; uuid: string; nama: string; token: string; aktif: boolean; last_heartbeat_at: string | null }
+interface BelCustomRing { id: number; uuid: string; nama: string; waktu: string; bell_audio_id: number; audio_nama: string | null; hari: string[]; aktif: boolean }
 interface BelAudioData {
   audios: BelAudio[]
   maps: BelAudioMap[]
   modes: { id: number; nama: string; is_default: boolean }[]
   events: BelEventOpt[]
+  custom_rings: BelCustomRing[]
   devices: BelDevice[]
 }
 
@@ -122,6 +125,10 @@ function AudioBankSection() {
     mutationFn: (a: BelAudio) => api.put(`/admin/bell-audios/${a.id}`, { aktif: !a.aktif }).then(r => r.data),
     onSuccess: () => refresh(),
   })
+  const setVolume = useMutation({
+    mutationFn: (p: { id: number; volume: number }) => api.put(`/admin/bell-audios/${p.id}`, { volume: p.volume }).then(r => r.data),
+    onSuccess: () => refresh(),
+  })
   const hapus = useMutation({
     mutationFn: (a: BelAudio) => api.delete(`/admin/bell-audios/${a.id}`).then(r => r.data),
     onSuccess: (d) => { setMsg(d.message); refresh() },
@@ -162,7 +169,13 @@ function AudioBankSection() {
               <span className="text-sm font-medium">{a.nama}</span>
               <Badge variant="secondary">{a.kategori_label}</Badge>
               <span className="text-xs text-muted-foreground">{fmtBytes(a.ukuran_byte)}</span>
-              {a.url && <audio controls preload="none" src={a.url} className="h-8 max-w-[220px]" />}
+              {a.url && <audio controls preload="none" src={a.url} className="h-8 max-w-[200px]" />}
+              <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Volume audio ini">
+                <span className="hidden sm:inline">Vol</span>
+                <input type="range" min={0} max={100} defaultValue={a.volume}
+                  className="w-20" onChange={e => setVolume.mutate({ id: a.id, volume: Number(e.target.value) })} />
+                <span className="w-8 tabular-nums">{a.volume}%</span>
+              </label>
               <span className="ml-auto flex items-center gap-1">
                 <Button size="sm" variant="outline" onClick={() => toggle.mutate(a)} disabled={toggle.isPending}>
                   {a.aktif ? 'Nonaktifkan' : 'Aktifkan'}
@@ -175,6 +188,96 @@ function AudioBankSection() {
           ))}
         </div>
       )}
+      {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+    </CardContent></Card>
+  )
+}
+
+// ── Jadwal Bunyi Kustom (jam eksplisit -> audio) ─────────────────────────────
+const HARI_LABEL: Record<string, string> = { senin: 'Sen', selasa: 'Sel', rabu: 'Rab', kamis: 'Kam', jumat: 'Jum', sabtu: 'Sab', minggu: 'Min' }
+
+function CustomRingSection() {
+  const { data } = useBelAudio()
+  const qc = useQueryClient()
+  const [nama, setNama] = useState('')
+  const [waktu, setWaktu] = useState('06:30')
+  const [audioId, setAudioId] = useState('')
+  const [hari, setHari] = useState<string[]>([])
+  const [msg, setMsg] = useState<string | null>(null)
+  const refresh = () => qc.invalidateQueries({ queryKey: ['admin-bell-audios'] })
+
+  const tambah = useMutation({
+    mutationFn: () => api.post('/admin/bell-custom-rings', { nama, waktu, bell_audio_id: Number(audioId), hari }).then(r => r.data),
+    onSuccess: (d) => { setMsg(d.message); setNama(''); setAudioId(''); setHari([]); refresh() },
+    onError: (e: any) => setMsg(e.response?.data?.message ?? 'Gagal menyimpan.'),
+  })
+  const hapus = useMutation({
+    mutationFn: (id: number) => api.delete(`/admin/bell-custom-rings/${id}`).then(r => r.data),
+    onSuccess: (d) => { setMsg(d.message); refresh() },
+  })
+  const toggle = useMutation({
+    mutationFn: (r: BelCustomRing) => api.put(`/admin/bell-custom-rings/${r.id}`, { nama: r.nama, waktu: r.waktu, bell_audio_id: r.bell_audio_id, hari: r.hari, aktif: !r.aktif }).then(x => x.data),
+    onSuccess: () => refresh(),
+  })
+
+  if (!data) return null
+  const toggleHari = (h: string) => setHari(hs => hs.includes(h) ? hs.filter(x => x !== h) : [...hs, h])
+
+  return (
+    <Card><CardContent className="p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-sm">Jadwal Bunyi Kustom</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          "Pada pukul sekian, bunyikan audio ini" — untuk lagu pagi sebelum pelajaran, murottal
+          jam tertentu, atau bel yang <b>tidak</b> mengikuti pergantian jam. Jam dinding tetap
+          (tidak ikut bergeser mode). Kosongkan hari = berlaku <b>setiap hari</b>.
+        </p>
+      </div>
+
+      <div className="flex items-end gap-2 flex-wrap rounded-lg border bg-muted/30 p-3">
+        <div className="w-28">
+          <label className="text-xs text-muted-foreground">Pukul</label>
+          <input type="time" className={inputCls} value={waktu} onChange={e => setWaktu(e.target.value)} />
+        </div>
+        <div className="flex-1 min-w-36">
+          <label className="text-xs text-muted-foreground">Nama</label>
+          <input className={inputCls} value={nama} onChange={e => setNama(e.target.value)} placeholder="mis. Murottal Pagi" />
+        </div>
+        <div className="w-44">
+          <label className="text-xs text-muted-foreground">Audio</label>
+          <select className={inputCls} value={audioId} onChange={e => setAudioId(e.target.value)}>
+            <option value="">— pilih —</option>
+            {data.audios.filter(a => a.aktif).map(a => <option key={a.id} value={a.id}>{a.nama}</option>)}
+          </select>
+        </div>
+        <Button size="sm" onClick={() => { setMsg(null); tambah.mutate() }} disabled={tambah.isPending || !nama.trim() || !audioId}>
+          <Plus className="h-4 w-4 mr-1" /> Tambah
+        </Button>
+      </div>
+      <div className="flex flex-wrap gap-1 items-center">
+        <span className="text-xs text-muted-foreground mr-1">Hari:</span>
+        {Object.entries(HARI_LABEL).map(([h, lbl]) => (
+          <button key={h} type="button" onClick={() => toggleHari(h)}
+            className={`text-xs rounded px-2 py-1 border ${hari.includes(h) ? 'bg-primary text-primary-foreground' : 'bg-background'}`}>{lbl}</button>
+        ))}
+        <span className="text-xs text-muted-foreground ml-1">{hari.length === 0 ? '(setiap hari)' : ''}</span>
+      </div>
+
+      <div className="space-y-1.5">
+        {data.custom_rings.length === 0 && <p className="text-xs text-muted-foreground">Belum ada jadwal bunyi kustom.</p>}
+        {data.custom_rings.map(r => (
+          <div key={r.id} className={`flex items-center gap-2 rounded-md border px-3 py-2 flex-wrap text-sm ${r.aktif ? '' : 'opacity-50'}`}>
+            <span className="font-mono tabular-nums">{r.waktu}</span>
+            <span className="font-medium">{r.nama}</span>
+            <span className="text-xs text-muted-foreground">{r.audio_nama ?? '—'}</span>
+            <span className="text-xs text-muted-foreground">{r.hari.length ? r.hari.map(h => HARI_LABEL[h]).join(', ') : 'setiap hari'}</span>
+            <span className="ml-auto flex items-center gap-1">
+              <Button size="sm" variant="outline" onClick={() => toggle.mutate(r)} disabled={toggle.isPending}>{r.aktif ? 'Nonaktifkan' : 'Aktifkan'}</Button>
+              <Button size="icon" variant="ghost" onClick={() => hapus.mutate(r.id)} disabled={hapus.isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+            </span>
+          </div>
+        ))}
+      </div>
       {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
     </CardContent></Card>
   )
@@ -267,18 +370,20 @@ function DeviceSection() {
       <div>
         <h3 className="font-semibold text-sm">Perangkat Pemutar (Kiosk)</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Daftarkan PC/HP yang tersambung speaker. Buka tautan pemutar di perangkat itu, lalu tekan
-          "Aktifkan Suara" sekali. Pemutar berbunyi otomatis sesuai jadwal & mode hari itu.
+          Buka tautan pemutar di PC/HP yang tersambung speaker, lalu tekan "Aktifkan Suara" sekali.
+          Pemutar berbunyi otomatis sesuai jadwal hari itu. <b>Nama perangkat opsional</b> — gunanya
+          hanya bila Anda punya lebih dari satu speaker (agar bisa dibedakan) dan untuk memantau
+          "kapan terakhir aktif" di daftar bawah. Kalau cuma satu speaker, cukup tekan tombol di bawah.
         </p>
       </div>
 
       <div className="flex items-end gap-2 flex-wrap">
         <div className="flex-1 min-w-40">
-          <label className="text-xs text-muted-foreground">Nama perangkat</label>
+          <label className="text-xs text-muted-foreground">Nama perangkat (opsional)</label>
           <input className={inputCls} value={nama} onChange={e => setNama(e.target.value)} placeholder="mis. Speaker Lobi" />
         </div>
-        <Button size="sm" onClick={() => daftar.mutate()} disabled={daftar.isPending || !nama.trim()}>
-          <Plus className="h-4 w-4 mr-1" /> Daftarkan
+        <Button size="sm" onClick={() => daftar.mutate()} disabled={daftar.isPending}>
+          <Plus className="h-4 w-4 mr-1" /> {nama.trim() ? 'Daftarkan' : 'Aktifkan Pemutar'}
         </Button>
       </div>
 

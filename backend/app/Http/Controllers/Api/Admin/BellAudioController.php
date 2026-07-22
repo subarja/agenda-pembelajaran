@@ -6,6 +6,7 @@ use App\Enums\BellEvent;
 use App\Http\Controllers\Controller;
 use App\Models\BellAudio;
 use App\Models\BellAudioMap;
+use App\Models\BellCustomRing;
 use App\Models\BellDevice;
 use App\Models\BellMode;
 use Illuminate\Http\JsonResponse;
@@ -41,6 +42,16 @@ class BellAudioController extends Controller
             ]),
             'modes' => BellMode::orderBy('id')->get(['id', 'nama', 'is_default']),
             'events' => array_map(fn (BellEvent $e) => ['value' => $e->value, 'label' => $e->label()], BellEvent::cases()),
+            'custom_rings' => BellCustomRing::with('audio')->orderBy('waktu')->get()->map(fn ($r) => [
+                'id' => $r->id,
+                'uuid' => $r->uuid,
+                'nama' => $r->nama,
+                'waktu' => substr($r->waktu, 0, 5),
+                'bell_audio_id' => $r->bell_audio_id,
+                'audio_nama' => $r->audio?->nama,
+                'hari' => $r->hari ?? [],
+                'aktif' => $r->aktif,
+            ]),
             'devices' => BellDevice::orderByDesc('created_at')->get()->map(fn ($d) => [
                 'id' => $d->id,
                 'uuid' => $d->uuid,
@@ -55,10 +66,10 @@ class BellAudioController extends Controller
     // ── POST /admin/bell-devices — daftarkan perangkat kiosk (menghasilkan token) ──
     public function storeDevice(Request $request): JsonResponse
     {
-        $data = $request->validate(['nama' => ['required', 'string', 'max:80']]);
+        $data = $request->validate(['nama' => ['nullable', 'string', 'max:80']]);
 
         $device = BellDevice::create([
-            'nama' => $data['nama'],
+            'nama' => $data['nama'] ?: 'Pemutar Bel '.(BellDevice::count() + 1),
             'token' => Str::random(48),
             'aktif' => true,
         ]);
@@ -83,6 +94,7 @@ class BellAudioController extends Controller
             'nama' => ['required', 'string', 'max:120'],
             'kategori' => ['required', Rule::in(BellEvent::values())],
             'durasi_detik' => ['nullable', 'integer', 'min:0', 'max:3600'],
+            'volume' => ['nullable', 'integer', 'min:0', 'max:100'],
             'file' => ['required', 'file', 'mimetypes:audio/mpeg,audio/ogg,audio/mp3', 'max:'.self::MAX_KB],
         ]);
 
@@ -96,6 +108,7 @@ class BellAudioController extends Controller
             'disk' => 'public',
             'path' => $path,
             'durasi_detik' => $data['durasi_detik'] ?? null,
+            'volume' => $data['volume'] ?? 100,
             'ukuran_byte' => $file->getSize(),
             'uploaded_by' => $request->user()->id,
             'aktif' => true,
@@ -112,6 +125,7 @@ class BellAudioController extends Controller
             'kategori' => ['sometimes', Rule::in(BellEvent::values())],
             'aktif' => ['sometimes', 'boolean'],
             'durasi_detik' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:3600'],
+            'volume' => ['sometimes', 'integer', 'min:0', 'max:100'],
             'file' => ['sometimes', 'file', 'mimetypes:audio/mpeg,audio/ogg,audio/mp3', 'max:'.self::MAX_KB],
         ]);
 
@@ -124,7 +138,7 @@ class BellAudioController extends Controller
             $audio->ukuran_byte = $file->getSize();
         }
 
-        $audio->fill(array_intersect_key($data, array_flip(['nama', 'kategori', 'aktif', 'durasi_detik'])));
+        $audio->fill(array_intersect_key($data, array_flip(['nama', 'kategori', 'aktif', 'durasi_detik', 'volume'])));
         $audio->save();
 
         return response()->json(['message' => 'Audio diperbarui.', 'data' => $this->present($audio->fresh())]);
@@ -205,10 +219,56 @@ class BellAudioController extends Controller
             'kategori' => $a->kategori->value,
             'kategori_label' => $a->kategori->label(),
             'durasi_detik' => $a->durasi_detik,
+            'volume' => $a->volume ?? 100,
             'ukuran_byte' => $a->ukuran_byte,
             'aktif' => $a->aktif,
             'url' => $a->url(),
             'created_at' => $a->created_at?->toIso8601String(),
         ];
+    }
+
+    // ── Jadwal Bunyi Kustom (jam eksplisit -> audio) ─────────────────────────
+    private const HARI = ['senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu', 'minggu'];
+
+    // POST /admin/bell-custom-rings
+    public function storeCustomRing(Request $request): JsonResponse
+    {
+        $data = $this->validateCustomRing($request);
+        BellCustomRing::create($data);
+
+        return response()->json(['message' => "Jadwal bunyi \"{$data['nama']}\" ditambahkan."], 201);
+    }
+
+    // PUT /admin/bell-custom-rings/{ring}
+    public function updateCustomRing(Request $request, BellCustomRing $ring): JsonResponse
+    {
+        $ring->update($this->validateCustomRing($request));
+
+        return response()->json(['message' => 'Jadwal bunyi diperbarui.']);
+    }
+
+    // DELETE /admin/bell-custom-rings/{ring}
+    public function destroyCustomRing(BellCustomRing $ring): JsonResponse
+    {
+        $ring->delete();
+
+        return response()->json(['message' => 'Jadwal bunyi dihapus.']);
+    }
+
+    private function validateCustomRing(Request $request): array
+    {
+        $data = $request->validate([
+            'nama' => ['required', 'string', 'max:120'],
+            'waktu' => ['required', 'date_format:H:i'],
+            'bell_audio_id' => ['required', 'integer', 'exists:bell_audios,id'],
+            'hari' => ['nullable', 'array'],
+            'hari.*' => [Rule::in(self::HARI)],
+            'aktif' => ['sometimes', 'boolean'],
+        ]);
+
+        // hari kosong = setiap hari (disimpan null).
+        $data['hari'] = empty($data['hari']) ? null : array_values(array_unique($data['hari']));
+
+        return $data;
     }
 }

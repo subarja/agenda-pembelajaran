@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\BellEvent;
 use App\Http\Controllers\Controller;
 use App\Models\BellAudio;
+use App\Models\BellCustomRing;
 use App\Models\BellDevice;
 use App\Models\BellRingLog;
 use App\Support\BellRingPlan;
@@ -15,7 +16,8 @@ use Illuminate\Validation\Rule;
 
 /**
  * Pemutar bel (kiosk). Halaman perangkat di PC/HP tersambung speaker mengambil "jadwal bunyi
- * hari ini", memutar via Web Audio API, lalu melapor heartbeat & log tiap bunyi.
+ * hari ini" (event otomatis + jadwal kustom), memutarnya pada waktunya, lalu melapor heartbeat
+ * & log tiap bunyi.
  *
  * Strategi cPanel: TANPA websocket. Kiosk cache jadwal hari ini + tick lokal 1 dtk + sinkron 60 dtk.
  * Baca jadwal bersifat publik (jam bel bukan data pribadi); tulis (heartbeat/log) butuh token perangkat.
@@ -33,18 +35,44 @@ class BellPlayerController extends Controller
                 ->update(['last_heartbeat_at' => now()]);
         }
 
-        // Audio siap-pakai untuk bel manual/darurat (tidak dijadwalkan otomatis).
-        $manual = BellAudio::where('aktif', true)
-            ->whereIn('kategori', ['darurat', 'khusus', 'upacara', 'murottal'])
-            ->orderBy('kategori')->get()
-            ->map(fn ($a) => ['id' => $a->id, 'nama' => $a->nama, 'kategori' => $a->kategori->value, 'url' => $a->url()]);
+        // Event otomatis (pergantian jam dst) + jadwal bunyi kustom (jam eksplisit).
+        $events = array_merge(BellRingPlan::forDate($tanggal), $this->customEvents($tanggal));
+        usort($events, fn ($a, $b) => strcmp($a['waktu'], $b['waktu']));
+
+        // Semua audio aktif — dipakai panel "Putar sekarang" & "Uji terjadwal" di kiosk,
+        // sekaligus bel manual/darurat. Sertakan volume agar pemutar bisa menyamakan level.
+        $audios = BellAudio::where('aktif', true)->orderBy('nama')->get()
+            ->map(fn ($a) => [
+                'id' => $a->id, 'nama' => $a->nama, 'kategori' => $a->kategori->value,
+                'url' => $a->url(), 'volume' => $a->volume ?? 100,
+            ]);
 
         return response()->json(['data' => [
             'tanggal' => $tanggal,
             'server_time' => Carbon::now('Asia/Jakarta')->format('H:i:s'),
-            'events' => BellRingPlan::forDate($tanggal),
-            'manual_audios' => $manual,
+            'events' => array_values($events),
+            'audios' => $audios,
         ]]);
+    }
+
+    /** Jadwal bunyi kustom (jam dinding tetap) yang berlaku pada tanggal itu. */
+    private function customEvents(string $tanggal): array
+    {
+        $namaHari = mb_strtolower(Carbon::parse($tanggal)->locale('id')->dayName);
+
+        return BellCustomRing::with('audio')->where('aktif', true)->get()
+            ->filter(fn ($r) => $r->berlakuPada($namaHari) && $r->audio && $r->audio->aktif)
+            ->map(fn ($r) => [
+                'waktu' => strlen($r->waktu) === 5 ? $r->waktu.':00' : $r->waktu,
+                'jenis_event' => 'khusus',
+                'jenis_label' => $r->nama,
+                'bell_audio_id' => $r->bell_audio_id,
+                'audio_nama' => $r->audio->nama,
+                'audio_url' => $r->audio->url(),
+                'volume' => $r->audio->volume ?? 100,
+                'custom' => true,
+            ])
+            ->values()->all();
     }
 
     // ── POST /bel/heartbeat ──────────────────────────────────────────────────

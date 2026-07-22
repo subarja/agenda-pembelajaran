@@ -119,6 +119,43 @@ class BellAudioTest extends TestCase
         $this->assertSame($s->id, $masuk['bell_audio_id'], 'pemetaan spesifik mode harus menang');
     }
 
+    public function test_jadwal_bunyi_kustom_muncul_di_kiosk_dengan_volume(): void
+    {
+        Sanctum::actingAs($this->admin());
+
+        $audio = BellAudio::create(['nama' => 'Murottal', 'kategori' => 'murottal', 'path' => 'audio_bel/m.mp3', 'volume' => 60, 'aktif' => true]);
+
+        // Bunyi kustom 06:50, hanya Senin.
+        $this->postJson('/api/v1/admin/bell-custom-rings', [
+            'nama' => 'Murottal Pagi', 'waktu' => '06:50', 'bell_audio_id' => $audio->id, 'hari' => ['senin'],
+        ])->assertCreated();
+
+        // Senin (2026-03-09) -> muncul; jadwal kustom TIDAK digeser mode (jam dinding tetap).
+        \Illuminate\Support\Carbon::setTestNow('2026-03-09 06:00:00');
+        $senin = $this->getJson('/api/v1/bel/hari-ini')->assertOk()->json('data.events');
+        \Illuminate\Support\Carbon::setTestNow();
+        $kustom = collect($senin)->firstWhere('jenis_label', 'Murottal Pagi');
+        $this->assertNotNull($kustom, 'bunyi kustom harus muncul hari Senin');
+        $this->assertSame('06:50:00', $kustom['waktu']);
+        $this->assertTrue($kustom['custom']);
+        $this->assertSame(60, $kustom['volume']);
+    }
+
+    public function test_jadwal_bunyi_kustom_hormati_hari(): void
+    {
+        Sanctum::actingAs($this->admin());
+        $audio = BellAudio::create(['nama' => 'Lagu', 'kategori' => 'khusus', 'path' => 'audio_bel/l.mp3', 'aktif' => true]);
+        $this->postJson('/api/v1/admin/bell-custom-rings', [
+            'nama' => 'Lagu Senin', 'waktu' => '06:30', 'bell_audio_id' => $audio->id, 'hari' => ['senin'],
+        ])->assertCreated();
+
+        // Rabu (2026-03-11) -> tidak muncul.
+        \Illuminate\Support\Carbon::setTestNow('2026-03-11 06:00:00');
+        $rabu = $this->getJson('/api/v1/bel/hari-ini')->json('data.events');
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertNull(collect($rabu)->firstWhere('jenis_label', 'Lagu Senin'));
+    }
+
     public function test_kiosk_tulis_butuh_token_perangkat(): void
     {
         // Tanpa token -> 403.

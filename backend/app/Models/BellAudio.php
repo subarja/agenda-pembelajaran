@@ -17,7 +17,7 @@ class BellAudio extends Model
     protected $table = 'bell_audios';
 
     protected $fillable = [
-        'nama', 'kategori', 'disk', 'path', 'durasi_detik', 'ukuran_byte', 'uploaded_by', 'aktif',
+        'nama', 'kategori', 'disk', 'path', 'durasi_detik', 'volume', 'ukuran_byte', 'uploaded_by', 'aktif',
     ];
 
     protected function casts(): array
@@ -25,6 +25,7 @@ class BellAudio extends Model
         return [
             'kategori' => BellEvent::class,
             'durasi_detik' => 'integer',
+            'volume' => 'integer',
             'ukuran_byte' => 'integer',
             'aktif' => 'boolean',
         ];
