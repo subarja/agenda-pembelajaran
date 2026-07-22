@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Enums\IzinKeluarStatus;
 use App\Http\Controllers\Controller;
 use App\Models\IzinKeluar;
+use App\Notifications\IzinKeluarScanNotification;
+use App\Support\PiketAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -47,6 +50,8 @@ class SekuritiController extends Controller
                 'scan_keluar_oleh' => $request->user()->id,
             ]);
 
+            Notification::send(PiketAccess::petugasUsers(), new IzinKeluarScanNotification($izin, 'keluar'));
+
             return response()->json(['ok' => true, 'arah' => 'keluar', 'message' => 'Siswa keluar tercatat.', 'data' => $this->kartu($izin, 'keluar')]);
         }
 
@@ -58,6 +63,8 @@ class SekuritiController extends Controller
                 'waktu_masuk' => $now,
                 'scan_masuk_oleh' => $request->user()->id,
             ]);
+
+            Notification::send(PiketAccess::petugasUsers(), new IzinKeluarScanNotification($izin, 'masuk'));
 
             return response()->json(['ok' => true, 'arah' => 'masuk', 'message' => 'Siswa kembali tercatat.', 'data' => $this->kartu($izin, 'masuk')]);
         }

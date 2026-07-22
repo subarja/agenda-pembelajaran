@@ -6,10 +6,13 @@ use App\Enums\IzinKesianganStatus;
 use App\Http\Controllers\Controller;
 use App\Models\IzinKesiangan;
 use App\Models\Student;
+use App\Notifications\IzinKesianganDiajukanNotification;
 use App\Support\BellSchedule;
+use App\Support\PiketAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Notification;
 
 /**
  * Izin masuk kesiangan sisi SISWA: ajukan (waktu tiba dicatat otomatis, keterlambatan
@@ -45,6 +48,8 @@ class IzinKesianganController extends Controller
             'waktu_tiba' => $now,
             'terlambat_menit' => $terlambat,
         ]);
+
+        Notification::send(PiketAccess::petugasUsers(), new IzinKesianganDiajukanNotification($izin));
 
         return response()->json([
             'message' => "Izin kesiangan diajukan (terlambat {$terlambat} menit). Menunggu verifikasi guru piket.",

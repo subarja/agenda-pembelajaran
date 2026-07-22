@@ -10,15 +10,18 @@ class NotificationPreference extends Model
 {
     /** Jenis notifikasi yang bisa dimatikan sendiri oleh pengguna. */
     public const TYPES = [
-        'alpha_alert'        => 'Peringatan alpha berturut-turut',
-        'ews_escalation'     => 'EWS siswa naik level',
-        'rekomendasi'        => 'Rekomendasi tindakan baru',
+        'alpha_alert' => 'Peringatan alpha berturut-turut',
+        'ews_escalation' => 'EWS siswa naik level',
+        'rekomendasi' => 'Rekomendasi tindakan baru',
         'konseling_diajukan' => 'Pengajuan konseling ke BK',
-        'catatan_manual'     => 'Catatan manual karakter menunggu review',
-        'inval_diajukan'     => 'Permintaan mengajar sebagai guru pengganti',
-        'inval_disetujui'    => 'Permintaan inval Anda disetujui',
-        'inval_ditolak'      => 'Permintaan inval Anda ditolak',
-        'inval_kedaluwarsa'  => 'Permintaan inval kedaluwarsa tanpa jawaban',
+        'catatan_manual' => 'Catatan manual karakter menunggu review',
+        'inval_diajukan' => 'Permintaan mengajar sebagai guru pengganti',
+        'inval_disetujui' => 'Permintaan inval Anda disetujui',
+        'inval_ditolak' => 'Permintaan inval Anda ditolak',
+        'inval_kedaluwarsa' => 'Permintaan inval kedaluwarsa tanpa jawaban',
+        'izin_keluar_diajukan' => 'Pengajuan izin keluar siswa (piket)',
+        'izin_keluar_scan' => 'Siswa terpindai keluar/masuk (piket)',
+        'izin_kesiangan_diajukan' => 'Pengajuan izin kesiangan siswa (piket)',
     ];
 
     protected $fillable = [
@@ -27,9 +30,9 @@ class NotificationPreference extends Model
     ];
 
     protected $casts = [
-        'push_enabled'        => 'boolean',
+        'push_enabled' => 'boolean',
         'quiet_hours_enabled' => 'boolean',
-        'types'               => 'array',
+        'types' => 'array',
     ];
 
     public function user(): BelongsTo
@@ -47,10 +50,10 @@ class NotificationPreference extends Model
     public static function for(User $user): self
     {
         return static::firstOrCreate(['user_id' => $user->id], [
-            'push_enabled'        => true,
+            'push_enabled' => true,
             'quiet_hours_enabled' => false,
-            'quiet_start'         => '21:00',
-            'quiet_end'           => '05:00',
+            'quiet_start' => '21:00',
+            'quiet_end' => '05:00',
         ]);
     }
 
@@ -81,7 +84,7 @@ class NotificationPreference extends Model
         }
 
         $start = $this->quiet_start ?: '21:00';
-        $end   = $this->quiet_end ?: '05:00';
+        $end = $this->quiet_end ?: '05:00';
 
         if ($start === $end) {
             return false;

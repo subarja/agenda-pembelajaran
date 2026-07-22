@@ -6,9 +6,12 @@ use App\Enums\IzinKeluarStatus;
 use App\Http\Controllers\Controller;
 use App\Models\IzinKeluar;
 use App\Models\Student;
+use App\Notifications\IzinKeluarDiajukanNotification;
+use App\Support\PiketAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Notification;
 
 /**
  * Izin keluar sisi SISWA: ajukan izin, lihat izin aktif hari ini (+ QR bila disetujui),
@@ -44,6 +47,8 @@ class IzinKeluarController extends Controller
             'alasan' => $data['alasan'] ?? null,
             'status' => IzinKeluarStatus::Diajukan,
         ]);
+
+        Notification::send(PiketAccess::petugasUsers(), new IzinKeluarDiajukanNotification($izin));
 
         return response()->json(['message' => 'Izin keluar diajukan. Menunggu persetujuan guru piket.', 'data' => $this->present($izin)], 201);
     }

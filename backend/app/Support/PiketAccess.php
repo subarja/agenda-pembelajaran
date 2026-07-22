@@ -6,6 +6,7 @@ use App\Models\PiketAssignment;
 use App\Models\Teacher;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Otorisasi piket berbasis KAPABILITAS (meniru App\Support\ClassAccess & PklMode::isPembimbing):
@@ -27,6 +28,21 @@ class PiketAccess
             ->where('tanggal', $tanggal)
             ->where('teacher_id', $teacher->id)
             ->exists();
+    }
+
+    /** Akun user (guru) yang bertugas piket pada tanggal itu — untuk notifikasi. */
+    public static function petugasUsers(?string $tanggal = null): Collection
+    {
+        $tanggal ??= Carbon::now('Asia/Jakarta')->toDateString();
+
+        return PiketAssignment::tahunAjaran()
+            ->where('tanggal', $tanggal)
+            ->with('teacher.user')
+            ->get()
+            ->map(fn ($a) => $a->teacher?->user)
+            ->filter()
+            ->unique('id')
+            ->values();
     }
 
     /** Id penugasan piket milik user pada tanggal (untuk kapabilitas & audit). */
