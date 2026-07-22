@@ -51,17 +51,17 @@ class BellSchedule
     {
         $hari = $schedule->hari instanceof Hari ? $schedule->hari->value : (string) $schedule->hari;
 
-        $mulaiP   = self::period($hari, $schedule->jam_ke_mulai);
+        $mulaiP = self::period($hari, $schedule->jam_ke_mulai);
         $selesaiP = self::period($hari, $schedule->jam_ke_selesai);
 
-        $mulai   = $mulaiP['mulai']    ?? $schedule->jam_mulai;
+        $mulai = $mulaiP['mulai'] ?? $schedule->jam_mulai;
         $selesai = $selesaiP['selesai'] ?? $schedule->jam_selesai;
 
         $offset = self::offsetFor($hari, $tanggal);
 
         // Periode terkunci (istirahat) tidak digeser oleh mode — jam dinding tetap.
         return [
-            'jam_mulai'   => self::shift($mulai, ($mulaiP['terkunci'] ?? false) ? 0 : $offset),
+            'jam_mulai' => self::shift($mulai, ($mulaiP['terkunci'] ?? false) ? 0 : $offset),
             'jam_selesai' => self::shift($selesai, ($selesaiP['terkunci'] ?? false) ? 0 : $offset),
         ];
     }
@@ -127,6 +127,57 @@ class BellSchedule
         return self::$defaultOffset;
     }
 
+    /** Id BellMode yang berlaku: override tanggal → default hari → default global (null bila tak ada). */
+    public static function modeIdFor(Hari|string $hari, ?string $tanggal = null): ?int
+    {
+        $hari = $hari instanceof Hari ? $hari->value : $hari;
+
+        if ($tanggal !== null) {
+            $id = BellModeOverride::where('tanggal', $tanggal)->value('bell_mode_id');
+            if ($id !== null) {
+                return (int) $id;
+            }
+        }
+
+        $id = BellDayDefault::where('hari', $hari)->value('bell_mode_id');
+        if ($id !== null) {
+            return (int) $id;
+        }
+
+        $id = BellMode::where('is_default', true)->value('id');
+
+        return $id !== null ? (int) $id : null;
+    }
+
+    /**
+     * Periode bel satu hari (dari tanggal), sudah digeser mode & menghormati terkunci_offset.
+     * Diurutkan naik berdasarkan jam mulai efektif.
+     *
+     * @return list<array{jam_ke:int, jam_mulai:string, jam_selesai:string, is_istirahat:bool}>
+     */
+    public static function periodsForDate(string $tanggal): array
+    {
+        $hari = self::hariDari($tanggal);
+        if ($hari === null) {
+            return [];
+        }
+
+        $offset = self::offsetFor($hari, $tanggal);
+
+        $rows = BellPeriod::where('hari', $hari)->orderBy('jam_ke')->get()
+            ->map(fn ($p) => [
+                'jam_ke' => (int) $p->jam_ke,
+                'jam_mulai' => self::shift($p->jam_mulai, $p->terkunci_offset ? 0 : $offset),
+                'jam_selesai' => self::shift($p->jam_selesai, $p->terkunci_offset ? 0 : $offset),
+                'is_istirahat' => (bool) $p->is_istirahat,
+            ])
+            ->all();
+
+        usort($rows, fn ($a, $b) => strcmp((string) $a['jam_mulai'], (string) $b['jam_mulai']));
+
+        return $rows;
+    }
+
     /** Geser string waktu H:i[:s] sekian menit (negatif = lebih awal). */
     public static function shift(?string $time, int $menit): ?string
     {
@@ -155,8 +206,8 @@ class BellSchedule
         self::$periods ??= BellPeriod::all()
             ->groupBy(fn ($p) => $p->hari->value)
             ->map(fn ($rows) => $rows->keyBy('jam_ke')->map(fn ($p) => [
-                'mulai'    => $p->jam_mulai,
-                'selesai'  => $p->jam_selesai,
+                'mulai' => $p->jam_mulai,
+                'selesai' => $p->jam_selesai,
                 'terkunci' => (bool) $p->terkunci_offset,
             ])->all())
             ->all();
@@ -166,9 +217,9 @@ class BellSchedule
 
     public static function flush(): void
     {
-        self::$periods       = null;
+        self::$periods = null;
         self::$defaultOffset = null;
-        self::$dayOffsets    = null;
-        self::$dateOffsets   = [];
+        self::$dayOffsets = null;
+        self::$dateOffsets = [];
     }
 }

@@ -35,27 +35,27 @@ class BellScheduleController extends Controller
             'periods' => BellPeriod::orderBy('jam_ke')->get()
                 ->groupBy(fn ($p) => $p->hari->value)
                 ->map(fn ($rows) => $rows->map(fn ($p) => [
-                    'jam_ke'          => $p->jam_ke,
-                    'jam_mulai'       => substr($p->jam_mulai, 0, 5),
-                    'jam_selesai'     => substr($p->jam_selesai, 0, 5),
-                    'is_istirahat'    => (bool) $p->is_istirahat,
+                    'jam_ke' => $p->jam_ke,
+                    'jam_mulai' => substr($p->jam_mulai, 0, 5),
+                    'jam_selesai' => substr($p->jam_selesai, 0, 5),
+                    'is_istirahat' => (bool) $p->is_istirahat,
                     'terkunci_offset' => (bool) $p->terkunci_offset,
                 ])->values()),
             'modes' => BellMode::orderBy('id')->get()
                 ->map(fn ($m) => [
-                    'id'           => $m->id,
-                    'nama'         => $m->nama,
+                    'id' => $m->id,
+                    'nama' => $m->nama,
                     'offset_menit' => $m->offset_menit,
-                    'is_default'   => $m->is_default,
+                    'is_default' => $m->is_default,
                 ]),
             'day_defaults' => BellDayDefault::get()
                 ->mapWithKeys(fn ($d) => [$d->hari->value => $d->bell_mode_id]),
             'overrides' => BellModeOverride::with('mode')->orderByDesc('tanggal')->limit(200)->get()
                 ->map(fn ($o) => [
-                    'id'         => $o->id,
-                    'tanggal'    => $o->tanggal->toDateString(),
-                    'mode_id'    => $o->bell_mode_id,
-                    'mode_nama'  => $o->mode?->nama,
+                    'id' => $o->id,
+                    'tanggal' => $o->tanggal->toDateString(),
+                    'mode_id' => $o->bell_mode_id,
+                    'mode_nama' => $o->mode?->nama,
                     'keterangan' => $o->keterangan,
                 ]),
         ]]);
@@ -65,23 +65,23 @@ class BellScheduleController extends Controller
     public function updatePeriods(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'hari'                        => ['required', Rule::in(self::HARI)],
-            'periods'                     => ['present', 'array'],
-            'periods.*.jam_ke'            => ['required', 'integer', 'min:0', 'max:20', 'distinct'],
-            'periods.*.jam_mulai'         => ['required', 'date_format:H:i'],
-            'periods.*.jam_selesai'       => ['required', 'date_format:H:i', 'after:periods.*.jam_mulai'],
-            'periods.*.is_istirahat'      => ['sometimes', 'boolean'],
-            'periods.*.terkunci_offset'   => ['sometimes', 'boolean'],
+            'hari' => ['required', Rule::in(self::HARI)],
+            'periods' => ['present', 'array'],
+            'periods.*.jam_ke' => ['required', 'integer', 'min:0', 'max:20', 'distinct'],
+            'periods.*.jam_mulai' => ['required', 'date_format:H:i'],
+            'periods.*.jam_selesai' => ['required', 'date_format:H:i', 'after:periods.*.jam_mulai'],
+            'periods.*.is_istirahat' => ['sometimes', 'boolean'],
+            'periods.*.terkunci_offset' => ['sometimes', 'boolean'],
         ]);
 
         BellPeriod::where('hari', $data['hari'])->delete();
         foreach ($data['periods'] as $p) {
             BellPeriod::create([
-                'hari'            => $data['hari'],
-                'jam_ke'          => $p['jam_ke'],
-                'jam_mulai'       => $p['jam_mulai'],
-                'jam_selesai'     => $p['jam_selesai'],
-                'is_istirahat'    => $p['is_istirahat'] ?? false,
+                'hari' => $data['hari'],
+                'jam_ke' => $p['jam_ke'],
+                'jam_mulai' => $p['jam_mulai'],
+                'jam_selesai' => $p['jam_selesai'],
+                'is_istirahat' => $p['is_istirahat'] ?? false,
                 'terkunci_offset' => $p['terkunci_offset'] ?? false,
             ]);
         }
@@ -94,7 +94,7 @@ class BellScheduleController extends Controller
     public function storeMode(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'nama'         => ['required', 'string', 'max:50', 'unique:bell_modes,nama'],
+            'nama' => ['required', 'string', 'max:50', 'unique:bell_modes,nama'],
             'offset_menit' => ['required', 'integer', 'min:-180', 'max:180'],
         ]);
 
@@ -108,9 +108,9 @@ class BellScheduleController extends Controller
     public function updateMode(Request $request, BellMode $mode): JsonResponse
     {
         $data = $request->validate([
-            'nama'         => ['sometimes', 'string', 'max:50', Rule::unique('bell_modes', 'nama')->ignore($mode->id)],
+            'nama' => ['sometimes', 'string', 'max:50', Rule::unique('bell_modes', 'nama')->ignore($mode->id)],
             'offset_menit' => ['sometimes', 'integer', 'min:-180', 'max:180'],
-            'is_default'   => ['sometimes', 'boolean'],
+            'is_default' => ['sometimes', 'boolean'],
         ]);
 
         // Default global selalu tepat satu: menjadikan mode ini default otomatis
@@ -148,7 +148,7 @@ class BellScheduleController extends Controller
     public function updateDayDefaults(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'day_defaults'   => ['present', 'array'],
+            'day_defaults' => ['present', 'array'],
             'day_defaults.*' => ['nullable', 'integer', 'exists:bell_modes,id'],
         ]);
 
@@ -171,10 +171,10 @@ class BellScheduleController extends Controller
     public function storeOverrides(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'tanggal'      => ['required', 'array', 'min:1'],
-            'tanggal.*'    => ['required', 'date_format:Y-m-d'],
+            'tanggal' => ['required', 'array', 'min:1'],
+            'tanggal.*' => ['required', 'date_format:Y-m-d'],
             'bell_mode_id' => ['required', 'integer', 'exists:bell_modes,id'],
-            'keterangan'   => ['nullable', 'string', 'max:255'],
+            'keterangan' => ['nullable', 'string', 'max:255'],
         ]);
 
         foreach ($data['tanggal'] as $tanggal) {
@@ -182,8 +182,8 @@ class BellScheduleController extends Controller
                 ['tanggal' => $tanggal],
                 [
                     'bell_mode_id' => $data['bell_mode_id'],
-                    'keterangan'   => $data['keterangan'] ?? null,
-                    'created_by'   => $request->user()->id,
+                    'keterangan' => $data['keterangan'] ?? null,
+                    'created_by' => $request->user()->id,
                 ],
             );
         }
@@ -218,7 +218,7 @@ class BellScheduleController extends Controller
         ];
 
         $tempFile = tempnam(sys_get_temp_dir(), 'bel_tpl_');
-        $writer   = new XlsxWriter();
+        $writer = new XlsxWriter;
         $writer->openToFile($tempFile);
         $writer->getOptions()->setColumnWidthForRange(20, 1, count($headers));
 
@@ -242,56 +242,61 @@ class BellScheduleController extends Controller
     {
         $request->validate(['file' => ['required', 'file', 'mimes:xlsx,xls', 'max:2048']]);
 
-        $rows    = $this->readXlsx($request->file('file')->getRealPath());
-        $errors  = [];
+        $rows = $this->readXlsx($request->file('file')->getRealPath());
+        $errors = [];
         $perHari = [];   // hari => [ [jam_ke, jam_mulai, jam_selesai], ... ]
 
         foreach ($rows as $i => $row) {
-            $rowNum      = $i + 2;
-            $hari        = strtolower(trim((string) ($row[0] ?? '')));
-            $jamKe       = trim((string) ($row[1] ?? ''));
-            $jamMulai    = $this->normalizeTime($row[2] ?? '');
-            $jamSelesai  = $this->normalizeTime($row[3] ?? '');
+            $rowNum = $i + 2;
+            $hari = strtolower(trim((string) ($row[0] ?? '')));
+            $jamKe = trim((string) ($row[1] ?? ''));
+            $jamMulai = $this->normalizeTime($row[2] ?? '');
+            $jamSelesai = $this->normalizeTime($row[3] ?? '');
             $isIstirahat = $this->truthy($row[4] ?? '');
-            $terkunci    = $this->truthy($row[5] ?? '');
+            $terkunci = $this->truthy($row[5] ?? '');
 
             if (! in_array($hari, self::HARI, true)) {
                 $errors[] = "Baris $rowNum: hari '$hari' tidak valid (senin–sabtu).";
+
                 continue;
             }
             if (! is_numeric($jamKe) || (int) $jamKe < 0 || (int) $jamKe > 20) {
                 $errors[] = "Baris $rowNum: jam_ke harus angka 0–20.";
+
                 continue;
             }
             if (! $jamMulai || ! $jamSelesai) {
                 $errors[] = "Baris $rowNum: jam_mulai/jam_selesai harus format HH:MM.";
+
                 continue;
             }
             if ($jamSelesai <= $jamMulai) {
                 $errors[] = "Baris $rowNum: jam_selesai harus setelah jam_mulai.";
+
                 continue;
             }
             if (isset($perHari[$hari][(int) $jamKe])) {
                 $errors[] = "Baris $rowNum: jam ke-$jamKe untuk $hari ganda di file.";
+
                 continue;
             }
 
             $perHari[$hari][(int) $jamKe] = [
-                'jam_ke'          => (int) $jamKe,
-                'jam_mulai'       => $jamMulai,
-                'jam_selesai'     => $jamSelesai,
-                'is_istirahat'    => $isIstirahat,
+                'jam_ke' => (int) $jamKe,
+                'jam_mulai' => $jamMulai,
+                'jam_selesai' => $jamSelesai,
+                'is_istirahat' => $isIstirahat,
                 'terkunci_offset' => $terkunci,
             ];
         }
 
         if (empty($perHari)) {
             return response()->json([
-                'message'      => 'Tidak ada baris valid untuk diimpor.',
-                'imported'     => 0,
-                'hari_count'   => 0,
-                'error_count'  => count($errors),
-                'errors'       => $errors,
+                'message' => 'Tidak ada baris valid untuk diimpor.',
+                'imported' => 0,
+                'hari_count' => 0,
+                'error_count' => count($errors),
+                'errors' => $errors,
             ], 422);
         }
 
@@ -306,11 +311,11 @@ class BellScheduleController extends Controller
         BellSchedule::flush();
 
         return response()->json([
-            'message'     => "Berhasil mengimpor $imported jam bel untuk ".count($perHari).' hari.',
-            'imported'    => $imported,
-            'hari_count'  => count($perHari),
+            'message' => "Berhasil mengimpor $imported jam bel untuk ".count($perHari).' hari.',
+            'imported' => $imported,
+            'hari_count' => count($perHari),
             'error_count' => count($errors),
-            'errors'      => $errors,
+            'errors' => $errors,
         ]);
     }
 
@@ -354,18 +359,26 @@ class BellScheduleController extends Controller
     /** Baca sheet pertama xlsx → array baris (tanpa header). */
     private function readXlsx(string $path): array
     {
-        $reader = new XlsxReader();
+        $reader = new XlsxReader;
         $reader->open($path);
-        $rows       = [];
+        $rows = [];
         $sheetCount = 0;
 
         foreach ($reader->getSheetIterator() as $sheet) {
-            if ($sheetCount++ > 0) break;
+            if ($sheetCount++ > 0) {
+                break;
+            }
             $firstRow = true;
             foreach ($sheet->getRowIterator() as $row) {
-                if ($firstRow) { $firstRow = false; continue; }
+                if ($firstRow) {
+                    $firstRow = false;
+
+                    continue;
+                }
                 $values = $row->toArray();
-                if (empty(array_filter($values, fn ($v) => $v !== '' && $v !== null))) continue;
+                if (empty(array_filter($values, fn ($v) => $v !== '' && $v !== null))) {
+                    continue;
+                }
                 $rows[] = $values;
             }
         }

@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Admin\AcademicYearController;
 use App\Http\Controllers\Api\Admin\AgendaFillSettingController;
 use App\Http\Controllers\Api\Admin\ArchiveWriteSettingController;
 use App\Http\Controllers\Api\Admin\AscXmlImportController;
+use App\Http\Controllers\Api\Admin\BellAudioController;
 use App\Http\Controllers\Api\Admin\BellScheduleController;
 use App\Http\Controllers\Api\Admin\CalendarController;
 use App\Http\Controllers\Api\Admin\CharacterAdminController;
@@ -35,6 +36,7 @@ use App\Http\Controllers\Api\Admin\TeacherEwsController;
 use App\Http\Controllers\Api\Admin\UserAdminController;
 use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BellPlayerController;
 use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\CharacterManualNoteController;
@@ -78,6 +80,16 @@ Route::get('academic-years/pilihan', [AcademicYearSelectionController::class, 'p
 
 // Logo aplikasi (publik — halaman login perlu tampilkan logo sebelum auth)
 Route::get('branding', [BrandingController::class, 'show']);
+
+// ── Pemutar Bel / Kiosk (publik terbatas) ─────────────────────────────────────
+// Baca jadwal bunyi hari ini bersifat publik (jam bel bukan data pribadi); menulis
+// (heartbeat/log/manual) butuh token perangkat yang valid. Rate-limit ringan.
+Route::prefix('bel')->middleware('throttle:120,1')->group(function () {
+    Route::get('hari-ini', [BellPlayerController::class, 'hariIni']);
+    Route::post('heartbeat', [BellPlayerController::class, 'heartbeat']);
+    Route::post('ring-log', [BellPlayerController::class, 'ringLog']);
+    Route::post('manual', [BellPlayerController::class, 'manual']);
+});
 
 // ── Protected ─────────────────────────────────────────────────────────────────
 Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
@@ -375,6 +387,16 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::put('bell-schedule/day-defaults', [BellScheduleController::class, 'updateDayDefaults']);
         Route::post('bell-schedule/overrides', [BellScheduleController::class, 'storeOverrides']);
         Route::delete('bell-schedule/overrides/{override}', [BellScheduleController::class, 'destroyOverride']);
+
+        // ── Bel & Audio (bank suara + pemetaan event + perangkat kiosk) ───────────
+        Route::get('bell-audios', [BellAudioController::class, 'index']);
+        Route::post('bell-audios', [BellAudioController::class, 'store']);
+        Route::put('bell-audios/{audio}', [BellAudioController::class, 'update']);
+        Route::delete('bell-audios/{audio}', [BellAudioController::class, 'destroy']);
+        Route::post('bell-audios/{uuid}/restore', [BellAudioController::class, 'restore']);
+        Route::put('bell-audio-maps', [BellAudioController::class, 'upsertMap']);
+        Route::post('bell-devices', [BellAudioController::class, 'storeDevice']);
+        Route::delete('bell-devices/{device}', [BellAudioController::class, 'destroyDevice']);
 
         // ── Mode PKL (saklar, TP khusus, penempatan) ──────────────────────────────
         Route::get('pkl/setting', [PklSettingController::class, 'show']);

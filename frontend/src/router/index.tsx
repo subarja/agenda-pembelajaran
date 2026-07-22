@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/LoginPage'
+import KioskBelPage from '@/pages/KioskBelPage'
 import DashboardPage from '@/pages/DashboardPage'
 import ProfilePage from '@/pages/ProfilePage'
 import PlaceholderPage from '@/pages/PlaceholderPage'
@@ -88,6 +89,8 @@ function RequireAcademicYear({ children }: { children: React.ReactNode }) {
 export default function AppRouter() {
   return (
     <Routes>
+      {/* Pemutar bel (kiosk) — publik, otentikasi lewat token perangkat di URL */}
+      <Route path="/bel/pemutar"     element={<KioskBelPage />} />
       <Route path="/login"           element={<GuestRoute><LoginPage /></GuestRoute>} />
       <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordPage /></GuestRoute>} />
       <Route path="/reset-password"  element={<GuestRoute><ResetPasswordPage /></GuestRoute>} />

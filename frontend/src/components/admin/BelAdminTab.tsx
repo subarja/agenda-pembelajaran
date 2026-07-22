@@ -56,7 +56,251 @@ export default function BelAdminTab() {
       <ModeSection data={data} />
       <DayDefaultSection data={data} />
       <OverrideSection data={data} />
+      <AudioBankSection />
+      <EventMapSection />
+      <DeviceSection />
     </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Bel & Audio (Sprint 2): bank suara, pemetaan event -> audio, perangkat kiosk
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface BelAudio {
+  id: number; uuid: string; nama: string; kategori: string; kategori_label: string
+  durasi_detik: number | null; ukuran_byte: number; aktif: boolean; url: string | null
+}
+interface BelAudioMap { id: number; bell_mode_id: number | null; jenis_event: string; bell_audio_id: number; aktif: boolean }
+interface BelEventOpt { value: string; label: string }
+interface BelDevice { id: number; uuid: string; nama: string; token: string; aktif: boolean; last_heartbeat_at: string | null }
+interface BelAudioData {
+  audios: BelAudio[]
+  maps: BelAudioMap[]
+  modes: { id: number; nama: string; is_default: boolean }[]
+  events: BelEventOpt[]
+  devices: BelDevice[]
+}
+
+const fmtBytes = (n: number) => n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
+
+function useBelAudio() {
+  return useQuery<BelAudioData>({
+    queryKey: ['admin-bell-audios'],
+    queryFn: () => api.get('/admin/bell-audios').then(r => r.data.data),
+  })
+}
+
+// ── Bank Audio (upload + daftar) ─────────────────────────────────────────────
+function AudioBankSection() {
+  const { data, isLoading } = useBelAudio()
+  const qc = useQueryClient()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [nama, setNama] = useState('')
+  const [kategori, setKategori] = useState('masuk')
+  const [uploading, setUploading] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['admin-bell-audios'] })
+
+  async function onUpload() {
+    const file = fileRef.current?.files?.[0]
+    if (!file || !nama.trim()) { setMsg('Isi nama dan pilih berkas audio.'); return }
+    setUploading(true); setMsg(null)
+    try {
+      const fd = new FormData()
+      fd.append('nama', nama); fd.append('kategori', kategori); fd.append('file', file)
+      const r = await api.post('/admin/bell-audios', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      setMsg(r.data.message); setNama(''); if (fileRef.current) fileRef.current.value = ''
+      refresh()
+    } catch (e: any) {
+      setMsg(e.response?.data?.message ?? 'Upload gagal (format harus MP3/OGG, maks 5MB).')
+    } finally { setUploading(false) }
+  }
+
+  const toggle = useMutation({
+    mutationFn: (a: BelAudio) => api.put(`/admin/bell-audios/${a.id}`, { aktif: !a.aktif }).then(r => r.data),
+    onSuccess: () => refresh(),
+  })
+  const hapus = useMutation({
+    mutationFn: (a: BelAudio) => api.delete(`/admin/bell-audios/${a.id}`).then(r => r.data),
+    onSuccess: (d) => { setMsg(d.message); refresh() },
+  })
+
+  return (
+    <Card><CardContent className="p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-sm">Bank Audio Bel</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Unggah berkas suara (MP3/OGG, maks 5MB) lalu petakan ke event bel di bawah. Berkas
+          disimpan di penyimpanan aplikasi (ikut pindah ke R2 otomatis bila diaktifkan).
+        </p>
+      </div>
+
+      <div className="flex items-end gap-2 flex-wrap rounded-lg border bg-muted/30 p-3">
+        <div className="flex-1 min-w-40">
+          <label className="text-xs text-muted-foreground">Nama audio</label>
+          <input className={inputCls} value={nama} onChange={e => setNama(e.target.value)} placeholder="mis. Bel Masuk" />
+        </div>
+        <div className="w-44">
+          <label className="text-xs text-muted-foreground">Kategori</label>
+          <select className={inputCls} value={kategori} onChange={e => setKategori(e.target.value)}>
+            {(data?.events ?? []).map(ev => <option key={ev.value} value={ev.value}>{ev.label}</option>)}
+          </select>
+        </div>
+        <input ref={fileRef} type="file" accept="audio/mpeg,audio/ogg,.mp3,.ogg" className="text-xs max-w-52" />
+        <Button size="sm" onClick={onUpload} disabled={uploading}>
+          {uploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />} Unggah
+        </Button>
+      </div>
+
+      {isLoading ? <div className="h-16 rounded bg-muted animate-pulse" /> : (
+        <div className="space-y-1.5">
+          {(data?.audios ?? []).length === 0 && <p className="text-xs text-muted-foreground">Belum ada audio.</p>}
+          {(data?.audios ?? []).map(a => (
+            <div key={a.id} className={`flex items-center gap-2 rounded-md border px-3 py-2 flex-wrap ${a.aktif ? '' : 'opacity-50'}`}>
+              <span className="text-sm font-medium">{a.nama}</span>
+              <Badge variant="secondary">{a.kategori_label}</Badge>
+              <span className="text-xs text-muted-foreground">{fmtBytes(a.ukuran_byte)}</span>
+              {a.url && <audio controls preload="none" src={a.url} className="h-8 max-w-[220px]" />}
+              <span className="ml-auto flex items-center gap-1">
+                <Button size="sm" variant="outline" onClick={() => toggle.mutate(a)} disabled={toggle.isPending}>
+                  {a.aktif ? 'Nonaktifkan' : 'Aktifkan'}
+                </Button>
+                <Button size="icon" variant="ghost" onClick={() => hapus.mutate(a)} disabled={hapus.isPending}>
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+    </CardContent></Card>
+  )
+}
+
+// ── Pemetaan event -> audio (per mode + global) ──────────────────────────────
+function EventMapSection() {
+  const { data } = useBelAudio()
+  const qc = useQueryClient()
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const save = useMutation({
+    mutationFn: (p: { bell_mode_id: number | null; jenis_event: string; bell_audio_id: number | null }) =>
+      api.put('/admin/bell-audio-maps', p).then(r => r.data),
+    onSuccess: (d) => { setMsg(d.message); qc.invalidateQueries({ queryKey: ['admin-bell-audios'] }) },
+    onError: (e: any) => setMsg(e.response?.data?.message ?? 'Gagal menyimpan pemetaan.'),
+  })
+
+  if (!data) return null
+  const val = (modeId: number | null, ev: string) =>
+    data.maps.find(m => m.bell_mode_id === modeId && m.jenis_event === ev)?.bell_audio_id ?? ''
+  // Kolom: Semua Mode (global) + tiap mode.
+  const cols: { id: number | null; nama: string }[] = [{ id: null, nama: 'Semua Mode' }, ...data.modes.map(m => ({ id: m.id, nama: m.nama }))]
+
+  return (
+    <Card><CardContent className="p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-sm">Pemetaan Bel (Event {'->'} Audio)</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Pilih audio untuk tiap event bel. Kolom <b>Semua Mode</b> berlaku umum; kolom mode tertentu
+          <b> mengalahkan</b> pemetaan umum saat mode itu aktif. Kosongkan untuk tidak berbunyi.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="text-xs border-collapse min-w-[520px]">
+          <thead>
+            <tr>
+              <th className="text-left p-2 font-medium">Event</th>
+              {cols.map(c => <th key={String(c.id)} className="text-left p-2 font-medium">{c.nama}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {data.events.map(ev => (
+              <tr key={ev.value} className="border-t">
+                <td className="p-2 whitespace-nowrap">{ev.label}</td>
+                {cols.map(c => (
+                  <td key={String(c.id)} className="p-1.5">
+                    <select
+                      className={inputCls + ' w-40 text-xs py-1'}
+                      value={val(c.id, ev.value)}
+                      onChange={e => save.mutate({ bell_mode_id: c.id, jenis_event: ev.value, bell_audio_id: e.target.value ? Number(e.target.value) : null })}
+                    >
+                      <option value="">—</option>
+                      {data.audios.filter(a => a.aktif).map(a => <option key={a.id} value={a.id}>{a.nama}</option>)}
+                    </select>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+    </CardContent></Card>
+  )
+}
+
+// ── Perangkat pemutar (kiosk) ────────────────────────────────────────────────
+function DeviceSection() {
+  const { data } = useBelAudio()
+  const qc = useQueryClient()
+  const [nama, setNama] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const refresh = () => qc.invalidateQueries({ queryKey: ['admin-bell-audios'] })
+
+  const daftar = useMutation({
+    mutationFn: () => api.post('/admin/bell-devices', { nama }).then(r => r.data),
+    onSuccess: (d) => { setMsg(`Perangkat "${d.data.nama}" terdaftar. Buka pemutar lewat tautan di bawah.`); setNama(''); refresh() },
+    onError: (e: any) => setMsg(e.response?.data?.message ?? 'Gagal mendaftar perangkat.'),
+  })
+  const hapus = useMutation({
+    mutationFn: (id: number) => api.delete(`/admin/bell-devices/${id}`).then(r => r.data),
+    onSuccess: (d) => { setMsg(d.message); refresh() },
+  })
+
+  const kioskUrl = (token: string) => `${window.location.origin}/bel/pemutar?token=${token}`
+
+  return (
+    <Card><CardContent className="p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-sm">Perangkat Pemutar (Kiosk)</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Daftarkan PC/HP yang tersambung speaker. Buka tautan pemutar di perangkat itu, lalu tekan
+          "Aktifkan Suara" sekali. Pemutar berbunyi otomatis sesuai jadwal & mode hari itu.
+        </p>
+      </div>
+
+      <div className="flex items-end gap-2 flex-wrap">
+        <div className="flex-1 min-w-40">
+          <label className="text-xs text-muted-foreground">Nama perangkat</label>
+          <input className={inputCls} value={nama} onChange={e => setNama(e.target.value)} placeholder="mis. Speaker Lobi" />
+        </div>
+        <Button size="sm" onClick={() => daftar.mutate()} disabled={daftar.isPending || !nama.trim()}>
+          <Plus className="h-4 w-4 mr-1" /> Daftarkan
+        </Button>
+      </div>
+
+      <div className="space-y-1.5">
+        {(data?.devices ?? []).map(d => (
+          <div key={d.id} className="flex items-center gap-2 rounded-md border px-3 py-2 flex-wrap text-sm">
+            <span className="font-medium">{d.nama}</span>
+            <span className="text-xs text-muted-foreground">
+              {d.last_heartbeat_at ? `aktif ${new Date(d.last_heartbeat_at).toLocaleString('id-ID')}` : 'belum pernah aktif'}
+            </span>
+            <a href={kioskUrl(d.token)} target="_blank" rel="noreferrer" className="text-xs text-primary underline">Buka Pemutar</a>
+            <Button size="sm" variant="outline" onClick={() => { navigator.clipboard?.writeText(kioskUrl(d.token)); setMsg('Tautan pemutar disalin.') }}>
+              Salin Tautan
+            </Button>
+            <Button size="icon" variant="ghost" className="ml-auto" onClick={() => hapus.mutate(d.id)} disabled={hapus.isPending}>
+              <Trash2 className="h-4 w-4 text-red-500" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+    </CardContent></Card>
   )
 }
 

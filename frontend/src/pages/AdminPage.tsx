@@ -53,7 +53,7 @@ const TAB_META: Record<string, { slug: string; icon: LucideIcon; desc: string }>
   'Deploy & Maintenance': { slug: 'deploy',         icon: Wrench,         desc: 'Alat rilis, cache, dan pemeliharaan aplikasi.' },
   'PKL':                { slug: 'pkl',              icon: Briefcase,      desc: 'Mode PKL kelas XII: saklar, TP khusus, impor penempatan.' },
   'Kokurikuler':        { slug: 'kokurikuler',      icon: Sparkles,       desc: 'Projek kokurikuler: periode, tingkat, dimensi, fasilitator, rekap.' },
-  'Jam & Bel':          { slug: 'jam-bel',          icon: AlarmClock,     desc: 'Bel per hari (jam ke-), mode Apel/Tanpa Apel, pengecualian tanggal.' },
+  'Jam & Bel':          { slug: 'jam-bel',          icon: AlarmClock,     desc: 'Bel per hari (jam ke-), mode Apel/Tanpa Apel, istirahat terkunci, bank audio & pemutar kiosk.' },
 }
 
 // Pengelompokan navigasi — 22 tab datar terlalu membingungkan; dua tingkat
