@@ -9,7 +9,13 @@ export default defineConfig({
     tailwindcss(),
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' (bukan 'autoUpdate'): service worker versi baru MENUNGGU, tidak
+      // langsung skipWaiting. Kita tampilkan banner "Versi baru tersedia" dan
+      // guru menekan "Muat ulang" saat siap — supaya form yang sedang diisi tidak
+      // ter-reload mendadak dan kehilangan input. Registrasi ditangani sendiri
+      // lewat hook useRegisterSW di PwaUpdateBanner, jadi injeksi otomatis dimatikan.
+      registerType: 'prompt',
+      injectRegister: null,
       includeAssets: ['favicon.svg', 'icons.svg'],
       manifest: {
         name: 'Agenda Pembelajaran SMKN 2 Cimahi',

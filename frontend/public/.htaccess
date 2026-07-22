@@ -18,11 +18,30 @@
     RewriteRule ^ index.html [L]
 </IfModule>
 
-# Cache asset statis (hash di nama file dari Vite membuat ini aman)
-<IfModule mod_expires.c>
-    ExpiresActive On
-    ExpiresByType text/css "access plus 1 year"
-    ExpiresByType application/javascript "access plus 1 year"
-    ExpiresByType image/svg+xml "access plus 1 year"
-    ExpiresByType image/png "access plus 1 year"
+# ─────────────────────────────────────────────────────────────────────────────
+# Kebijakan cache — ATURAN EMAS PWA
+#
+# File ber-hash (nama berubah tiap build, ada di folder /assets/) boleh di-cache
+# selamanya. TAPI "pintu masuk" aplikasi — index.html, service worker, dan
+# manifest — TIDAK BOLEH di-cache; kalau di-cache, HP terus memuat versi lama
+# meski server sudah update (gejala: "aplikasi tidak update / cache lama").
+#
+# CATATAN: JANGAN pakai `ExpiresByType application/javascript` — itu ikut
+# meng-cache sw.js & registerSW.js selama 1 tahun dan membekukan update PWA.
+# Kita atur per-nama-file lewat mod_headers, bukan per-mime-type.
+# ─────────────────────────────────────────────────────────────────────────────
+<IfModule mod_headers.c>
+    # 1) Asset ber-hash: aman di-cache 1 tahun & immutable (nama unik per build)
+    <FilesMatch "\.(?:js|mjs|css|woff2?|ttf|eot|otf|png|jpe?g|gif|webp|svg|ico)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+
+    # 2) Pintu masuk & service worker: WAJIB selalu revalidasi ke server.
+    #    Blok ini SETELAH blok di atas agar override untuk file .js non-hash
+    #    (sw.js, registerSW.js) menang.
+    <FilesMatch "^(index\.html|sw\.js|registerSW\.js|manifest\.webmanifest|firebase-messaging-sw\.js)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </FilesMatch>
 </IfModule>
