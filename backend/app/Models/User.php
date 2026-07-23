@@ -47,6 +47,25 @@ class User extends Authenticatable
         return $this->hasOne(Student::class);
     }
 
+    /**
+     * Akun berbasis GURU = punya record teacher — apa pun role-nya
+     * ('guru'/'wali_kelas'/'bk'; import bisa menaikkan role). Ini KAPABILITAS.
+     *
+     * Pakai ini untuk membuka fitur/endpoint milik guru. JANGAN gate dengan
+     * `role->value === 'guru'` — itu memblokir wali kelas/BK (lihat isu berulang
+     * "kapabilitas bukan role literal" — mis. regresi Jadwal Saya 2026-07-23).
+     */
+    public function isTeacherAccount(): bool
+    {
+        return $this->teacher()->exists();
+    }
+
+    /** Akun berbasis SISWA = punya record student (bukan orang tua/guru). Kapabilitas, bukan role. */
+    public function isStudentAccount(): bool
+    {
+        return $this->student()->exists();
+    }
+
     // Untuk orang_tua: siswa yang dipantau
     public function linkedStudent(): BelongsTo
     {

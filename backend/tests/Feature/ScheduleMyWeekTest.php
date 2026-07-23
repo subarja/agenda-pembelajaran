@@ -99,6 +99,30 @@ class ScheduleMyWeekTest extends TestCase
         $this->assertSame('Matematika', $res->json('data.senin.0.subject.nama'));
     }
 
+    public function test_guru_wali_kelas_akses_my_pdf_tidak_403(): void
+    {
+        $this->guru->update(['role' => UserRole::WaliKelas]);
+        Sanctum::actingAs($this->guru->fresh());
+
+        // Belum ada jadwal_pdf → jalur preview balas 200 available:false (BUKAN 403).
+        $this->getJson('/api/v1/schedules/my-pdf?preview=1')
+            ->assertOk()
+            ->assertJsonPath('available', false);
+    }
+
+    public function test_helper_kapabilitas_akun_bukan_role(): void
+    {
+        // Akun guru = punya record teacher, apa pun role-nya (guru/wali_kelas/bk).
+        $this->assertTrue($this->guru->isTeacherAccount());
+        $this->assertFalse($this->guru->isStudentAccount());
+
+        $this->guru->update(['role' => UserRole::WaliKelas]);
+        $this->assertTrue($this->guru->fresh()->isTeacherAccount());
+
+        $this->assertTrue($this->siswa->isStudentAccount());
+        $this->assertFalse($this->siswa->isTeacherAccount());
+    }
+
     public function test_admin_ditolak(): void
     {
         $admin = User::create(['nama' => 'Admin', 'email' => 'admin@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Admin]);
