@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Hash;
 
 class UserAdminController extends Controller
 {
-    private const MANAGED_ROLES = [UserRole::Admin, UserRole::BK, UserRole::OrangTua];
+    private const MANAGED_ROLES = [UserRole::Admin, UserRole::BK, UserRole::OrangTua, UserRole::Sekuriti];
 
     public function index(Request $request): JsonResponse
     {
@@ -42,7 +42,7 @@ class UserAdminController extends Controller
         $data = $request->validate([
             'nama' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'unique:users,email'],
-            'role' => ['required', 'in:admin,bk,orang_tua'],
+            'role' => ['required', 'in:admin,bk,orang_tua,sekuriti'],
             'nomor_hp' => ['nullable', 'string', 'max:20'],
             'password' => ['nullable', 'string', 'min:8'],
             'student_id' => ['nullable', 'string'],  // UUID siswa, hanya untuk orang_tua
@@ -74,7 +74,7 @@ class UserAdminController extends Controller
         $data = $request->validate([
             'nama' => ['sometimes', 'string', 'max:100'],
             'email' => ['sometimes', 'email', 'unique:users,email,'.$user->id],
-            'role' => ['sometimes', 'in:admin,bk,orang_tua'],
+            'role' => ['sometimes', 'in:admin,bk,orang_tua,sekuriti'],
             'nomor_hp' => ['nullable', 'string', 'max:20'],
             'status' => ['sometimes', 'in:aktif,nonaktif'],
             'password' => ['nullable', 'string', 'min:8'],
@@ -250,11 +250,11 @@ class UserAdminController extends Controller
         $user->update(['password' => Hash::make($plain), 'must_change_password' => true]);
 
         return response()->json([
-            'message'    => 'Password berhasil direset. Pengguna wajib mengganti password saat login berikutnya.',
+            'message' => 'Password berhasil direset. Pengguna wajib mengganti password saat login berikutnya.',
             'is_default' => $isDefault,
-            'target'     => $user->nama,
-            'username'   => self::usernameFor($user),
-            'password'   => $plain,
+            'target' => $user->nama,
+            'username' => self::usernameFor($user),
+            'password' => $plain,
         ]);
     }
 
@@ -294,7 +294,7 @@ class UserAdminController extends Controller
         // Password default tidak pernah di-hardcode — nilai lama sudah tercatat di
         // riwayat git. Sumbernya: panel admin (terenkripsi di DB) → fallback .env.
         $envKey = $type === 'guru' ? 'DEFAULT_TEACHER_PASSWORD' : 'DEFAULT_STUDENT_PASSWORD';
-        $plain  = PasswordDefaultSetting::resolve($type);
+        $plain = PasswordDefaultSetting::resolve($type);
 
         if (! $plain) {
             return response()->json([
@@ -324,9 +324,9 @@ class UserAdminController extends Controller
         $username = $type === 'guru' ? 'NIP' : 'NISN';
 
         return response()->json([
-            'message'  => "Password default berhasil di-set untuk {$count} akun {$type}.",
-            'count'    => $count,
-            'target'   => "Semua {$type} ({$count} akun)",
+            'message' => "Password default berhasil di-set untuk {$count} akun {$type}.",
+            'count' => $count,
+            'target' => "Semua {$type} ({$count} akun)",
             'username' => "{$username} masing-masing",
             'password' => $plain,
         ]);

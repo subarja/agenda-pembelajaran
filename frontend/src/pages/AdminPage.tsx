@@ -2599,6 +2599,7 @@ function PenggunaTab() {
     admin: 'bg-red-100 text-red-700',
     bk: 'bg-purple-100 text-purple-700',
     orang_tua: 'bg-blue-100 text-blue-700',
+    sekuriti: 'bg-slate-200 text-slate-700',
     guru: 'bg-green-100 text-green-700',
     wali_kelas: 'bg-teal-100 text-teal-700',
     wakasek: 'bg-orange-100 text-orange-700',
@@ -2749,6 +2750,7 @@ function PenggunaTab() {
               <option value="admin">Admin</option>
               <option value="bk">BK (Bimbingan Konseling)</option>
               <option value="orang_tua">Orang Tua</option>
+              <option value="sekuriti">Sekuriti (Pemindai QR)</option>
             </select>
           </Field>
           {form.role === 'orang_tua' && (
