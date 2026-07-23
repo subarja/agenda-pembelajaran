@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   BookOpen, ClipboardCheck, Star, AlertTriangle,
   Users, GraduationCap, School, ShieldCheck,
-  ChevronRight, TrendingUp, Bell, Heart, TrendingDown,
+  ChevronRight, ChevronDown, TrendingUp, Bell, Heart, TrendingDown,
   Clock, CheckCircle2, XCircle, Info, BarChart3, Calendar, Loader2,
 } from 'lucide-react'
 import api from '@/lib/api'
@@ -918,6 +918,7 @@ const EWS_LABEL: Record<string, { label: string; color: string; bg: string; bord
 // Rekap kehadiran PER BULAN dengan pilihan bulan (murid & orang tua). Menit terlambat = kesiangan.
 function RekapKehadiranBulanan({ studentId, judul = 'Rekap Kehadiran' }: { studentId?: string | number; judul?: string }) {
   const [bulan, setBulan] = useState('')
+  const [showTerlambat, setShowTerlambat] = useState(false)
   const { data: k } = useQuery({
     queryKey: ['kehadiran-bulanan', studentId, bulan],
     queryFn: () => api.get(`/students/${studentId}/kehadiran-bulanan`, { params: bulan ? { bulan } : {} }).then(r => r.data.data),
@@ -954,11 +955,34 @@ function RekapKehadiranBulanan({ studentId, judul = 'Rekap Kehadiran' }: { stude
                 </div>
               ))}
             </div>
-            <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
-              <span className="text-xs text-muted-foreground">Terlambat (kesiangan) bulan ini</span>
-              <span className={`text-sm font-semibold ${k.terlambat_menit > 0 ? 'text-amber-700' : ''}`}>
-                {k.terlambat_menit} menit{k.kesiangan_count > 0 ? ` · ${k.kesiangan_count}×` : ''}
-              </span>
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setShowTerlambat(s => !s)}
+                disabled={(k.terlambat_items?.length ?? 0) === 0}
+                className="w-full flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-left transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
+              >
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  Terlambat (kesiangan) bulan ini
+                  {(k.terlambat_items?.length ?? 0) > 0 && (showTerlambat ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />)}
+                </span>
+                <span className={`text-sm font-semibold ${k.terlambat_menit > 0 ? 'text-amber-700' : ''}`}>
+                  {k.terlambat_menit} menit{k.kesiangan_count > 0 ? ` · ${k.kesiangan_count}×` : ''}
+                </span>
+              </button>
+              {showTerlambat && (k.terlambat_items?.length ?? 0) > 0 && (
+                <div className="mt-1.5 rounded-lg border divide-y">
+                  {k.terlambat_items.map((t: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between px-3 py-1.5 text-xs gap-2">
+                      <span className="text-muted-foreground truncate">
+                        {new Date(t.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {t.alasan ? ` · ${t.alasan}` : ''}
+                      </span>
+                      <span className="font-medium text-amber-700 shrink-0">{t.menit} menit</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             {k.recent_absences?.length > 0 && (
               <div className="mt-3 border-t pt-3">

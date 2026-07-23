@@ -157,8 +157,15 @@ class StudentRekapController extends Controller
         $c = fn ($st) => $att->where('status.value', $st)->count();
 
         // Menit terlambat = dari KESIANGAN (datang terlambat ke sekolah) pada bulan itu.
+        // Sertakan rincian per TANGGAL untuk ditampilkan saat total terlambat diklik.
         $kesiangan = IzinKesiangan::tahunAjaran()->where('student_id', $student->id)
-            ->whereBetween('tanggal', $range)->get();
+            ->whereBetween('tanggal', $range)->orderByDesc('tanggal')->get();
+        $terlambatItems = $kesiangan->map(fn ($k) => [
+            'tanggal' => $k->tanggal->format('Y-m-d'),
+            'menit' => (int) $k->terlambat_menit,
+            'status' => $k->status->value,
+            'alasan' => $k->alasan,
+        ])->values();
 
         $recent = $att->whereNotIn('status.value', ['hadir'])
             ->sortByDesc(fn ($a) => $a->agenda?->tanggal)
@@ -173,6 +180,7 @@ class StudentRekapController extends Controller
             'total' => $att->count(),
             'terlambat_menit' => (int) $kesiangan->sum('terlambat_menit'),
             'kesiangan_count' => $kesiangan->count(),
+            'terlambat_items' => $terlambatItems,
             'recent_absences' => $recent,
             'bulan_options' => $this->bulanOptions(),
         ]]);
