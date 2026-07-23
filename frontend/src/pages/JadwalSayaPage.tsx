@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, CalendarX, Loader2, ExternalLink, Clock, MapPin } from 'lucide-react'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -49,10 +49,9 @@ export default function JadwalSayaPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Cache blob PDF supaya tidak di-fetch berulang; disimpan setelah tombol pertama ditekan.
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
-  const [pdfName, setPdfName] = useState('jadwal.pdf')
-  const [pdfBusy, setPdfBusy] = useState(false)
+  // Cache blob PDF per-endpoint (generated & resmi) supaya tidak di-fetch berulang.
+  const pdfBlobs = useRef<Record<string, { url: string; name: string }>>({})
+  const [busy, setBusy] = useState<string | null>(null)   // endpoint yang sedang dimuat
   const [pdfError, setPdfError] = useState('')
 
   useEffect(() => {
@@ -64,77 +63,74 @@ export default function JadwalSayaPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl) }, [pdfUrl])
+  useEffect(() => () => { Object.values(pdfBlobs.current).forEach(b => URL.revokeObjectURL(b.url)) }, [])
 
-  // Ambil (sekali) PDF resmi via endpoint preview base64-JSON — pola anti-IDM yang sama
-  // dengan alur preview PDF lain di aplikasi (lihat usePdfPreview). Mengembalikan blob URL.
-  async function ensurePdf(): Promise<string | null> {
-    if (pdfUrl) return pdfUrl
-    setPdfBusy(true)
-    setPdfError('')
+  // Ambil (sekali) PDF via endpoint preview base64-JSON — pola anti-IDM yang sama dengan
+  // alur preview PDF lain. `endpoint` bisa PDF resmi (unggahan) atau jadwal yang dibangkitkan.
+  async function ensurePdf(endpoint: string, fallbackName: string) {
+    if (pdfBlobs.current[endpoint]) return pdfBlobs.current[endpoint]
+    setBusy(endpoint); setPdfError('')
     try {
-      const resp = await api.get('/schedules/my-pdf?preview=1')
+      const resp = await api.get(`${endpoint}?preview=1`)
       if (resp.data.available === false || !resp.data.base64) {
         setPdfError(resp.data.message ?? 'Jadwal PDF belum tersedia.')
         return null
       }
-      const url = URL.createObjectURL(base64ToBlob(resp.data.base64, 'application/pdf'))
-      setPdfUrl(url)
-      setPdfName(resp.data.filename || 'jadwal.pdf')
-      return url
+      const entry = { url: URL.createObjectURL(base64ToBlob(resp.data.base64, 'application/pdf')), name: resp.data.filename || fallbackName }
+      pdfBlobs.current[endpoint] = entry
+      return entry
     } catch (e: any) {
-      setPdfError(e?.response?.data?.message ?? 'Jadwal PDF belum tersedia.')
+      setPdfError(e?.response?.data?.message ?? 'Jadwal PDF gagal dimuat.')
       return null
     } finally {
-      setPdfBusy(false)
+      setBusy(null)
     }
   }
 
-  async function openTab() {
-    // Buka tab SINKRON dengan klik dulu (lolos popup-blocker), baru diarahkan setelah
-    // fetch. JANGAN pakai 'noopener': sebagian browser mengembalikan null dengan opsi itu,
-    // sehingga tab baru terbuka KOSONG dan tak pernah diarahkan ke PDF (gejala: "buka tab
-    // baru tidak muncul" padahal unduh jalan). Blob PDF milik sendiri, aman tanpa noopener.
+  async function openTab(endpoint: string, fallbackName: string) {
+    // Buka tab SINKRON dengan klik (lolos popup-blocker), arahkan setelah fetch. Tanpa
+    // 'noopener' (sebagian browser balikkan null → tab kosong). Blob milik sendiri, aman.
     const w = window.open('', '_blank')
-    const url = await ensurePdf()
-    if (! w) {
-      setPdfError('Tab baru diblokir browser. Gunakan tombol Unduh PDF.')
-      return
-    }
-    if (url) w.location.href = url
+    const entry = await ensurePdf(endpoint, fallbackName)
+    if (!w) { setPdfError('Tab baru diblokir browser. Gunakan tombol Unduh PDF.'); return }
+    if (entry) w.location.href = entry.url
     else w.close()
   }
 
-  async function download() {
-    const url = await ensurePdf()
-    if (!url) return
+  async function download(endpoint: string, fallbackName: string) {
+    const entry = await ensurePdf(endpoint, fallbackName)
+    if (!entry) return
     const a = document.createElement('a')
-    a.href = url
-    a.download = pdfName
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    a.href = entry.url; a.download = entry.name
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
   }
 
   const hariTampil = jadwal ? jadwal.hari.filter(h => (jadwal.data[h]?.length ?? 0) > 0) : []
   const kosong = !loading && !error && hariTampil.length === 0
+  const GEN = '/schedules/my-week/pdf'
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-bold">Jadwal Saya</h2>
-        {jadwal?.has_pdf && (
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={pdfBusy} onClick={openTab}>
-              {pdfBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ExternalLink className="h-4 w-4 mr-1.5" />}
-              Buka di Tab Baru
+        <div className="flex flex-wrap gap-2">
+          {/* Jadwal PDF dibangkitkan dari data — selalu tersedia (guru & siswa) */}
+          <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => openTab(GEN, 'Jadwal_Mingguan.pdf')}>
+            {busy === GEN ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ExternalLink className="h-4 w-4 mr-1.5" />}
+            Buka di Tab Baru
+          </Button>
+          <Button size="sm" disabled={busy !== null} onClick={() => download(GEN, 'Jadwal_Mingguan.pdf')}>
+            {busy === GEN ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Download className="h-4 w-4 mr-1.5" />}
+            Unduh PDF
+          </Button>
+          {/* PDF resmi (unggahan admin) — bila ada */}
+          {jadwal?.has_pdf && (
+            <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => openTab('/schedules/my-pdf', 'jadwal.pdf')} title="PDF resmi unggahan admin">
+              {busy === '/schedules/my-pdf' ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ExternalLink className="h-4 w-4 mr-1.5" />}
+              PDF Resmi
             </Button>
-            <Button size="sm" disabled={pdfBusy} onClick={download}>
-              {pdfBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Download className="h-4 w-4 mr-1.5" />}
-              Unduh PDF
-            </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {pdfError && <p className="text-xs text-destructive">{pdfError}</p>}
@@ -194,11 +190,10 @@ export default function JadwalSayaPage() {
         </div>
       )}
 
-      {jadwal?.has_pdf && (
-        <p className="text-xs text-muted-foreground">
-          Butuh jadwal resmi (format cetak)? Gunakan <strong>Unduh PDF</strong> atau <strong>Buka di Tab Baru</strong> di atas.
-        </p>
-      )}
+      <p className="text-xs text-muted-foreground">
+        <strong>Unduh PDF</strong> / <strong>Buka di Tab Baru</strong> mencetak jadwal ini (termasuk ruangan).
+        {jadwal?.has_pdf && <> Tombol <strong>PDF Resmi</strong> membuka berkas jadwal resmi unggahan admin.</>}
+      </p>
     </div>
   )
 }

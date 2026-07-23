@@ -51,33 +51,35 @@ describe('JadwalSayaPage', () => {
     expect(await screen.findByText('Pak Budi')).toBeInTheDocument()
   })
 
-  it('menyembunyikan tombol PDF saat has_pdf false', async () => {
+  it('tombol Unduh PDF (dibangkitkan) selalu ada; PDF Resmi hanya saat has_pdf', async () => {
     mockMyWeek({ data: { senin: [SESI_GURU] }, hari: ['senin'], role: 'guru', has_pdf: false })
 
     render(<JadwalSayaPage />)
 
     await screen.findByText('Matematika')
-    expect(screen.queryByRole('button', { name: /unduh pdf/i })).not.toBeInTheDocument()
+    // Jadwal PDF dibangkitkan dari data → tombol selalu ada walau tak ada PDF resmi.
+    expect(screen.getByRole('button', { name: /unduh pdf/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /pdf resmi/i })).not.toBeInTheDocument()
   })
 
-  it('menampilkan tombol PDF & fetch preview lazily saat diklik', async () => {
-    mockMyWeek({ data: { senin: [SESI_GURU] }, hari: ['senin'], role: 'guru', has_pdf: true })
+  it('klik Unduh PDF fetch jadwal dibangkitkan (lazy)', async () => {
+    mockMyWeek({ data: { senin: [SESI_GURU] }, hari: ['senin'], role: 'guru', has_pdf: false })
 
     render(<JadwalSayaPage />)
 
     const tombol = await screen.findByRole('button', { name: /unduh pdf/i })
     // PDF belum di-fetch saat load — hanya my-week yang dipanggil.
-    expect(get).not.toHaveBeenCalledWith('/schedules/my-pdf?preview=1')
+    expect(get).not.toHaveBeenCalledWith('/schedules/my-week/pdf?preview=1')
 
     get.mockImplementation((url: string) => {
-      if (url === '/schedules/my-pdf?preview=1') {
-        return Promise.resolve({ data: { base64: btoa('%PDF palsu'), filename: 'jadwal.pdf' } })
+      if (url === '/schedules/my-week/pdf?preview=1') {
+        return Promise.resolve({ data: { base64: btoa('%PDF palsu'), filename: 'Jadwal_Mingguan.pdf' } })
       }
-      return Promise.resolve({ data: { data: { senin: [SESI_GURU] }, hari: ['senin'], role: 'guru', has_pdf: true } })
+      return Promise.resolve({ data: { data: { senin: [SESI_GURU] }, hari: ['senin'], role: 'guru', has_pdf: false } })
     })
 
     await userEvent.click(tombol)
-    await waitFor(() => expect(get).toHaveBeenCalledWith('/schedules/my-pdf?preview=1'))
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/schedules/my-week/pdf?preview=1'))
   })
 
   it('menampilkan keadaan kosong bila tak ada jadwal', async () => {

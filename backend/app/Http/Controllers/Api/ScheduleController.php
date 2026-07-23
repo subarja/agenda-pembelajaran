@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ScheduleResource;
 use App\Models\PklPlacement;
+use App\Models\PrintSetting;
 use App\Models\Schedule;
 use App\Models\TeachingAssignment;
 use App\Support\BellSchedule;
 use App\Support\KokurikulerMode;
 use App\Support\PklMode;
 use App\Support\TahunAjaran;
+use App\Traits\HandlesPdfPreview;
 use App\Traits\ServesStoredPdf;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -19,7 +22,7 @@ use Illuminate\Support\Str;
 
 class ScheduleController extends Controller
 {
-    use ServesStoredPdf;
+    use HandlesPdfPreview, ServesStoredPdf;
 
     /**
      * GET /beban-mengajar — rekap beban mengajar guru yang login: kelas & mapel yang
@@ -316,6 +319,53 @@ class ScheduleController extends Controller
         abort(403, 'Hanya guru dan siswa yang punya jadwal pribadi.');
     }
 
+    /**
+     * PDF jadwal mingguan DIBANGKITKAN dari data terstruktur (bukan berkas unggahan) — supaya
+     * guru & siswa sama-sama bisa unduh / buka di tab baru walau admin belum mengunggah PDF resmi.
+     */
+    public function myWeekPdf(Request $request)
+    {
+        $user = $request->user();
+        $hariUrut = ['senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
+        $hariLabel = ['senin' => 'Senin', 'selasa' => 'Selasa', 'rabu' => 'Rabu', 'kamis' => 'Kamis', 'jumat' => 'Jumat', 'sabtu' => 'Sabtu'];
+
+        if ($user->isTeacherAccount()) {
+            $teacher = $user->teacher;
+            $schedules = $teacher->schedules()->tahunAjaran()->where('aktif', true)
+                ->with(['subject', 'schoolClass'])->get();
+            $grouped = $this->weekRowsGrouped($schedules, false, $hariUrut);
+            $subjudul = $teacher->nama_lengkap;
+            $kolomLabel = 'Kelas';
+            $forSiswa = false;
+        } elseif ($user->isStudentAccount()) {
+            $student = $user->student;
+            $class = $student?->schoolClass;
+            abort_if(! $student || ! $student->class_id || ! $class, 404, 'Kelas siswa tidak ditemukan.');
+            $schedules = Schedule::where('class_id', $student->class_id)->tahunAjaran()->where('aktif', true)
+                ->with(['subject', 'schoolClass', 'teacher.user:id,nama'])->get();
+            $grouped = $this->weekRowsGrouped($schedules, true, $hariUrut);
+            $subjudul = 'Kelas '.$class->label();
+            $kolomLabel = 'Guru';
+            $forSiswa = true;
+        } else {
+            abort(403, 'Hanya guru dan siswa yang punya jadwal pribadi.');
+        }
+
+        $printSettings = PrintSetting::instance($user->id);
+        $pdf = Pdf::loadView('reports.jadwal_mingguan', [
+            'grouped' => $grouped,
+            'hariUrut' => $hariUrut,
+            'hariLabel' => $hariLabel,
+            'subjudul' => $subjudul,
+            'kolomLabel' => $kolomLabel,
+            'forSiswa' => $forSiswa,
+            'kopSuratPath' => 'file://'.public_path('images/kop_surat.jpg'),
+            'printSettings' => $printSettings,
+        ])->setPaper($printSettings->paperDimensionsPt(), 'portrait');
+
+        return $this->pdfResponse($pdf, 'Jadwal_Mingguan.pdf', $request);
+    }
+
     private function jadwalMingguKosongResponse(string $role, array $hariUrut, bool $hasPdf): JsonResponse
     {
         return response()->json([
@@ -401,6 +451,7 @@ class ScheduleController extends Controller
                 'id' => $s->uuid,
                 'hari' => $s->hari->value,
                 ...BellSchedule::resolve($s, $todayDate),
+                'ruangan' => $s->ruangan,
                 'subject' => ['nama' => PklMode::subjectLabelFor($s), 'kode' => $s->subject->kode],
                 'guru' => $s->teacher?->user?->nama ?? '—',
                 'agenda_hari_ini' => $s->agendas->first() ? [

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AgendaStudentScore;
 use App\Models\CharacterInput;
-use App\Models\Note;
 use App\Models\Recommendation;
 use App\Models\Student;
 use App\Models\StudentAttendance;
@@ -31,11 +30,11 @@ class StudentRekapController extends Controller
 
         return response()->json([
             'data' => [
-                'profil'          => $this->buildProfil($student),
-                'kehadiran'       => $this->buildKehadiran($student),
-                'karakter'        => $this->buildKarakter($student),
-                'nilai'           => $this->buildNilai($student),
-                'rekomendasi'     => $this->buildRekomendasi($student),
+                'profil' => $this->buildProfil($student),
+                'kehadiran' => $this->buildKehadiran($student),
+                'karakter' => $this->buildKarakter($student),
+                'nilai' => $this->buildNilai($student),
+                'rekomendasi' => $this->buildRekomendasi($student),
                 'riwayat_bulanan' => $this->buildRiwayatBulanan($student),
             ],
         ]);
@@ -71,17 +70,18 @@ class StudentRekapController extends Controller
     private function buildProfil(Student $student): array
     {
         $kelas = $student->schoolClass;
+
         return [
-            'id'          => $student->uuid,
-            'nama'        => $student->user->nama,
-            'nis'         => $student->nis,
-            'nisn'        => $student->nisn,
-            'angkatan'    => $student->angkatan,
-            'kelas'       => $kelas ? [
-                'label'      => $kelas->label(),
+            'id' => $student->uuid,
+            'nama' => $student->user->nama,
+            'nis' => $student->nis,
+            'nisn' => $student->nisn,
+            'angkatan' => $student->angkatan,
+            'kelas' => $kelas ? [
+                'label' => $kelas->label(),
                 'wali_kelas' => $kelas->waliKelas?->nama,
             ] : null,
-            'wali_nama'   => $student->wali_nama,
+            'wali_nama' => $student->wali_nama,
             'wali_kontak' => $student->wali_kontak,
         ];
     }
@@ -89,22 +89,34 @@ class StudentRekapController extends Controller
     // ── Dimensi 1: Kehadiran ──────────────────────────────────────────────────
     private function buildKehadiran(Student $student): array
     {
-        $all   = StudentAttendance::tahunAjaran()->where('student_id', $student->id)->with('agenda:id,tanggal')->get();
+        $all = StudentAttendance::tahunAjaran()->where('student_id', $student->id)->with('agenda:id,tanggal')->get();
         $total = $all->count();
         $hadir = $all->where('status.value', 'hadir')->count();
         $sakit = $all->where('status.value', 'sakit')->count();
-        $izin  = $all->where('status.value', 'izin')->count();
+        $izin = $all->where('status.value', 'izin')->count();
         $alpha = $all->where('status.value', 'alpha')->count();
         $score = $total > 0 ? round(($hadir / $total) * 100, 2) : 100.0;
 
         // Alpha berturut-turut terbanyak
-        $sorted    = $all->sortBy(fn ($a) => $a->agenda?->tanggal);
+        $sorted = $all->sortBy(fn ($a) => $a->agenda?->tanggal);
         $maxStreak = 0;
-        $streak    = 0;
+        $streak = 0;
         foreach ($sorted as $a) {
-            if ($a->status->value === 'alpha') { $streak++; $maxStreak = max($maxStreak, $streak); }
-            else $streak = 0;
+            if ($a->status->value === 'alpha') {
+                $streak++;
+                $maxStreak = max($maxStreak, $streak);
+            } else {
+                $streak = 0;
+            }
         }
+
+        // Total menit terlambat pada BULAN BERJALAN (dari presensi hadir-terlambat).
+        $now = Carbon::now('Asia/Jakarta');
+        $terlambatBulanIni = $all
+            ->filter(fn ($a) => $a->agenda?->tanggal
+                && (int) $a->agenda->tanggal->format('Y') === (int) $now->format('Y')
+                && (int) $a->agenda->tanggal->format('n') === (int) $now->format('n'))
+            ->sum(fn ($a) => (int) ($a->durasi_terlambat ?? 0));
 
         // 5 ketidakhadiran terbaru
         $recentAbsences = $all->whereNotIn('status.value', ['hadir'])
@@ -112,18 +124,19 @@ class StudentRekapController extends Controller
             ->take(5)
             ->map(fn ($a) => [
                 'tanggal' => $a->agenda?->tanggal?->format('Y-m-d'),
-                'status'  => $a->status->value,
+                'status' => $a->status->value,
             ])->values();
 
         return [
-            'score'           => $score,
-            'total'           => $total,
-            'hadir'           => $hadir,
-            'sakit'           => $sakit,
-            'izin'            => $izin,
-            'alpha'           => $alpha,
-            'max_alpha_streak'=> $maxStreak,
-            'warning'         => $score < 80,
+            'score' => $score,
+            'total' => $total,
+            'hadir' => $hadir,
+            'sakit' => $sakit,
+            'izin' => $izin,
+            'alpha' => $alpha,
+            'max_alpha_streak' => $maxStreak,
+            'terlambat_menit_bulan_ini' => $terlambatBulanIni,
+            'warning' => $score < 80,
             'recent_absences' => $recentAbsences,
         ];
     }
@@ -137,16 +150,15 @@ class StudentRekapController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        $netScore   = $inputs->sum(fn ($i) =>
-            $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot)
+        $netScore = $inputs->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot)
         );
-        $totalPos   = $inputs->where('sign.value', 'positif')->sum(fn ($i) => abs($i->subitem->bobot));
-        $totalNeg   = $inputs->where('sign.value', 'negatif')->sum(fn ($i) => abs($i->subitem->bobot));
+        $totalPos = $inputs->where('sign.value', 'positif')->sum(fn ($i) => abs($i->subitem->bobot));
+        $totalNeg = $inputs->where('sign.value', 'negatif')->sum(fn ($i) => abs($i->subitem->bobot));
 
         // Per kategori
         $perKategori = $inputs->groupBy(fn ($i) => $i->subitem->category->nama)
             ->map(fn ($group, $nama) => [
-                'nama'  => $nama,
+                'nama' => $nama,
                 'score' => $group->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot)),
                 'count' => $group->count(),
             ])->values();
@@ -154,22 +166,22 @@ class StudentRekapController extends Controller
         // Riwayat 10 input terbaru
         $riwayat = $inputs->take(10)->map(fn ($i) => [
             'kategori' => $i->subitem->category->nama,
-            'subitem'  => $i->subitem->deskripsi,
-            'poin'     => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot),
-            'sign'     => $i->sign->value,
-            'guru'     => $i->teacher->user->nama,
-            'catatan'  => $i->catatan,
-            'tanggal'  => $i->created_at->format('Y-m-d H:i'),
+            'subitem' => $i->subitem->deskripsi,
+            'poin' => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot),
+            'sign' => $i->sign->value,
+            'guru' => $i->teacher->user->nama,
+            'catatan' => $i->catatan,
+            'tanggal' => $i->created_at->format('Y-m-d H:i'),
         ])->values();
 
         return [
-            'net_score'    => $netScore,
-            'total_positif'=> $totalPos,
-            'total_negatif'=> $totalNeg,
-            'count'        => $inputs->count(),
-            'warning'      => $netScore < 0,
+            'net_score' => $netScore,
+            'total_positif' => $totalPos,
+            'total_negatif' => $totalNeg,
+            'count' => $inputs->count(),
+            'warning' => $netScore < 0,
             'per_kategori' => $perKategori,
-            'riwayat'      => $riwayat,
+            'riwayat' => $riwayat,
         ];
     }
 
@@ -181,18 +193,18 @@ class StudentRekapController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        $avg  = $scores->count() > 0 ? round($scores->avg('nilai'), 1) : null;
+        $avg = $scores->count() > 0 ? round($scores->avg('nilai'), 1) : null;
         $tren = $scores->take(10)->map(fn ($s) => [
             'tanggal' => $s->agenda?->tanggal?->format('Y-m-d'),
-            'mapel'   => $s->agenda?->schedule?->subject?->nama,
-            'nilai'   => $s->nilai,
+            'mapel' => $s->agenda?->schedule?->subject?->nama,
+            'nilai' => $s->nilai,
         ])->values();
 
         return [
-            'avg'     => $avg,
-            'count'   => $scores->count(),
+            'avg' => $avg,
+            'count' => $scores->count(),
             'warning' => $avg !== null && $avg < 70,
-            'tren'    => $tren,
+            'tren' => $tren,
         ];
     }
 
@@ -205,14 +217,14 @@ class StudentRekapController extends Controller
             ->get();
 
         return $recs->map(fn ($r) => [
-            'id'             => $r->uuid,
-            'rekomendasi'    => $r->threshold?->rekomendasi ?? $r->alasan_manual ?? 'Kasus manual (tanpa ambang otomatis)',
-            'sifat'          => $r->threshold?->sifat->value ?? 'manual',
-            'akumulasi'      => $r->akumulasi_saat_trigger,
-            'status'         => $r->status->value,
-            'ditugaskan_ke'  => $r->assignedTo?->nama,
-            'hasil'          => $r->hasil_tindak_lanjut,
-            'dibuat_pada'    => $r->created_at->format('Y-m-d H:i'),
+            'id' => $r->uuid,
+            'rekomendasi' => $r->threshold?->rekomendasi ?? $r->alasan_manual ?? 'Kasus manual (tanpa ambang otomatis)',
+            'sifat' => $r->threshold?->sifat->value ?? 'manual',
+            'akumulasi' => $r->akumulasi_saat_trigger,
+            'status' => $r->status->value,
+            'ditugaskan_ke' => $r->assignedTo?->nama,
+            'hasil' => $r->hasil_tindak_lanjut,
+            'dibuat_pada' => $r->created_at->format('Y-m-d H:i'),
             'ditangani_pada' => $r->ditangani_pada?->format('Y-m-d H:i'),
         ])->values()->toArray();
     }
@@ -226,7 +238,7 @@ class StudentRekapController extends Controller
         return $months->map(function ($ym) use ($student) {
             [$year, $month] = explode('-', $ym);
 
-            $att   = StudentAttendance::where('student_id', $student->id)
+            $att = StudentAttendance::where('student_id', $student->id)
                 ->whereHas('agenda', fn ($q) => $q->whereYear('tanggal', $year)->whereMonth('tanggal', $month))
                 ->get();
             $total = $att->count();
@@ -238,9 +250,9 @@ class StudentRekapController extends Controller
             $poin = $inputs->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot));
 
             return [
-                'bulan'      => Carbon::createFromFormat('Y-m', $ym)->locale('id')->isoFormat('MMM YY'),
-                'kehadiran'  => $total > 0 ? round(($hadir / $total) * 100, 1) : null,
-                'poin'       => $poin,
+                'bulan' => Carbon::createFromFormat('Y-m', $ym)->locale('id')->isoFormat('MMM YY'),
+                'kehadiran' => $total > 0 ? round(($hadir / $total) * 100, 1) : null,
+                'poin' => $poin,
                 'total_sesi' => $total,
             ];
         })->values()->toArray();
@@ -250,26 +262,26 @@ class StudentRekapController extends Controller
     public function updateRekomendasi(Request $request, string $studentUuid, string $rekUuid): JsonResponse
     {
         $student = Student::where('uuid', $studentUuid)->with('schoolClass')->firstOrFail();
-        $rek     = Recommendation::where('uuid', $rekUuid)->where('student_id', $student->id)->firstOrFail();
+        $rek = Recommendation::where('uuid', $rekUuid)->where('student_id', $student->id)->firstOrFail();
 
         // Dulu TIDAK ADA otorisasi sama sekali — guru mana pun (bukan cuma wali kelas
         // siswa ybs) bisa langsung ubah status rekomendasi ke "selesai". Ditemukan saat
         // audit ulang GK3/GK7 — samakan aturannya dengan RecommendationController::
         // updateStatus() (endpoint yang lebih baru utk kasus yang sama).
-        $user    = $request->user();
+        $user = $request->user();
         $isAdmin = in_array($user->role->value, ['admin', 'wakasek'], true);
-        $isWali  = $student->schoolClass?->wali_kelas_id === $user->id;
+        $isWali = $student->schoolClass?->wali_kelas_id === $user->id;
         abort_if(! $isAdmin && ! $isWali, 403, 'Hanya wali kelas siswa ini yang dapat mengubah status rekomendasi.');
 
         $data = $request->validate([
-            'status'             => ['required', 'in:pending,proses,selesai,diabaikan'],
-            'hasil_tindak_lanjut'=> ['nullable', 'string', 'max:2000'],
+            'status' => ['required', 'in:pending,proses,selesai,diabaikan'],
+            'hasil_tindak_lanjut' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $rek->update([
-            'status'              => $data['status'],
+            'status' => $data['status'],
             'hasil_tindak_lanjut' => $data['hasil_tindak_lanjut'] ?? $rek->hasil_tindak_lanjut,
-            'ditangani_pada'      => in_array($data['status'], ['selesai', 'diabaikan']) ? now() : $rek->ditangani_pada,
+            'ditangani_pada' => in_array($data['status'], ['selesai', 'diabaikan']) ? now() : $rek->ditangani_pada,
         ]);
 
         return response()->json(['message' => 'Status rekomendasi diperbarui.']);

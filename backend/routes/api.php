@@ -16,9 +16,11 @@ use App\Http\Controllers\Api\Admin\DatabaseBackupController;
 use App\Http\Controllers\Api\Admin\DeployToolController;
 use App\Http\Controllers\Api\Admin\FcmSettingController;
 use App\Http\Controllers\Api\Admin\ImportController;
+use App\Http\Controllers\Api\Admin\KesianganTierController;
 use App\Http\Controllers\Api\Admin\KokurikulerAdminController;
 use App\Http\Controllers\Api\Admin\PasswordDefaultSettingController;
 use App\Http\Controllers\Api\Admin\PhotoBulkUploadController;
+use App\Http\Controllers\Api\Admin\PiketShiftController;
 use App\Http\Controllers\Api\Admin\PklObjectiveController;
 use App\Http\Controllers\Api\Admin\PklPlacementController;
 use App\Http\Controllers\Api\Admin\PklSettingController;
@@ -36,22 +38,21 @@ use App\Http\Controllers\Api\Admin\TeacherEwsController;
 use App\Http\Controllers\Api\Admin\UserAdminController;
 use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\Admin\PiketShiftController;
 use App\Http\Controllers\Api\BellPlayerController;
 use App\Http\Controllers\Api\BrandingController;
-use App\Http\Controllers\Api\IzinKeluarController;
-use App\Http\Controllers\Api\PiketController;
-use App\Http\Controllers\Api\SekuritiController;
 use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\CharacterManualNoteController;
 use App\Http\Controllers\Api\DailyAttendanceController;
 use App\Http\Controllers\Api\EffectiveDayController;
 use App\Http\Controllers\Api\EwsController;
+use App\Http\Controllers\Api\IzinKeluarController;
+use App\Http\Controllers\Api\IzinKesianganController;
 use App\Http\Controllers\Api\KokurikulerController;
 use App\Http\Controllers\Api\LearningObjectiveController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\PasswordResetController;
+use App\Http\Controllers\Api\PiketController;
 use App\Http\Controllers\Api\PklController;
 use App\Http\Controllers\Api\PresensiController;
 use App\Http\Controllers\Api\ProfileController;
@@ -60,6 +61,7 @@ use App\Http\Controllers\Api\RecommendationController;
 use App\Http\Controllers\Api\RekapPerkembanganController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ScheduleController;
+use App\Http\Controllers\Api\SekuritiController;
 use App\Http\Controllers\Api\StudentCaseNoteController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentPhotoController;
@@ -120,6 +122,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::get('schedules/my-week', [ScheduleController::class, 'myWeek']);
     Route::get('schedules/today-student', [ScheduleController::class, 'todayStudent']);
     Route::get('schedules/my-pdf', [ScheduleController::class, 'myPdf']);
+    Route::get('schedules/my-week/pdf', [ScheduleController::class, 'myWeekPdf']);
     Route::get('beban-mengajar', [ScheduleController::class, 'bebanMengajar']);
 
     // ── Siswa ─────────────────────────────────────────────────────────────────
@@ -332,8 +335,8 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::post('izin-keluar/{uuid}/batal', [IzinKeluarController::class, 'batal']);
 
     // ── Izin Kesiangan (siswa) ─────────────────────────────────────────────────
-    Route::post('izin-kesiangan', [\App\Http\Controllers\Api\IzinKesianganController::class, 'store']);
-    Route::get('izin-kesiangan/hari-ini', [\App\Http\Controllers\Api\IzinKesianganController::class, 'hariIni']);
+    Route::post('izin-kesiangan', [IzinKesianganController::class, 'store']);
+    Route::get('izin-kesiangan/hari-ini', [IzinKesianganController::class, 'hariIni']);
 
     // ── Sekuriti (pemindai QR) ─────────────────────────────────────────────────
     Route::middleware('role:sekuriti')->group(function () {
@@ -445,8 +448,8 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
         Route::post('piket/import', [PiketShiftController::class, 'import']);
 
         // ── Tier poin keterlambatan (kesiangan) ───────────────────────────────────
-        Route::get('kesiangan-tiers', [\App\Http\Controllers\Api\Admin\KesianganTierController::class, 'show']);
-        Route::put('kesiangan-tiers', [\App\Http\Controllers\Api\Admin\KesianganTierController::class, 'update']);
+        Route::get('kesiangan-tiers', [KesianganTierController::class, 'show']);
+        Route::put('kesiangan-tiers', [KesianganTierController::class, 'update']);
 
         // ── Mode PKL (saklar, TP khusus, penempatan) ──────────────────────────────
         Route::get('pkl/setting', [PklSettingController::class, 'show']);

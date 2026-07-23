@@ -1066,7 +1066,9 @@ function SiswaDashboard() {
                         {s.jam_mulai?.slice(0, 5)}–{s.jam_selesai?.slice(0, 5)}
                       </p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">Guru: {s.guru}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Guru: {s.guru}{s.ruangan ? <> · <span className="font-medium text-foreground">Ruang {s.ruangan}</span></> : ''}
+                    </p>
                     {s.agenda_hari_ini && (
                       <div className="mt-1.5 rounded-md bg-muted/40 px-2 py-1.5">
                         <p className="text-xs text-muted-foreground">
@@ -1105,6 +1107,12 @@ function SiswaDashboard() {
                   <p className="text-xs text-muted-foreground">{label}</p>
                 </div>
               ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+              <span className="text-xs text-muted-foreground">Total terlambat (bulan berjalan)</span>
+              <span className={`text-sm font-semibold ${(rekap.kehadiran.terlambat_menit_bulan_ini ?? 0) > 0 ? 'text-amber-700' : ''}`}>
+                {rekap.kehadiran.terlambat_menit_bulan_ini ?? 0} menit
+              </span>
             </div>
             {rekap.kehadiran.recent_absences?.length > 0 && (
               <div className="mt-3 border-t pt-3">
@@ -1374,6 +1382,12 @@ function OrangTuaDashboard() {
                   <p className="text-xs text-muted-foreground">{label}</p>
                 </div>
               ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+              <span className="text-xs text-muted-foreground">Total terlambat (bulan berjalan)</span>
+              <span className={`text-sm font-semibold ${(rekap.kehadiran.terlambat_menit_bulan_ini ?? 0) > 0 ? 'text-amber-700' : ''}`}>
+                {rekap.kehadiran.terlambat_menit_bulan_ini ?? 0} menit
+              </span>
             </div>
             {rekap.kehadiran.recent_absences?.length > 0 && (
               <div className="mt-3 border-t pt-3">
