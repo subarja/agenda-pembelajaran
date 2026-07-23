@@ -180,20 +180,54 @@ class PiketController extends Controller
         ]]);
     }
 
-    // ── GET /piket/izin-keluar — pengajuan + status hari ini ─────────────────
+    // ── GET /piket/izin-keluar — pengajuan hari ini + yang belum kembali (lintas hari) ─
     public function izinKeluar(Request $request): JsonResponse
     {
         $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
         $this->pastikanPetugas($request, $tanggal);
 
+        $rel = ['student.user', 'student.schoolClass', 'kembaliManualOleh.user'];
+
         $daftar = IzinKeluar::tahunAjaran()
-            ->with('student.user', 'student.schoolClass')
+            ->with($rel)
             ->where('tanggal', $tanggal)
             ->orderByDesc('id')
             ->get()
             ->map(fn ($i) => $this->presentIzin($i));
 
-        return response()->json(['data' => $daftar]);
+        // Lintas hari: siswa yang masih "keluar" dari hari-hari SEBELUMNYA (belum dinyatakan
+        // kembali) — bisa divalidasi manual oleh petugas piket hari ini.
+        $belumKembaliLampau = IzinKeluar::tahunAjaran()
+            ->with($rel)
+            ->where('status', IzinKeluarStatus::Keluar)
+            ->whereDate('tanggal', '<', $tanggal)
+            ->orderBy('tanggal')
+            ->get()
+            ->map(fn ($i) => $this->presentIzin($i));
+
+        return response()->json(['data' => $daftar, 'belum_kembali_lampau' => $belumKembaliLampau]);
+    }
+
+    // ── POST /piket/izin-keluar/{uuid}/tandai-kembali — validasi manual oleh piket ──
+    public function tandaiKembali(Request $request, string $uuid): JsonResponse
+    {
+        $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
+        $this->pastikanPetugas($request, $tanggal);   // pemvalidasi wajib petugas piket hari ini
+
+        $data = $request->validate(['keterangan' => ['required', 'string', 'max:500']]);
+
+        // Tanpa filter tanggal → lintas hari. Hanya izin yang masih "keluar" yang bisa ditandai kembali.
+        $izin = IzinKeluar::tahunAjaran()->where('uuid', $uuid)->firstOrFail();
+        abort_unless($izin->status === IzinKeluarStatus::Keluar, 422, 'Izin ini tidak berstatus "sedang di luar" (mungkin sudah kembali atau dibatalkan).');
+
+        $izin->update([
+            'status' => IzinKeluarStatus::Kembali,
+            'waktu_masuk' => Carbon::now('Asia/Jakarta'),
+            'kembali_manual_oleh' => $request->user()->teacher?->id,
+            'catatan_kembali' => $data['keterangan'],
+        ]);
+
+        return response()->json(['message' => 'Siswa dinyatakan sudah kembali (dikonfirmasi piket).']);
     }
 
     // ── POST /piket/izin-keluar/{uuid}/proses — setujui/tolak/batalkan ───────
@@ -619,6 +653,7 @@ class PiketController extends Controller
 
         return [
             'id' => $i->uuid,
+            'tanggal' => $i->tanggal->toDateString(),
             'nama' => $i->student?->user?->nama,
             'kelas' => $i->student?->schoolClass?->label(),
             'foto_url' => $i->student?->foto ? Storage::disk('public')->url($i->student->foto) : null,
@@ -633,6 +668,11 @@ class PiketController extends Controller
             'catatan_piket' => $i->catatan_piket,
             'terlambat_kembali' => $terlambat,
             'terlambat_menit' => $terlambat ? $i->berlaku_sampai->diffInMinutes($now) : 0,
+            // Sumber validasi kembali: sekuriti (scan) vs piket (manual).
+            'validasi_sekuriti' => $i->status === IzinKeluarStatus::Kembali && $i->scan_masuk_oleh !== null,
+            'validasi_piket' => $i->kembali_manual_oleh !== null,
+            'validator_kembali' => $i->kembaliManualOleh?->user?->nama,
+            'catatan_kembali' => $i->catatan_kembali,
         ];
     }
 

@@ -2,33 +2,42 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\IzinKeluarStatus;
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\Agenda;
 use App\Models\AgendaStudentScore;
+use App\Models\CharacterCategory;
 use App\Models\CharacterInput;
 use App\Models\CharacterManualNote;
-use App\Models\LearningObjective;
+use App\Models\IzinKeluar;
+use App\Models\KokurikulerReport;
 use App\Models\Note;
 use App\Models\PrintSetting;
+use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentAttendance;
-use App\Models\TeacherAttendance;
+use App\Models\Teacher;
+use App\Support\BellSchedule;
+use App\Support\ClassAccess;
+use App\Support\ImageDataUri;
+use App\Support\TahunAjaran;
 use App\Traits\BuildsXlsxReports;
 use App\Traits\HandlesPdfPreview;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
+use Illuminate\Support\Collection;
 use OpenSpout\Common\Entity\Cell\NumericCell;
 use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Writer\XLSX\Writer;
-use App\Support\ClassAccess;
 
 class ReportController extends Controller
 {
-    use HandlesPdfPreview;
     use BuildsXlsxReports;
+    use HandlesPdfPreview;
 
     /**
      * Ambil kelas dari `class_id` request DAN pastikan pemanggil berhak atasnya.
@@ -69,58 +78,61 @@ class ReportController extends Controller
         // akun siswa/orang tua menerima daftar seluruh rombel sekolah.
         abort_if(ClassAccess::isStudentSide($request->user()), 403, 'Akses tidak diizinkan.');
 
-        $ay      = \App\Support\TahunAjaran::current();
+        $ay = TahunAjaran::current();
         $classes = SchoolClass::when($ay, fn ($q) => $q->where('academic_year_id', $ay->id))
             ->orderBy('tingkat')->orderBy('jurusan')->orderBy('rombel')
             ->get()
             ->map(fn ($c) => ['id' => $c->uuid, 'label' => $c->label()]);
+
         return response()->json(['data' => $classes]);
     }
 
     public function kehadiran(Request $request)
     {
         $request->validate([
-            'class_id'     => ['required', 'string'],
-            'tanggal_mulai'=> ['required', 'date'],
-            'tanggal_akhir'=> ['required', 'date', 'after_or_equal:tanggal_mulai'],
-            'format'       => ['required', 'in:pdf,excel'],
-            'teacher_id'   => ['nullable', 'string'],
+            'class_id' => ['required', 'string'],
+            'tanggal_mulai' => ['required', 'date'],
+            'tanggal_akhir' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
+            'format' => ['required', 'in:pdf,excel'],
+            'teacher_id' => ['nullable', 'string'],
         ]);
 
         // Identitas guru untuk header laporan
         $teacher = $request->user()->teacher;
         if (! $teacher && $request->filled('teacher_id')) {
-            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
+            $teacher = Teacher::where('uuid', $request->teacher_id)->with('user')->first();
         }
         if ($teacher && ! $teacher->relationLoaded('user')) {
             $teacher->load('user');
         }
 
-        $class    = $this->authorizedClass($request, ['students.user']);
+        $class = $this->authorizedClass($request, ['students.user']);
         $students = $class->students()->with('user')->orderBy('nis')->get();
-        $periode  = date('d/m/Y', strtotime($request->tanggal_mulai)) . ' – ' . date('d/m/Y', strtotime($request->tanggal_akhir));
+        $periode = date('d/m/Y', strtotime($request->tanggal_mulai)).' – '.date('d/m/Y', strtotime($request->tanggal_akhir));
         $totalSesi = Agenda::whereHas('schedule', fn ($q) => $q->where('class_id', $class->id))
             ->whereBetween('tanggal', [$request->tanggal_mulai, $request->tanggal_akhir])->count();
 
         $rows = $students->map(function ($s) use ($request, $class) {
             $base = fn () => StudentAttendance::where('student_id', $s->id)
-                ->whereHas('agenda', fn ($q) =>
-                    $q->whereBetween('tanggal', [$request->tanggal_mulai, $request->tanggal_akhir])
-                      ->whereHas('schedule', fn ($q2) => $q2->where('class_id', $class->id))
+                ->whereHas('agenda', fn ($q) => $q->whereBetween('tanggal', [$request->tanggal_mulai, $request->tanggal_akhir])
+                    ->whereHas('schedule', fn ($q2) => $q2->where('class_id', $class->id))
                 );
 
             $hadir = $base()->where('status', 'hadir')->count();
             $sakit = $base()->where('status', 'sakit')->count();
-            $izin  = $base()->where('status', 'izin')->count();
+            $izin = $base()->where('status', 'izin')->count();
             $alpha = $base()->where('status', 'alpha')->count();
             $total = $hadir + $sakit + $izin + $alpha;
-            $pct   = $total > 0 ? round(($hadir / $total) * 100, 1) : 100;
+            $pct = $total > 0 ? round(($hadir / $total) * 100, 1) : 100;
 
             $absences = $base()->where('status', '!=', 'hadir')
                 ->with('agenda:id,tanggal')->orderBy('created_at')->get()
                 ->map(function ($a) {
-                    $tgl  = \Carbon\Carbon::parse($a->agenda->tanggal)->locale('id')->isoFormat('D MMM');
-                    $stat = match ($a->status->value) { 'sakit' => 'S', 'izin' => 'I', 'alpha' => 'A', default => '?' };
+                    $tgl = Carbon::parse($a->agenda->tanggal)->locale('id')->isoFormat('D MMM');
+                    $stat = match ($a->status->value) {
+                        'sakit' => 'S', 'izin' => 'I', 'alpha' => 'A', default => '?'
+                    };
+
                     return "{$tgl}({$stat})";
                 })->toArray();
 
@@ -129,16 +141,16 @@ class ReportController extends Controller
         });
 
         $kelasLabel = $class->label();
-        $filename   = "kehadiran_{$class->tingkat->value}_{$class->jurusanKode()}_{$class->rombel}";
+        $filename = "kehadiran_{$class->tingkat->value}_{$class->jurusanKode()}_{$class->rombel}";
 
         // Cari mapel yang diajarkan guru di kelas ini
         $mapelGuru = null;
-        $guruNama  = null;
-        $guruNip   = null;
+        $guruNama = null;
+        $guruNip = null;
         if ($teacher) {
-            $guruNama  = $teacher->nama_lengkap;
-            $guruNip   = $teacher->nip ?? '—';
-            $mapelGuru = \App\Models\Schedule::where('teacher_id', $teacher->id)
+            $guruNama = $teacher->nama_lengkap;
+            $guruNip = $teacher->nip ?? '—';
+            $mapelGuru = Schedule::where('teacher_id', $teacher->id)
                 ->where('class_id', $class->id)
                 ->where('aktif', true)
                 ->with('subject')
@@ -152,6 +164,7 @@ class ReportController extends Controller
             $printSettings = PrintSetting::instance($request->user()->id);
             $pdf = Pdf::loadView('reports.kehadiran', compact('rows', 'periode', 'totalSesi', 'guruNama', 'guruNip', 'mapelGuru', 'printSettings') + ['kelas' => $kelasLabel])
                 ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+
             return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
 
@@ -161,16 +174,16 @@ class ReportController extends Controller
             $w->addRow(Row::fromValuesWithStyle(["Rekap Kehadiran — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["Periode: {$periode} | Sesi: {$totalSesi}"]));
             if ($guruNama) {
-                $w->addRow(Row::fromValues(["Guru: {$guruNama}" . ($guruNip ? " | NIP: {$guruNip}" : '') . ($mapelGuru ? " | Mapel: {$mapelGuru}" : '')]));
+                $w->addRow(Row::fromValues(["Guru: {$guruNama}".($guruNip ? " | NIP: {$guruNip}" : '').($mapelGuru ? " | Mapel: {$mapelGuru}" : '')]));
             }
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                ['No','Nama Siswa','NIS','L/P','Hadir','Sakit','Izin','Alpha','Total','% Kehadiran','Tanggal Tidak Hadir'],
+                ['No', 'Nama Siswa', 'NIS', 'L/P', 'Hadir', 'Sakit', 'Izin', 'Alpha', 'Total', '% Kehadiran', 'Tanggal Tidak Hadir'],
                 $this->xlsxHeaderStyle()
             ));
 
             $cellCenter = $this->xlsxCellCenterStyle();
-            $cellText   = $this->xlsxCellStyle();
+            $cellText = $this->xlsxCellStyle();
             foreach ($rows->values() as $i => $r) {
                 $w->addRow(new Row([
                     new NumericCell($i + 1, $cellCenter),
@@ -183,7 +196,90 @@ class ReportController extends Controller
                     new NumericCell($r['alpha'], $cellCenter),
                     new NumericCell($r['total'], $cellCenter),
                     new StringCell($r['pct'].'%', $cellCenter),
-                    new StringCell(implode(', ',$r['absences']) ?: '—', $cellText),
+                    new StringCell(implode(', ', $r['absences']) ?: '—', $cellText),
+                ]));
+            }
+        });
+    }
+
+    // ── Rekap Izin Keluar (sekolah, admin/wakasek) ──────────────────────────
+    public function izinKeluar(Request $request)
+    {
+        $request->validate([
+            'tanggal_mulai' => ['required', 'date'],
+            'tanggal_akhir' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
+            'format' => ['required', 'in:pdf,excel'],
+        ]);
+        abort_unless(in_array($request->user()->role->value, ['admin', 'wakasek'], true), 403, 'Laporan ini khusus admin/wakasek.');
+
+        $list = IzinKeluar::tahunAjaran()
+            ->with('student.user', 'student.schoolClass', 'kembaliManualOleh.user')
+            ->whereBetween('tanggal', [$request->tanggal_mulai, $request->tanggal_akhir])
+            ->orderBy('tanggal')->orderBy('id')->get();
+
+        $caraValidasi = function (IzinKeluar $i): string {
+            if ($i->status !== IzinKeluarStatus::Kembali) {
+                return $i->status->label();
+            }
+
+            return $i->kembali_manual_oleh ? 'Piket (manual)' : ($i->scan_masuk_oleh ? 'Sekuriti (scan)' : 'Kembali');
+        };
+
+        $rows = $list->map(fn ($i) => [
+            'tanggal' => \Illuminate\Support\Carbon::parse($i->tanggal)->locale('id')->isoFormat('D MMM YYYY'),
+            'nama' => $i->student?->user?->nama ?? '—',
+            'kelas' => $i->student?->schoolClass?->label() ?? '—',
+            'keperluan' => $i->keperluan,
+            'keluar' => $i->waktu_keluar?->format('H:i') ?? '—',
+            'masuk' => $i->waktu_masuk?->format('H:i') ?? '—',
+            'validasi' => $caraValidasi($i),
+            'petugas' => $i->kembaliManualOleh?->user?->nama ?? '—',
+            'keterangan' => $i->catatan_kembali ?? ($i->alasan ?? '—'),
+        ]);
+
+        $ringkasan = [
+            'total' => $list->count(),
+            'sekuriti' => $list->filter(fn ($i) => $i->status === IzinKeluarStatus::Kembali && $i->scan_masuk_oleh && ! $i->kembali_manual_oleh)->count(),
+            'piket' => $list->filter(fn ($i) => $i->kembali_manual_oleh !== null)->count(),
+            'belum_kembali' => $list->where('status', IzinKeluarStatus::Keluar)->count(),
+        ];
+
+        $periode = date('d/m/Y', strtotime($request->tanggal_mulai)).' – '.date('d/m/Y', strtotime($request->tanggal_akhir));
+        $filename = 'rekap_izin_keluar_'.$request->tanggal_mulai.'_'.$request->tanggal_akhir;
+
+        if ($request->format === 'pdf') {
+            $printSettings = PrintSetting::instance($request->user()->id);
+            $pdf = Pdf::loadView('reports.izin_keluar', [
+                'rows' => $rows, 'periode' => $periode, 'ringkasan' => $ringkasan,
+                'kopSuratPath' => 'file://'.public_path('images/kop_surat.jpg'),
+                'printSettings' => $printSettings,
+            ])->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+
+            return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
+        }
+
+        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $periode, $ringkasan) {
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 15, 3 => 24, 4 => 14, 5 => 22, 6 => 9, 7 => 9, 8 => 16, 9 => 22, 10 => 40]);
+            $w->addRow(Row::fromValuesWithStyle(['REKAP IZIN KELUAR SISWA'], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValues(["Periode: {$periode}"]));
+            $w->addRow(Row::fromValues(["Total: {$ringkasan['total']} | Kembali via sekuriti: {$ringkasan['sekuriti']} | via piket (manual): {$ringkasan['piket']} | Belum kembali: {$ringkasan['belum_kembali']}"]));
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValuesWithStyle(['No', 'Tanggal', 'Nama', 'Kelas', 'Keperluan', 'Keluar', 'Masuk', 'Validasi Kembali', 'Petugas Piket', 'Keterangan'], $this->xlsxHeaderStyle()));
+
+            $center = $this->xlsxCellCenterStyle();
+            $text = $this->xlsxCellStyle();
+            foreach ($rows->values() as $i => $r) {
+                $w->addRow(new Row([
+                    new NumericCell($i + 1, $center),
+                    new StringCell($r['tanggal'], $center),
+                    new StringCell($r['nama'], $text),
+                    new StringCell($r['kelas'], $center),
+                    new StringCell($r['keperluan'], $text),
+                    new StringCell($r['keluar'], $center),
+                    new StringCell($r['masuk'], $center),
+                    new StringCell($r['validasi'], $center),
+                    new StringCell($r['petugas'], $text),
+                    new StringCell($r['keterangan'], $text),
                 ]));
             }
         });
@@ -192,24 +288,24 @@ class ReportController extends Controller
     public function karakter(Request $request)
     {
         $request->validate([
-            'class_id'   => ['required', 'string'],
-            'format'     => ['required', 'in:pdf,excel'],
+            'class_id' => ['required', 'string'],
+            'format' => ['required', 'in:pdf,excel'],
             'teacher_id' => ['nullable', 'string'],
         ]);
 
         // Identitas guru untuk header laporan
         $teacher = $request->user()->teacher;
         if (! $teacher && $request->filled('teacher_id')) {
-            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
+            $teacher = Teacher::where('uuid', $request->teacher_id)->with('user')->first();
         }
         if ($teacher && ! $teacher->relationLoaded('user')) {
             $teacher->load('user');
         }
 
-        $class    = $this->authorizedClass($request, ['students.user']);
+        $class = $this->authorizedClass($request, ['students.user']);
         $students = $class->students()->with('user')->orderBy('nis')->get();
-        $kategori = \App\Models\CharacterCategory::where('aktif', true)->pluck('nama')->toArray();
-        $periode  = now('Asia/Jakarta')->format('M Y');
+        $kategori = CharacterCategory::where('aktif', true)->pluck('nama')->toArray();
+        $periode = now('Asia/Jakarta')->format('M Y');
         $totalInput = 0;
 
         // Discope ke TA milik kelas yang dilaporkan — ekspor ulang kelas semester lama
@@ -225,15 +321,16 @@ class ReportController extends Controller
                 $sub = $inputs->filter(fn ($i) => $i->subitem->category->nama === $kat);
                 $perKat[$kat] = $sub->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot));
             }
+
             return ['nama' => $s->user->nama, 'nis' => $s->nis, 'jk' => $s->jenis_kelamin ?? '—', 'total' => $total, 'per_kategori' => $perKat];
         });
 
         $kelasLabel = $class->label();
-        $filename   = "karakter_{$class->tingkat->value}_{$class->jurusanKode()}";
+        $filename = "karakter_{$class->tingkat->value}_{$class->jurusanKode()}";
 
-        $guruNama  = $teacher ? $teacher->nama_lengkap : null;
-        $guruNip   = $teacher ? ($teacher->nip ?? '—') : null;
-        $mapelGuru = $teacher ? \App\Models\Schedule::where('teacher_id', $teacher->id)
+        $guruNama = $teacher ? $teacher->nama_lengkap : null;
+        $guruNip = $teacher ? ($teacher->nip ?? '—') : null;
+        $mapelGuru = $teacher ? Schedule::where('teacher_id', $teacher->id)
             ->where('class_id', $class->id)
             ->where('aktif', true)
             ->with('subject')
@@ -244,12 +341,13 @@ class ReportController extends Controller
 
         if ($request->format === 'pdf') {
             $printSettings = PrintSetting::instance($request->user()->id);
-            $pdf = Pdf::loadView('reports.karakter', compact('rows','kategori','periode','totalInput','guruNama','guruNip','mapelGuru','printSettings') + ['kelas' => $kelasLabel])
+            $pdf = Pdf::loadView('reports.karakter', compact('rows', 'kategori', 'periode', 'totalInput', 'guruNama', 'guruNip', 'mapelGuru', 'printSettings') + ['kelas' => $kelasLabel])
                 ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+
             return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
 
-        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows,$kategori,$kelasLabel,$periode,$guruNama,$guruNip,$mapelGuru) {
+        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kategori, $kelasLabel, $periode, $guruNama, $guruNip, $mapelGuru) {
             $lastCol = 4 + count($kategori) + 1;
             $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 6]);
             $w->getOptions()->setColumnWidthForRange(14, 5, $lastCol);
@@ -257,16 +355,16 @@ class ReportController extends Controller
             $w->addRow(Row::fromValuesWithStyle(["Rekap Karakter — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["Periode: {$periode}"]));
             if ($guruNama) {
-                $w->addRow(Row::fromValues(["Guru: {$guruNama}" . ($guruNip ? " | NIP: {$guruNip}" : '') . ($mapelGuru ? " | Mapel: {$mapelGuru}" : '')]));
+                $w->addRow(Row::fromValues(["Guru: {$guruNama}".($guruNip ? " | NIP: {$guruNip}" : '').($mapelGuru ? " | Mapel: {$mapelGuru}" : '')]));
             }
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                array_merge(['No','Nama Siswa','NIS','L/P'],$kategori,['Total Poin']),
+                array_merge(['No', 'Nama Siswa', 'NIS', 'L/P'], $kategori, ['Total Poin']),
                 $this->xlsxHeaderStyle()
             ));
 
             $cellCenter = $this->xlsxCellCenterStyle();
-            $cellText   = $this->xlsxCellStyle();
+            $cellText = $this->xlsxCellStyle();
             $totalStyle = $this->xlsxTotalStyle();
             foreach ($rows->values() as $i => $r) {
                 $cells = [
@@ -290,20 +388,20 @@ class ReportController extends Controller
     public function nilaiTambah(Request $request)
     {
         $request->validate([
-            'class_id'   => ['required', 'string'],
-            'format'     => ['required', 'in:pdf,excel'],
+            'class_id' => ['required', 'string'],
+            'format' => ['required', 'in:pdf,excel'],
             'teacher_id' => ['nullable', 'string'],
         ]);
 
         $teacher = $request->user()->teacher;
         if (! $teacher && $request->filled('teacher_id')) {
-            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
+            $teacher = Teacher::where('uuid', $request->teacher_id)->with('user')->first();
         }
         if ($teacher && ! $teacher->relationLoaded('user')) {
             $teacher->load('user');
         }
 
-        $class    = $this->authorizedClass($request);
+        $class = $this->authorizedClass($request);
         $students = $class->students()->with('user')->orderBy('nis')->get();
 
         $notes = CharacterManualNote::tahunAjaran($class->academic_year_id)
@@ -321,23 +419,23 @@ class ReportController extends Controller
         // pengampu, yang rekapnya memuat entri ini. Untuk guru biasa keduanya sama.
         // Tanggal memuat jam supaya jelas entri inval jatuh di sesi yang mana.
         $rows = $notes->map(fn ($n) => [
-            'nama'       => $n->student->user->nama,
-            'nis'        => $n->student->nis,
-            'jk'         => $n->student->jenis_kelamin ?? '—',
-            'nilai'      => $n->nilai_final ?? $n->nilai,
-            'catatan'    => $n->catatan ?: '—',
-            'tanggal'    => $n->created_at->locale('id')->isoFormat('D MMM YYYY HH:mm'),
-            'guru'       => $n->teacher?->nama_lengkap ?? '—',
-            'atas_nama'  => $n->atasNamaTeacher?->nama_lengkap ?? $n->teacher?->nama_lengkap ?? '—',
+            'nama' => $n->student->user->nama,
+            'nis' => $n->student->nis,
+            'jk' => $n->student->jenis_kelamin ?? '—',
+            'nilai' => $n->nilai_final ?? $n->nilai,
+            'catatan' => $n->catatan ?: '—',
+            'tanggal' => $n->created_at->locale('id')->isoFormat('D MMM YYYY HH:mm'),
+            'guru' => $n->teacher?->nama_lengkap ?? '—',
+            'atas_nama' => $n->atasNamaTeacher?->nama_lengkap ?? $n->teacher?->nama_lengkap ?? '—',
             'oleh_inval' => $n->diberikanOlehInval(),
         ]);
 
         $kelasLabel = $class->label();
-        $filename   = "nilai_tambah_{$class->tingkat->value}_{$class->jurusanKode()}";
-        $periode    = now('Asia/Jakarta')->format('M Y');
+        $filename = "nilai_tambah_{$class->tingkat->value}_{$class->jurusanKode()}";
+        $periode = now('Asia/Jakarta')->format('M Y');
 
         $guruNama = $teacher ? $teacher->nama_lengkap : null;
-        $guruNip  = $teacher ? ($teacher->nip ?? '—') : null;
+        $guruNip = $teacher ? ($teacher->nip ?? '—') : null;
 
         if ($request->format === 'pdf') {
             $printSettings = PrintSetting::instance($request->user()->id);
@@ -346,6 +444,7 @@ class ReportController extends Controller
                 'totalInput' => $rows->count(), 'guruNama' => $guruNama, 'guruNip' => $guruNip,
                 'printSettings' => $printSettings,
             ])->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+
             return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
 
@@ -355,7 +454,7 @@ class ReportController extends Controller
             $w->addRow(Row::fromValuesWithStyle(["Laporan Nilai Tambah — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["Periode: {$periode}"]));
             if ($guruNama) {
-                $w->addRow(Row::fromValues(["Guru: {$guruNama}" . ($guruNip ? " | NIP: {$guruNip}" : '')]));
+                $w->addRow(Row::fromValues(["Guru: {$guruNama}".($guruNip ? " | NIP: {$guruNip}" : '')]));
             }
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
@@ -364,7 +463,7 @@ class ReportController extends Controller
             ));
 
             $cellCenter = $this->xlsxCellCenterStyle();
-            $cellText   = $this->xlsxCellStyle();
+            $cellText = $this->xlsxCellStyle();
             foreach ($rows->values() as $i => $r) {
                 $w->addRow(new Row([
                     new NumericCell($i + 1, $cellCenter),
@@ -374,7 +473,7 @@ class ReportController extends Controller
                     new NumericCell($r['nilai'], $cellCenter),
                     new StringCell($r['catatan'], $cellText),
                     new StringCell($r['tanggal'], $cellCenter),
-                    new StringCell($r['guru'] . ($r['oleh_inval'] ? ' (inval)' : ''), $cellText),
+                    new StringCell($r['guru'].($r['oleh_inval'] ? ' (inval)' : ''), $cellText),
                     new StringCell($r['atas_nama'], $cellText),
                 ]));
             }
@@ -383,54 +482,60 @@ class ReportController extends Controller
 
     public function ews(Request $request)
     {
-        $request->validate(['class_id'=>['required','string'],'format'=>['required','in:pdf,excel']]);
+        $request->validate(['class_id' => ['required', 'string'], 'format' => ['required', 'in:pdf,excel']]);
 
         // 'bina': EWS adalah data pembinaan — wali & BK pengampu, bukan guru mapel.
-        $class    = $this->authorizedClass($request, ['students.user'], 'bina');
+        $class = $this->authorizedClass($request, ['students.user'], 'bina');
         $students = $class->students()->with('user')->orderBy('nis')->get();
-        $periode  = now('Asia/Jakarta')->format('M Y');
+        $periode = now('Asia/Jakarta')->format('M Y');
 
         $rows = $students->map(function ($s) use ($class) {
             // Kehadiran & poin per TA milik kelas — bukan akumulasi seumur hidup.
-            $absensi   = StudentAttendance::where('student_id', $s->id)
+            $absensi = StudentAttendance::where('student_id', $s->id)
                 ->whereHas('agenda.schedule.schoolClass', fn ($q) => $q->where('academic_year_id', $class->academic_year_id));
-            $total     = (clone $absensi)->count();
-            $hadir     = (clone $absensi)->where('status', 'hadir')->count();
+            $total = (clone $absensi)->count();
+            $hadir = (clone $absensi)->where('status', 'hadir')->count();
             $kehadiran = $total > 0 ? round(($hadir / $total) * 100, 1) : 100.0;
-            $inputs    = CharacterInput::tahunAjaran($class->academic_year_id)
+            $inputs = CharacterInput::tahunAjaran($class->academic_year_id)
                 ->where('student_id', $s->id)->with('subitem')->get();
-            $karakter  = $inputs->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot));
-            $catatan   = Note::where('target_type', Student::class)->where('target_id', $s->id)->count();
-            $nilaiAvg  = AgendaStudentScore::where('student_id', $s->id)->avg('nilai');
-            $nilai     = $nilaiAvg !== null ? round($nilaiAvg, 1) : null;
-            $w         = ($kehadiran<80?1:0)+($karakter<0?1:0)+($catatan>=3?1:0)+($nilai!==null&&$nilai<70?1:0);
-            $level     = match(true){$w>=3=>'merah',$w===2=>'oranye',$w===1=>'kuning',default=>'hijau'};
-            return compact('level','kehadiran','karakter','catatan','nilai')+['nama'=>$s->user->nama,'nis'=>$s->nis,'jk'=>$s->jenis_kelamin ?? '—'];
-        })->sortBy(fn($r)=>match($r['level']){'merah'=>0,'oranye'=>1,'kuning'=>2,default=>3})->values();
+            $karakter = $inputs->sum(fn ($i) => $i->sign->value === 'positif' ? abs($i->subitem->bobot) : -abs($i->subitem->bobot));
+            $catatan = Note::where('target_type', Student::class)->where('target_id', $s->id)->count();
+            $nilaiAvg = AgendaStudentScore::where('student_id', $s->id)->avg('nilai');
+            $nilai = $nilaiAvg !== null ? round($nilaiAvg, 1) : null;
+            $w = ($kehadiran < 80 ? 1 : 0) + ($karakter < 0 ? 1 : 0) + ($catatan >= 3 ? 1 : 0) + ($nilai !== null && $nilai < 70 ? 1 : 0);
+            $level = match (true) {
+                $w >= 3 => 'merah',$w === 2 => 'oranye',$w === 1 => 'kuning',default => 'hijau'
+            };
+
+            return compact('level', 'kehadiran', 'karakter', 'catatan', 'nilai') + ['nama' => $s->user->nama, 'nis' => $s->nis, 'jk' => $s->jenis_kelamin ?? '—'];
+        })->sortBy(fn ($r) => match ($r['level']) {
+            'merah' => 0,'oranye' => 1,'kuning' => 2,default => 3
+        })->values();
 
         $kelasLabel = $class->label();
-        $filename   = "ews_{$class->tingkat->value}_{$class->jurusanKode()}";
+        $filename = "ews_{$class->tingkat->value}_{$class->jurusanKode()}";
 
         if ($request->format === 'pdf') {
             $printSettings = PrintSetting::instance($request->user()->id);
-            $pdf = Pdf::loadView('reports.ews', compact('rows','periode','printSettings') + ['kelas'=>$kelasLabel])
-                ->setPaper($printSettings->paperDimensionsPt(),'landscape');
+            $pdf = Pdf::loadView('reports.ews', compact('rows', 'periode', 'printSettings') + ['kelas' => $kelasLabel])
+                ->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+
             return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
 
-        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows,$kelasLabel,$periode) {
+        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($rows, $kelasLabel, $periode) {
             $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 26, 3 => 12, 4 => 6, 5 => 10, 6 => 14, 7 => 15, 8 => 10, 9 => 15]);
 
             $w->addRow(Row::fromValuesWithStyle(["Laporan EWS — {$kelasLabel}"], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["Periode: {$periode}"]));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(Row::fromValuesWithStyle(
-                ['No','Nama Siswa','NIS','L/P','Level','Kehadiran (%)','Karakter (poin)','Catatan','Nilai Rata-rata'],
+                ['No', 'Nama Siswa', 'NIS', 'L/P', 'Level', 'Kehadiran (%)', 'Karakter (poin)', 'Catatan', 'Nilai Rata-rata'],
                 $this->xlsxHeaderStyle()
             ));
 
             $cellCenter = $this->xlsxCellCenterStyle();
-            $cellText   = $this->xlsxCellStyle();
+            $cellText = $this->xlsxCellStyle();
             foreach ($rows as $i => $r) {
                 $w->addRow(new Row([
                     new NumericCell($i + 1, $cellCenter),
@@ -455,13 +560,13 @@ class ReportController extends Controller
         $request->validate([
             'tanggal_mulai' => ['required', 'date'],
             'tanggal_akhir' => ['required', 'date', 'after_or_equal:tanggal_mulai'],
-            'format'        => ['required', 'in:pdf,excel'],
-            'teacher_id'    => ['nullable', 'string'],
+            'format' => ['required', 'in:pdf,excel'],
+            'teacher_id' => ['nullable', 'string'],
         ]);
 
         $teacher = $request->user()->teacher;
         if (! $teacher && $request->filled('teacher_id')) {
-            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->with('user')->first();
+            $teacher = Teacher::where('uuid', $request->teacher_id)->with('user')->first();
         }
         abort_if(! $teacher, 403, 'Pilih guru terlebih dahulu atau gunakan akun guru.');
 
@@ -470,21 +575,21 @@ class ReportController extends Controller
             ->with(['schedule.subject', 'schedule.schoolClass', 'learningObjectives'])
             ->orderBy('tanggal')->orderBy('id')->get();
 
-        $ay = \App\Support\TahunAjaran::current();
+        $ay = TahunAjaran::current();
 
-        $tglMulai  = \Carbon\Carbon::parse($request->tanggal_mulai)->locale('id');
-        $tglAkhir  = \Carbon\Carbon::parse($request->tanggal_akhir)->locale('id');
+        $tglMulai = Carbon::parse($request->tanggal_mulai)->locale('id');
+        $tglAkhir = Carbon::parse($request->tanggal_akhir)->locale('id');
 
-        $bulan          = ucfirst($tglMulai->isoFormat('MMMM'));
-        $tahunPelajaran = $ay ? $ay->tahun : $tglMulai->year . '/' . ($tglMulai->year + 1);
-        $semester       = $ay ? ucfirst($ay->semester->value) : 'Ganjil';
+        $bulan = ucfirst($tglMulai->isoFormat('MMMM'));
+        $tahunPelajaran = $ay ? $ay->tahun : $tglMulai->year.'/'.($tglMulai->year + 1);
+        $semester = $ay ? ucfirst($ay->semester->value) : 'Ganjil';
 
         // Kelas & mapel diampu diambil dari SELURUH jadwal aktif guru (bukan cuma yang
         // sudah diisi agenda pada periode ini) — supaya identitas laporan tetap lengkap
         // walau guru belum sempat mengisi KBM di sebagian kelas/mapel yang ia ampu.
         // Discope ke TA yang memuat awal periode laporan (fallback TA aktif) supaya
         // ekspor ulang laporan semester lama tetap memakai jadwal semester itu.
-        $teacherSchedules = \App\Models\Schedule::tahunAjaran($this->ayIdUntukTanggal($request->tanggal_mulai))
+        $teacherSchedules = Schedule::tahunAjaran($this->ayIdUntukTanggal($request->tanggal_mulai))
             ->where('teacher_id', $teacher->id)
             ->where('aktif', true)
             ->with(['subject', 'schoolClass'])
@@ -492,42 +597,42 @@ class ReportController extends Controller
         $mapelSet = $this->formatMapelDiampu($teacherSchedules);
         $kelasSet = $this->formatKelasDiampu($teacherSchedules);
 
-        $periode = $tglMulai->isoFormat('D MMMM') . ' - ' . $tglAkhir->isoFormat('D MMMM YYYY');
+        $periode = $tglMulai->isoFormat('D MMMM').' - '.$tglAkhir->isoFormat('D MMMM YYYY');
 
-        $guru               = $teacher->nama_lengkap;
-        $nip                = $teacher->nip ?? '—';
+        $guru = $teacher->nama_lengkap;
+        $nip = $teacher->nip ?? '—';
         $kompetensiKeahlian = $teacher->mapel_utama ?? $mapelSet;
-        $filename           = 'Laporan_Agenda_' . str_replace(' ', '_', $guru) . '_' . $bulan;
+        $filename = 'Laporan_Agenda_'.str_replace(' ', '_', $guru).'_'.$bulan;
 
         $rows = $agendas->map(function ($a) {
             $los = $a->learningObjectives;
-            $tglCarbon = \Carbon\Carbon::parse($a->tanggal)->locale('id');
+            $tglCarbon = Carbon::parse($a->tanggal)->locale('id');
 
-            $jamEfektif = \App\Support\BellSchedule::resolve($a->schedule, $tglCarbon->toDateString());
-            $jamMulai  = substr($jamEfektif['jam_mulai'] ?? '', 0, 5);
+            $jamEfektif = BellSchedule::resolve($a->schedule, $tglCarbon->toDateString());
+            $jamMulai = substr($jamEfektif['jam_mulai'] ?? '', 0, 5);
             $jamSelesai = substr($jamEfektif['jam_selesai'] ?? '', 0, 5);
             $jam = $jamMulai && $jamSelesai ? "{$jamMulai} s.d {$jamSelesai}" : '—';
 
             return [
-                'hari_tanggal'        => ucfirst($tglCarbon->isoFormat('dddd, D MMMM YYYY')),
-                'jam'                 => $jam,
-                'kelas'               => $a->schedule->schoolClass->label(),
-                'mapel'               => $a->schedule->subject->nama,
+                'hari_tanggal' => ucfirst($tglCarbon->isoFormat('dddd, D MMMM YYYY')),
+                'jam' => $jam,
+                'kelas' => $a->schedule->schoolClass->label(),
+                'mapel' => $a->schedule->subject->nama,
                 'tujuan_pembelajaran' => $los->pluck('deskripsi')->join('; '),
-                'tp_kode'             => $los->pluck('kode')->join(', '),
+                'tp_kode' => $los->pluck('kode')->join(', '),
                 'kegiatan_pembelajaran' => $a->resume_kbm ?? '',
-                'keterangan'          => '',
-                '_tanggal'            => (string) $a->tanggal,
+                'keterangan' => '',
+                '_tanggal' => (string) $a->tanggal,
             ];
         });
 
         // ── Kegiatan kokurikuler yang difasilitasi guru ini ikut masuk jurnal:
         // laporan harian fasilitator adalah bukti kegiatan pembelajarannya hari itu.
         // Tidak memengaruhi ringkasan mingguan (itu dihitung dari jadwal reguler saja). ──
-        $kkRows = \App\Models\KokurikulerReport::query()
+        $kkRows = KokurikulerReport::query()
             ->join('kokurikuler_project_classes as kk_pc', function ($j) {
                 $j->on('kk_pc.project_id', '=', 'kokurikuler_reports.project_id')
-                  ->on('kk_pc.class_id', '=', 'kokurikuler_reports.class_id');
+                    ->on('kk_pc.class_id', '=', 'kokurikuler_reports.class_id');
             })
             ->where('kk_pc.fasilitator_user_id', $teacher->user_id)
             ->whereBetween('kokurikuler_reports.tanggal', [$request->tanggal_mulai, $request->tanggal_akhir])
@@ -535,18 +640,18 @@ class ReportController extends Controller
             ->select('kokurikuler_reports.*')
             ->get()
             ->map(fn ($r) => [
-                'hari_tanggal'        => ucfirst(\Carbon\Carbon::parse($r->tanggal)->locale('id')->isoFormat('dddd, D MMMM YYYY')),
-                'jam'                 => '—',
-                'kelas'               => $r->schoolClass
+                'hari_tanggal' => ucfirst(Carbon::parse($r->tanggal)->locale('id')->isoFormat('dddd, D MMMM YYYY')),
+                'jam' => '—',
+                'kelas' => $r->schoolClass
                     ? $r->schoolClass->label()
                     : '—',
-                'mapel'               => 'Kokurikuler',
-                'tujuan_pembelajaran' => trim(($r->project?->judul ?? 'Projek Kokurikuler') .
-                    ($r->project?->tujuan ? ' — ' . $r->project->tujuan : '')),
-                'tp_kode'             => '',
+                'mapel' => 'Kokurikuler',
+                'tujuan_pembelajaran' => trim(($r->project?->judul ?? 'Projek Kokurikuler').
+                    ($r->project?->tujuan ? ' — '.$r->project->tujuan : '')),
+                'tp_kode' => '',
                 'kegiatan_pembelajaran' => $r->isi,
-                'keterangan'          => 'Kokurikuler (fasilitator)',
-                '_tanggal'            => $r->tanggal->toDateString(),
+                'keterangan' => 'Kokurikuler (fasilitator)',
+                '_tanggal' => $r->tanggal->toDateString(),
             ]);
 
         $rows = $rows->concat($kkRows)
@@ -556,45 +661,46 @@ class ReportController extends Controller
 
         // ── GK31: ringkasan mingguan (rata-rata pertemuan & JP terlaksana per
         // minggu vs seharusnya) — ditaruh di kotak sebelah TTD, dulu ruang itu kosong. ──
-        $jumlahMingguPeriode  = max(1, (int) ceil($tglMulai->diffInDays($tglAkhir) / 7) + 1);
-        $pertemuanPerMinggu   = $teacherSchedules->count(); // jumlah slot jadwal aktif/minggu
-        $pertemuanSeharusnya  = $pertemuanPerMinggu * $jumlahMingguPeriode;
+        $jumlahMingguPeriode = max(1, (int) ceil($tglMulai->diffInDays($tglAkhir) / 7) + 1);
+        $pertemuanPerMinggu = $teacherSchedules->count(); // jumlah slot jadwal aktif/minggu
+        $pertemuanSeharusnya = $pertemuanPerMinggu * $jumlahMingguPeriode;
         // Dihitung dari agenda jadwal reguler saja — baris kokurikuler tidak ikut,
         // karena pembandingnya (seharusnya) juga hanya dari slot jadwal reguler.
-        $pertemuanTerlaksana  = $agendas->count();
-        $pctPertemuan         = $pertemuanSeharusnya > 0 ? round($pertemuanTerlaksana / $pertemuanSeharusnya * 100, 1) : 0;
+        $pertemuanTerlaksana = $agendas->count();
+        $pctPertemuan = $pertemuanSeharusnya > 0 ? round($pertemuanTerlaksana / $pertemuanSeharusnya * 100, 1) : 0;
 
         $jpPerPertemuan = 2; // asumsi 2 JP per pertemuan (konvensi baku aplikasi ini)
         $ringkasanMingguan = [
-            'pertemuan_per_minggu'            => round($pertemuanTerlaksana / $jumlahMingguPeriode, 1),
+            'pertemuan_per_minggu' => round($pertemuanTerlaksana / $jumlahMingguPeriode, 1),
             'pertemuan_seharusnya_per_minggu' => $pertemuanPerMinggu,
-            'pct_pertemuan'                   => $pctPertemuan,
-            'jp_per_minggu'                   => round(($pertemuanTerlaksana * $jpPerPertemuan) / $jumlahMingguPeriode, 1),
-            'jp_seharusnya_per_minggu'        => $pertemuanPerMinggu * $jpPerPertemuan,
-            'pct_jp'                          => $pctPertemuan, // proporsional (JP = pertemuan x konstanta)
+            'pct_pertemuan' => $pctPertemuan,
+            'jp_per_minggu' => round(($pertemuanTerlaksana * $jpPerPertemuan) / $jumlahMingguPeriode, 1),
+            'jp_seharusnya_per_minggu' => $pertemuanPerMinggu * $jpPerPertemuan,
+            'pct_jp' => $pctPertemuan, // proporsional (JP = pertemuan x konstanta)
         ];
 
         if ($request->format === 'pdf') {
-            $kopSuratPath  = 'file://' . public_path('images/kop_surat.jpg');
+            $kopSuratPath = 'file://'.public_path('images/kop_surat.jpg');
             $printSettings = PrintSetting::instance($request->user()->id);
-            $fotoGuruPath  = \App\Support\ImageDataUri::forPublicDisk($teacher->user->foto, public_path('images/default_avatar.jpg'));
+            $fotoGuruPath = ImageDataUri::forPublicDisk($teacher->user->foto, public_path('images/default_avatar.jpg'));
             $pdf = Pdf::loadView('reports.agenda', [
-                'rows'                => $rows,
-                'guru'                => $guru,
-                'nip'                 => $nip,
+                'rows' => $rows,
+                'guru' => $guru,
+                'nip' => $nip,
                 'kompetensi_keahlian' => $kompetensiKeahlian,
-                'mata_pelajaran'      => $mapelSet ?: $kompetensiKeahlian,
-                'kelas_diampu'        => $kelasSet,
-                'semester'            => $semester,
-                'periode'             => $periode,
-                'bulan'               => $bulan,
-                'tahun_pelajaran'     => $tahunPelajaran,
-                'tanggal_ttd'         => $tglAkhir->isoFormat('D MMMM YYYY'),
-                'kopSuratPath'        => $kopSuratPath,
-                'printSettings'       => $printSettings,
-                'fotoGuruPath'        => $fotoGuruPath,
-                'ringkasan_mingguan'  => $ringkasanMingguan,
+                'mata_pelajaran' => $mapelSet ?: $kompetensiKeahlian,
+                'kelas_diampu' => $kelasSet,
+                'semester' => $semester,
+                'periode' => $periode,
+                'bulan' => $bulan,
+                'tahun_pelajaran' => $tahunPelajaran,
+                'tanggal_ttd' => $tglAkhir->isoFormat('D MMMM YYYY'),
+                'kopSuratPath' => $kopSuratPath,
+                'printSettings' => $printSettings,
+                'fotoGuruPath' => $fotoGuruPath,
+                'ringkasan_mingguan' => $ringkasanMingguan,
             ])->setPaper($printSettings->paperDimensionsPt(), 'landscape');
+
             return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
         }
 
@@ -609,7 +715,7 @@ class ReportController extends Controller
             // Judul — rata kiri (default), tanpa kop teks (Excel tidak pakai kop bergambar
             // seperti PDF, dan kop teks bikin identitas di bawahnya ikut ke-truncate karena
             // berbagi lebar kolom dengan tabel data).
-            $w->addRow(Row::fromValuesWithStyle(["KEGIATAN BELAJAR MENGAJAR BULAN " . strtoupper($bulan)], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValuesWithStyle(['KEGIATAN BELAJAR MENGAJAR BULAN '.strtoupper($bulan)], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(["TAHUN PELAJARAN {$tahunPelajaran}"]));
             $w->addRow(Row::fromValues(['']));
 
@@ -621,7 +727,7 @@ class ReportController extends Controller
             $w->addRow(new Row([new StringCell(''), new StringCell('Nama Guru', $label), new StringCell(": {$guru}")]));
             $w->addRow(new Row([new StringCell(''), new StringCell('NIP', $label), new StringCell(": {$nip}")]));
             $w->addRow(new Row([new StringCell(''), new StringCell('Kompetensi Keahlian', $label), new StringCell(": {$kompetensiKeahlian}")]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Mata Pelajaran', $label), new StringCell(': ' . ($mapelSet ?: $kompetensiKeahlian))]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Mata Pelajaran', $label), new StringCell(': '.($mapelSet ?: $kompetensiKeahlian))]));
             $w->addRow(new Row([new StringCell(''), new StringCell('Kelas Diampu', $label), new StringCell(": {$kelasSet}")]));
             $w->addRow(new Row([new StringCell(''), new StringCell('Semester', $label), new StringCell(": {$semester}")]));
             $w->addRow(new Row([new StringCell(''), new StringCell('Periode Laporan', $label), new StringCell(": {$periode}")]));
@@ -635,7 +741,7 @@ class ReportController extends Controller
 
             // Data baris
             $cellCenter = $this->xlsxCellCenterStyle();
-            $cellText   = $this->xlsxCellStyle();
+            $cellText = $this->xlsxCellStyle();
             foreach ($rows->values() as $i => $r) {
                 $w->addRow(new Row([
                     new NumericCell($i + 1, $cellCenter),
@@ -673,7 +779,7 @@ class ReportController extends Controller
             $w->addRow(Row::fromValues(['']));
 
             // Waktu cetak
-            $waktuCetak = now('Asia/Jakarta')->isoFormat('D MMMM YYYY, [Pkl.] HH.mm') . ' WIB';
+            $waktuCetak = now('Asia/Jakarta')->isoFormat('D MMMM YYYY, [Pkl.] HH.mm').' WIB';
             $w->addRow(Row::fromValues(["Waktu Cetak: {$waktuCetak}"]));
         });
     }
@@ -683,11 +789,13 @@ class ReportController extends Controller
     {
         $teacher = $request->user()->teacher;
         if (! $teacher && $request->filled('teacher_id')) {
-            $teacher = \App\Models\Teacher::where('uuid', $request->teacher_id)->first();
+            $teacher = Teacher::where('uuid', $request->teacher_id)->first();
         }
-        if (! $teacher) return response()->json(['data' => []]);
+        if (! $teacher) {
+            return response()->json(['data' => []]);
+        }
 
-        $classes = \App\Models\Schedule::tahunAjaran()
+        $classes = Schedule::tahunAjaran()
             ->where('teacher_id', $teacher->id)
             ->where('aktif', true)
             ->with('schoolClass')
@@ -704,7 +812,7 @@ class ReportController extends Controller
     // ── Daftar semua guru aktif (untuk laporan admin) ─────────────────────────
     public function reportTeachers()
     {
-        $teachers = \App\Models\Teacher::with('user')
+        $teachers = Teacher::with('user')
             ->whereHas('user', fn ($q) => $q->where('status', 'aktif'))
             ->get()
             ->map(fn ($t) => ['id' => $t->uuid, 'nama' => $t->user->nama, 'nip' => $t->nip ?? ''])
@@ -719,14 +827,16 @@ class ReportController extends Controller
      * rombel digabung jadi satu baris — mis. "X Mekatronika A, B, C, D; X Desain
      * Komunikasi Visual A, B" — bukan dipisah baris per kelas satu-satu.
      *
-     * @param  \Illuminate\Support\Collection<int,\App\Models\Schedule>  $schedules
+     * @param  Collection<int,Schedule>  $schedules
      */
-    private function formatKelasDiampu(\Illuminate\Support\Collection $schedules): string
+    private function formatKelasDiampu(Collection $schedules): string
     {
         $groups = [];
         foreach ($schedules as $s) {
             $c = $s->schoolClass;
-            if (! $c) continue;
+            if (! $c) {
+                continue;
+            }
             $key = "{$c->tingkat->value} {$c->jurusanKode()}";
             $groups[$key][$c->rombel] = true;
         }
@@ -736,16 +846,16 @@ class ReportController extends Controller
         foreach ($groups as $key => $rombels) {
             $r = array_keys($rombels);
             sort($r);
-            $parts[] = "{$key} " . implode(', ', $r);
+            $parts[] = "{$key} ".implode(', ', $r);
         }
 
         return implode('; ', $parts);
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int,\App\Models\Schedule>  $schedules
+     * @param  Collection<int,Schedule>  $schedules
      */
-    private function formatMapelDiampu(\Illuminate\Support\Collection $schedules): string
+    private function formatMapelDiampu(Collection $schedules): string
     {
         return $schedules->pluck('subject.nama')->filter()->unique()->sort()->values()->join(', ');
     }
@@ -762,7 +872,7 @@ class ReportController extends Controller
             return null;
         }
 
-        return \App\Models\AcademicYear::whereNotNull('tanggal_mulai')
+        return AcademicYear::whereNotNull('tanggal_mulai')
             ->whereNotNull('tanggal_selesai')
             ->whereDate('tanggal_mulai', '<=', $tanggal)
             ->whereDate('tanggal_selesai', '>=', $tanggal)

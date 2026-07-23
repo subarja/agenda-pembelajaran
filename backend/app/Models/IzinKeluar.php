@@ -18,7 +18,7 @@ class IzinKeluar extends Model
         'academic_year_id', 'student_id', 'tanggal', 'keperluan', 'alasan', 'status',
         'diproses_oleh', 'berlaku_dari', 'berlaku_sampai', 'qr_token',
         'waktu_keluar', 'scan_keluar_oleh', 'waktu_masuk', 'scan_masuk_oleh', 'catatan_piket',
-        'terlambat_dinotifikasi',
+        'terlambat_dinotifikasi', 'kembali_manual_oleh', 'catatan_kembali',
     ];
 
     protected function casts(): array
@@ -59,6 +59,11 @@ class IzinKeluar extends Model
     public function scanKeluar(): BelongsTo
     {
         return $this->belongsTo(User::class, 'scan_keluar_oleh');
+    }
+
+    public function kembaliManualOleh(): BelongsTo
+    {
+        return $this->belongsTo(Teacher::class, 'kembali_manual_oleh');
     }
 
     public function scanMasuk(): BelongsTo

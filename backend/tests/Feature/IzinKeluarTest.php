@@ -100,6 +100,31 @@ class IzinKeluarTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_piket_tandai_kembali_manual_lintas_hari(): void
+    {
+        // Izin dari hari SEBELUMNYA yang masih "keluar" (belum discan masuk sekuriti).
+        $izin = IzinKeluar::create([
+            'student_id' => $this->siswa->id, 'tanggal' => '2026-03-06', 'keperluan' => 'Berobat',
+            'status' => IzinKeluarStatus::Keluar, 'waktu_keluar' => Carbon::parse('2026-03-06 09:00', 'Asia/Jakarta'),
+        ]);
+
+        // now = Senin 2026-03-09 (setUp), $this->piket bertugas hari ini → boleh validasi lintas hari.
+        Sanctum::actingAs($this->piket->user);
+
+        // Keterangan wajib.
+        $this->postJson("/api/v1/piket/izin-keluar/{$izin->uuid}/tandai-kembali", [])->assertStatus(422);
+
+        $this->postJson("/api/v1/piket/izin-keluar/{$izin->uuid}/tandai-kembali", ['keterangan' => 'QR hilang, kembali diverifikasi langsung'])->assertOk();
+        $izin->refresh();
+        $this->assertSame('kembali', $izin->status->value);
+        $this->assertNotNull($izin->waktu_masuk);
+        $this->assertSame($this->piket->id, $izin->kembali_manual_oleh);
+        $this->assertSame('QR hilang, kembali diverifikasi langsung', $izin->catatan_kembali);
+
+        // Tidak bisa ditandai dua kali.
+        $this->postJson("/api/v1/piket/izin-keluar/{$izin->uuid}/tandai-kembali", ['keterangan' => 'x'])->assertStatus(422);
+    }
+
     public function test_siklus_lengkap_ajukan_setujui_keluar_masuk(): void
     {
         // 1. Siswa ajukan

@@ -247,6 +247,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::get('reports/nilai_tambah', [ReportController::class, 'nilaiTambah']);
     Route::get('reports/ews', [ReportController::class, 'ews']);
     Route::get('reports/agenda', [ReportController::class, 'agenda']);
+    Route::get('reports/izin_keluar', [ReportController::class, 'izinKeluar']);
 
     // ── Rekap Perkembangan Siswa Lintas Semester (admin/wakasek) ─────────────
     Route::get('rekap-perkembangan', [RekapPerkembanganController::class, 'index']);
@@ -322,6 +323,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     Route::get('piket/izin-keluar', [PiketController::class, 'izinKeluar']);
     Route::get('piket/izin-keluar/log', [PiketController::class, 'izinKeluarLog']);
     Route::post('piket/izin-keluar/{uuid}/proses', [PiketController::class, 'prosesIzinKeluar']);
+    Route::post('piket/izin-keluar/{uuid}/tandai-kembali', [PiketController::class, 'tandaiKembali']);
     Route::get('piket/kesiangan', [PiketController::class, 'kesiangan']);
     Route::post('piket/kesiangan/{uuid}/verifikasi', [PiketController::class, 'verifikasiKesiangan']);
     Route::get('piket/absensi', [PiketController::class, 'absensi']);

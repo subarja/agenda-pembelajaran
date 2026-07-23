@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toLocalDateStr } from '@/lib/utils'
 import { usePdfPreview } from '@/hooks/usePdfPreview'
 
-type ReportType = 'rekap_agenda' | 'kehadiran' | 'karakter' | 'nilai_tambah' | 'ews'
+type ReportType = 'rekap_agenda' | 'kehadiran' | 'karakter' | 'nilai_tambah' | 'ews' | 'izin_keluar'
 
 interface ReportMeta {
   id: ReportType
@@ -61,6 +61,14 @@ const REPORTS: ReportMeta[] = [
     needsClass: true,
     needsDate: false,
     roles: ['wali_kelas', 'wakasek', 'bk', 'admin'],
+  },
+  {
+    id: 'izin_keluar',
+    label: 'Rekap Izin Keluar',
+    desc: 'Daftar izin keluar siswa: jam keluar/masuk, cara validasi kembali (sekuriti/piket), petugas, dan keterangan.',
+    needsClass: false,
+    needsDate: true,
+    roles: ['wakasek', 'admin'],
   },
 ]
 
