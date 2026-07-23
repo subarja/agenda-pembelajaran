@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, Trash2, Star, Download, Upload, AlertCircle, Check } from 'lucide-react'
+import { Loader2, Plus, Trash2, Star, Download, Upload, AlertCircle, Check, Pencil } from 'lucide-react'
 import api from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -101,6 +101,7 @@ function AudioBankSection() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [nama, setNama] = useState('')
   const [kategori, setKategori] = useState('masuk')
+  const [fileName, setFileName] = useState('')
   const [uploading, setUploading] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
@@ -114,7 +115,7 @@ function AudioBankSection() {
       const fd = new FormData()
       fd.append('nama', nama); fd.append('kategori', kategori); fd.append('file', file)
       const r = await api.post('/admin/bell-audios', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-      setMsg(r.data.message); setNama(''); if (fileRef.current) fileRef.current.value = ''
+      setMsg(r.data.message); setNama(''); setFileName(''); if (fileRef.current) fileRef.current.value = ''
       refresh()
     } catch (e: any) {
       setMsg(e.response?.data?.message ?? 'Upload gagal (format harus MP3/OGG, maks 5MB).')
@@ -155,8 +156,20 @@ function AudioBankSection() {
             {(data?.events ?? []).map(ev => <option key={ev.value} value={ev.value}>{ev.label}</option>)}
           </select>
         </div>
-        <input ref={fileRef} type="file" accept="audio/mpeg,audio/ogg,.mp3,.ogg" className="text-xs max-w-52" />
-        <Button size="sm" onClick={onUpload} disabled={uploading}>
+        <div>
+          <label className="text-xs text-muted-foreground block">Berkas audio</label>
+          <div className="flex items-center gap-2">
+            <input ref={fileRef} type="file" accept="audio/mpeg,audio/ogg,.mp3,.ogg" className="hidden"
+              onChange={e => setFileName(e.target.files?.[0]?.name ?? '')} />
+            <Button size="sm" variant="outline" type="button" onClick={() => fileRef.current?.click()}>
+              <Upload className="h-4 w-4 mr-1" /> Pilih Berkas
+            </Button>
+            <span className="text-xs text-muted-foreground truncate max-w-[160px]" title={fileName}>
+              {fileName || 'MP3/OGG, maks 5MB'}
+            </span>
+          </div>
+        </div>
+        <Button size="sm" onClick={onUpload} disabled={uploading || !fileName || !nama.trim()}>
           {uploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />} Unggah
         </Button>
       </div>
@@ -204,6 +217,9 @@ function CustomRingSection() {
   const [audioId, setAudioId] = useState('')
   const [hari, setHari] = useState<string[]>([])
   const [msg, setMsg] = useState<string | null>(null)
+  // Filter daftar
+  const [q, setQ] = useState('')
+  const [filterHari, setFilterHari] = useState('')
   const refresh = () => qc.invalidateQueries({ queryKey: ['admin-bell-audios'] })
 
   const tambah = useMutation({
@@ -211,17 +227,16 @@ function CustomRingSection() {
     onSuccess: (d) => { setMsg(d.message); setNama(''); setAudioId(''); setHari([]); refresh() },
     onError: (e: any) => setMsg(e.response?.data?.message ?? 'Gagal menyimpan.'),
   })
-  const hapus = useMutation({
-    mutationFn: (id: number) => api.delete(`/admin/bell-custom-rings/${id}`).then(r => r.data),
-    onSuccess: (d) => { setMsg(d.message); refresh() },
-  })
-  const toggle = useMutation({
-    mutationFn: (r: BelCustomRing) => api.put(`/admin/bell-custom-rings/${r.id}`, { nama: r.nama, waktu: r.waktu, bell_audio_id: r.bell_audio_id, hari: r.hari, aktif: !r.aktif }).then(x => x.data),
-    onSuccess: () => refresh(),
-  })
 
   if (!data) return null
   const toggleHari = (h: string) => setHari(hs => hs.includes(h) ? hs.filter(x => x !== h) : [...hs, h])
+
+  const key = q.trim().toLowerCase()
+  const rings = data.custom_rings.filter(r => {
+    const cocokTeks = !key || r.nama.toLowerCase().includes(key) || (r.audio_nama ?? '').toLowerCase().includes(key)
+    const cocokHari = !filterHari || r.hari.length === 0 || r.hari.includes(filterHari)
+    return cocokTeks && cocokHari
+  })
 
   return (
     <Card><CardContent className="p-4 space-y-3">
@@ -263,23 +278,103 @@ function CustomRingSection() {
         <span className="text-xs text-muted-foreground ml-1">{hari.length === 0 ? '(setiap hari)' : ''}</span>
       </div>
 
+      {/* Filter daftar */}
+      {data.custom_rings.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+          <input className={inputCls + ' flex-1 min-w-40'} value={q} onChange={e => setQ(e.target.value)} placeholder="Cari nama bel / audio…" />
+          <select className={inputCls + ' w-40'} value={filterHari} onChange={e => setFilterHari(e.target.value)}>
+            <option value="">Semua hari</option>
+            {Object.keys(HARI_LABEL).map(h => <option key={h} value={h}>{h.charAt(0).toUpperCase() + h.slice(1)}</option>)}
+          </select>
+        </div>
+      )}
+
       <div className="space-y-1.5">
         {data.custom_rings.length === 0 && <p className="text-xs text-muted-foreground">Belum ada jadwal bunyi kustom.</p>}
-        {data.custom_rings.map(r => (
-          <div key={r.id} className={`flex items-center gap-2 rounded-md border px-3 py-2 flex-wrap text-sm ${r.aktif ? '' : 'opacity-50'}`}>
-            <span className="font-mono tabular-nums">{r.waktu}</span>
-            <span className="font-medium">{r.nama}</span>
-            <span className="text-xs text-muted-foreground">{r.audio_nama ?? '—'}</span>
-            <span className="text-xs text-muted-foreground">{r.hari.length ? r.hari.map(h => HARI_LABEL[h]).join(', ') : 'setiap hari'}</span>
-            <span className="ml-auto flex items-center gap-1">
-              <Button size="sm" variant="outline" onClick={() => toggle.mutate(r)} disabled={toggle.isPending}>{r.aktif ? 'Nonaktifkan' : 'Aktifkan'}</Button>
-              <Button size="icon" variant="ghost" onClick={() => hapus.mutate(r.id)} disabled={hapus.isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-            </span>
-          </div>
-        ))}
+        {data.custom_rings.length > 0 && rings.length === 0 && <p className="text-xs text-muted-foreground">Tidak ada yang cocok dengan filter.</p>}
+        {rings.map(r => <CustomRingRow key={r.id} ring={r} audios={data.audios} onChanged={refresh} />)}
       </div>
       {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
     </CardContent></Card>
+  )
+}
+
+// Satu baris jadwal bunyi kustom: lihat + edit (waktu/nama/audio/hari) inline.
+function CustomRingRow({ ring, audios, onChanged }: { ring: BelCustomRing; audios: BelAudio[]; onChanged: () => void }) {
+  const [edit, setEdit] = useState(false)
+  const [waktu, setWaktu] = useState(ring.waktu.slice(0, 5))
+  const [nama, setNama] = useState(ring.nama)
+  const [audioId, setAudioId] = useState(String(ring.bell_audio_id))
+  const [hari, setHari] = useState<string[]>(ring.hari)
+  const [err, setErr] = useState<string | null>(null)
+
+  const simpan = useMutation({
+    mutationFn: () => api.put(`/admin/bell-custom-rings/${ring.id}`, { nama, waktu, bell_audio_id: Number(audioId), hari, aktif: ring.aktif }).then(r => r.data),
+    onSuccess: () => { setEdit(false); onChanged() },
+    onError: (e: any) => setErr(e.response?.data?.message ?? 'Gagal menyimpan.'),
+  })
+  const toggle = useMutation({
+    mutationFn: () => api.put(`/admin/bell-custom-rings/${ring.id}`, { nama: ring.nama, waktu: ring.waktu, bell_audio_id: ring.bell_audio_id, hari: ring.hari, aktif: !ring.aktif }).then(r => r.data),
+    onSuccess: () => onChanged(),
+  })
+  const hapus = useMutation({
+    mutationFn: () => api.delete(`/admin/bell-custom-rings/${ring.id}`).then(r => r.data),
+    onSuccess: () => onChanged(),
+  })
+
+  const batal = () => { setWaktu(ring.waktu.slice(0, 5)); setNama(ring.nama); setAudioId(String(ring.bell_audio_id)); setHari(ring.hari); setErr(null); setEdit(false) }
+  const toggleHari = (h: string) => setHari(hs => hs.includes(h) ? hs.filter(x => x !== h) : [...hs, h])
+
+  if (edit) {
+    return (
+      <div className="rounded-md border p-3 space-y-2 bg-muted/30">
+        <div className="flex items-end gap-2 flex-wrap">
+          <div className="w-24">
+            <label className="text-[11px] text-muted-foreground">Pukul</label>
+            <input type="time" className={inputCls} value={waktu} onChange={e => setWaktu(e.target.value)} />
+          </div>
+          <div className="flex-1 min-w-32">
+            <label className="text-[11px] text-muted-foreground">Nama</label>
+            <input className={inputCls} value={nama} onChange={e => setNama(e.target.value)} />
+          </div>
+          <div className="w-44">
+            <label className="text-[11px] text-muted-foreground">Audio</label>
+            <select className={inputCls} value={audioId} onChange={e => setAudioId(e.target.value)}>
+              {audios.map(a => <option key={a.id} value={a.id}>{a.nama}{a.aktif ? '' : ' (nonaktif)'}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1 items-center">
+          <span className="text-xs text-muted-foreground mr-1">Hari:</span>
+          {Object.entries(HARI_LABEL).map(([h, lbl]) => (
+            <button key={h} type="button" onClick={() => toggleHari(h)}
+              className={`text-xs rounded px-2 py-1 border ${hari.includes(h) ? 'bg-primary text-primary-foreground' : 'bg-background'}`}>{lbl}</button>
+          ))}
+          <span className="text-xs text-muted-foreground ml-1">{hari.length === 0 ? '(setiap hari)' : ''}</span>
+        </div>
+        {err && <p className="text-xs text-red-600">{err}</p>}
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => { setErr(null); simpan.mutate() }} disabled={simpan.isPending || !nama.trim() || !audioId}>
+            {simpan.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Simpan
+          </Button>
+          <Button size="sm" variant="ghost" onClick={batal}>Batal</Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`flex items-center gap-2 rounded-md border px-3 py-2 flex-wrap text-sm ${ring.aktif ? '' : 'opacity-50'}`}>
+      <span className="font-mono tabular-nums">{ring.waktu.slice(0, 5)}</span>
+      <span className="font-medium">{ring.nama}</span>
+      <span className="text-xs text-muted-foreground">{ring.audio_nama ?? '—'}</span>
+      <span className="text-xs text-muted-foreground">{ring.hari.length ? ring.hari.map(h => HARI_LABEL[h]).join(', ') : 'setiap hari'}</span>
+      <span className="ml-auto flex items-center gap-1">
+        <Button size="sm" variant="outline" onClick={() => setEdit(true)}><Pencil className="h-3.5 w-3.5 mr-1" /> Edit</Button>
+        <Button size="sm" variant="outline" onClick={() => toggle.mutate()} disabled={toggle.isPending}>{ring.aktif ? 'Nonaktifkan' : 'Aktifkan'}</Button>
+        <Button size="icon" variant="ghost" onClick={() => hapus.mutate()} disabled={hapus.isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+      </span>
+    </div>
   )
 }
 
