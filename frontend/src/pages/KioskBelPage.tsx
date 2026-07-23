@@ -18,6 +18,11 @@ interface KioskEvent { waktu: string; jenis_event: string; jenis_label: string; 
 interface KioskAudio { id: number; nama: string; kategori: string; url: string | null; volume: number }
 interface KioskData { tanggal: string; server_time: string; events: KioskEvent[]; audios: KioskAudio[] }
 
+// WAV senyap (durasi ~0) untuk "membuka kunci" autoplay saat tak ada audio nyata yang bisa
+// dipakai priming. Memutar SUMBER VALID di dalam gestur klik memberi elemen izin autoplay,
+// sehingga bunyi terjadwal (dari timer, bukan klik) tak lagi diblok browser.
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+
 const toSec = (hms: string) => { const [h, m, s] = hms.split(':').map(Number); return h * 3600 + m * 60 + (s || 0) }
 const pad = (n: number) => String(n).padStart(2, '0')
 const fmtClock = (sec: number) => { sec = ((sec % 86400) + 86400) % 86400; return `${pad(Math.floor(sec / 3600))}:${pad(Math.floor((sec % 3600) / 60))}:${pad(sec % 60)}` }
@@ -63,8 +68,10 @@ export default function KioskBelPage() {
   const play = useCallback((url: string | null, volumePct = 100): Promise<boolean> => {
     const el = elRef.current
     if (!url || !el) return Promise.resolve(false)
+    el.muted = false
     el.volume = Math.min(1, Math.max(0, volumePct / 100))
-    el.src = url; el.currentTime = 0
+    el.src = url
+    el.load()
     return el.play().then(() => true).catch(() => false)
   }, [])
 
@@ -88,9 +95,24 @@ export default function KioskBelPage() {
   }, [enabled, data, play, ringLog])
 
   // ── Aktifkan suara (unlock autoplay dengan 1 gestur) ───────────────────────
+  // Memutar SUMBER VALID (muted) di dalam gestur klik agar elemen <audio> mendapat izin
+  // autoplay. Versi lama memanggil play() tanpa src → selalu reject → tak pernah ter-unlock,
+  // sehingga bunyi terjadwal (dari timer) diblok browser (gejala: "diaktifkan pun tak bunyi").
   const aktifkan = async () => {
     const el = elRef.current
-    if (el) { try { el.muted = true; await el.play(); el.pause(); el.muted = false; el.currentTime = 0 } catch { /* biarkan */ } }
+    if (el) {
+      const prime = data?.audios.find(a => a.url)?.url ?? SILENT_WAV
+      try {
+        el.muted = true
+        el.src = prime
+        await el.play()
+        el.pause()
+      } catch { /* biarkan; sebagian browser tetap ter-unlock oleh gestur ini */ } finally {
+        el.muted = false
+        el.removeAttribute('src')
+        el.load()
+      }
+    }
     setEnabled(true)
   }
 
@@ -115,7 +137,7 @@ export default function KioskBelPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-6">
-      <audio ref={el => { if (el && !elRef.current) elRef.current = el }} preload="none" className="hidden" />
+      <audio ref={elRef} preload="none" className="hidden" />
       <div className="w-full max-w-2xl space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-slate-400"><BellRing className="h-5 w-5" /> Pemutar Bel Sekolah</div>
