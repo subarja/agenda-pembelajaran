@@ -24,6 +24,10 @@ class PklPlacement extends Model
         'created_by', 'updated_by',
     ];
 
+    // Default status = berlangsung (samakan dengan default kolom DB) supaya instance yang baru
+    // dibuat sudah mencerminkan status walau belum di-refresh dari DB.
+    protected $attributes = ['status' => 'berlangsung'];
+
     protected function casts(): array
     {
         return [
