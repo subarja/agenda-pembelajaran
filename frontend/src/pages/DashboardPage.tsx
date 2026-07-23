@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -914,6 +915,71 @@ const EWS_LABEL: Record<string, { label: string; color: string; bg: string; bord
   merah:  { label: 'Kritis',  color: 'text-red-700',   bg: 'bg-red-50',   border: 'border-red-200' },
 }
 
+// Rekap kehadiran PER BULAN dengan pilihan bulan (murid & orang tua). Menit terlambat = kesiangan.
+function RekapKehadiranBulanan({ studentId, judul = 'Rekap Kehadiran' }: { studentId?: string | number; judul?: string }) {
+  const [bulan, setBulan] = useState('')
+  const { data: k } = useQuery({
+    queryKey: ['kehadiran-bulanan', studentId, bulan],
+    queryFn: () => api.get(`/students/${studentId}/kehadiran-bulanan`, { params: bulan ? { bulan } : {} }).then(r => r.data.data),
+    enabled: !!studentId,
+  })
+  useEffect(() => { if (!bulan && k?.bulan) setBulan(k.bulan) }, [k, bulan])
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4" /> {judul} Bulan {k?.bulan_label ?? '—'}
+          </CardTitle>
+          <select className="rounded-md border border-input bg-background px-2 py-1 text-xs" value={bulan} onChange={e => setBulan(e.target.value)}>
+            {!k && <option value="">Memuat…</option>}
+            {(k?.bulan_options ?? []).map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {!k ? <p className="text-sm text-muted-foreground py-4 text-center">Memuat…</p> : (
+          <>
+            <div className="grid grid-cols-4 gap-2 text-center">
+              {[
+                { label: 'Hadir', value: k.hadir, color: 'text-green-700', bg: 'bg-green-50' },
+                { label: 'Sakit', value: k.sakit, color: 'text-blue-700', bg: 'bg-blue-50' },
+                { label: 'Izin', value: k.izin, color: 'text-yellow-700', bg: 'bg-yellow-50' },
+                { label: 'Alpha', value: k.alpha, color: 'text-red-700', bg: 'bg-red-50' },
+              ].map(({ label, value, color, bg }) => (
+                <div key={label} className={`rounded-lg p-2 ${bg}`}>
+                  <p className={`text-lg font-bold ${color}`}>{value}</p>
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+              <span className="text-xs text-muted-foreground">Terlambat (kesiangan) bulan ini</span>
+              <span className={`text-sm font-semibold ${k.terlambat_menit > 0 ? 'text-amber-700' : ''}`}>
+                {k.terlambat_menit} menit{k.kesiangan_count > 0 ? ` · ${k.kesiangan_count}×` : ''}
+              </span>
+            </div>
+            {k.recent_absences?.length > 0 && (
+              <div className="mt-3 border-t pt-3">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">Ketidakhadiran</p>
+                <div className="space-y-1">
+                  {k.recent_absences.map((a: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{a.tanggal}</span>
+                      <Badge className={a.status === 'alpha' ? 'bg-red-100 text-red-700' : a.status === 'sakit' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}>{a.status}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function SiswaDashboard() {
   const user    = useAuthStore((s) => s.user)
   const studentId = user?.student?.id
@@ -1085,55 +1151,8 @@ function SiswaDashboard() {
         </CardContent>
       </Card>
 
-      {/* Rekap Kehadiran Detail */}
-      {rekap?.kehadiran && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <ClipboardCheck className="h-4 w-4" />
-              Rekap Kehadiran
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-4 gap-2 text-center">
-              {[
-                { label: 'Hadir',  value: rekap.kehadiran.hadir,  color: 'text-green-700',  bg: 'bg-green-50' },
-                { label: 'Sakit',  value: rekap.kehadiran.sakit,  color: 'text-blue-700',   bg: 'bg-blue-50' },
-                { label: 'Izin',   value: rekap.kehadiran.izin,   color: 'text-yellow-700', bg: 'bg-yellow-50' },
-                { label: 'Alpha',  value: rekap.kehadiran.alpha,  color: 'text-red-700',    bg: 'bg-red-50' },
-              ].map(({ label, value, color, bg }) => (
-                <div key={label} className={`rounded-lg p-2 ${bg}`}>
-                  <p className={`text-lg font-bold ${color}`}>{value}</p>
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
-              <span className="text-xs text-muted-foreground">Total terlambat (bulan berjalan)</span>
-              <span className={`text-sm font-semibold ${(rekap.kehadiran.terlambat_menit_bulan_ini ?? 0) > 0 ? 'text-amber-700' : ''}`}>
-                {rekap.kehadiran.terlambat_menit_bulan_ini ?? 0} menit
-              </span>
-            </div>
-            {rekap.kehadiran.recent_absences?.length > 0 && (
-              <div className="mt-3 border-t pt-3">
-                <p className="text-xs font-medium text-muted-foreground mb-1.5">Ketidakhadiran Terbaru</p>
-                <div className="space-y-1">
-                  {rekap.kehadiran.recent_absences.map((a: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">{a.tanggal}</span>
-                      <Badge className={
-                        a.status === 'alpha' ? 'bg-red-100 text-red-700' :
-                        a.status === 'sakit' ? 'bg-blue-100 text-blue-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }>{a.status}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Rekap Kehadiran Bulanan (bisa pilih bulan) */}
+      <RekapKehadiranBulanan studentId={studentId} />
 
       {/* Poin Karakter Detail */}
       {rekap?.karakter && (
@@ -1360,55 +1379,8 @@ function OrangTuaDashboard() {
         </Card>
       </div>
 
-      {/* Rekap Kehadiran */}
-      {rekap?.kehadiran && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <ClipboardCheck className="h-4 w-4" />
-              Rekap Kehadiran Anak
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-4 gap-2 text-center">
-              {[
-                { label: 'Hadir',  value: rekap.kehadiran.hadir,  color: 'text-green-700',  bg: 'bg-green-50' },
-                { label: 'Sakit',  value: rekap.kehadiran.sakit,  color: 'text-blue-700',   bg: 'bg-blue-50' },
-                { label: 'Izin',   value: rekap.kehadiran.izin,   color: 'text-yellow-700', bg: 'bg-yellow-50' },
-                { label: 'Alpha',  value: rekap.kehadiran.alpha,  color: 'text-red-700',    bg: 'bg-red-50' },
-              ].map(({ label, value, color, bg }) => (
-                <div key={label} className={`rounded-lg p-2 ${bg}`}>
-                  <p className={`text-lg font-bold ${color}`}>{value}</p>
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
-              <span className="text-xs text-muted-foreground">Total terlambat (bulan berjalan)</span>
-              <span className={`text-sm font-semibold ${(rekap.kehadiran.terlambat_menit_bulan_ini ?? 0) > 0 ? 'text-amber-700' : ''}`}>
-                {rekap.kehadiran.terlambat_menit_bulan_ini ?? 0} menit
-              </span>
-            </div>
-            {rekap.kehadiran.recent_absences?.length > 0 && (
-              <div className="mt-3 border-t pt-3">
-                <p className="text-xs font-medium text-muted-foreground mb-1.5">Ketidakhadiran Terbaru</p>
-                <div className="space-y-1">
-                  {rekap.kehadiran.recent_absences.map((a: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">{a.tanggal}</span>
-                      <Badge className={
-                        a.status === 'alpha' ? 'bg-red-100 text-red-700' :
-                        a.status === 'sakit' ? 'bg-blue-100 text-blue-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }>{a.status}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Rekap Kehadiran Bulanan (bisa pilih bulan) */}
+      <RekapKehadiranBulanan studentId={childId} judul="Rekap Kehadiran Anak" />
 
       {/* Poin Karakter */}
       {rekap?.karakter && (

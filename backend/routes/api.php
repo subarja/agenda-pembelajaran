@@ -128,6 +128,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
     // ── Siswa ─────────────────────────────────────────────────────────────────
     Route::get('students', [StudentController::class, 'index']);
     Route::get('students/{uuid}/rekap', [StudentRekapController::class, 'show']);
+    Route::get('students/{uuid}/kehadiran-bulanan', [StudentRekapController::class, 'kehadiranBulanan']);
     Route::put('students/{uuid}/rekap/rekomendasi/{rekUuid}', [StudentRekapController::class, 'updateRekomendasi']);
 
     // ── Foto & Profil Siswa (admin ATAU wali kelas siswa ybs — bukan siswa sendiri) ─

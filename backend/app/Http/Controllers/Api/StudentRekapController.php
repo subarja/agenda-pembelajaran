@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\AgendaStudentScore;
 use App\Models\CharacterInput;
+use App\Models\IzinKesiangan;
 use App\Models\Recommendation;
 use App\Models\Student;
 use App\Models\StudentAttendance;
 use App\Support\ClassAccess;
+use App\Support\TahunAjaran;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -110,14 +113,6 @@ class StudentRekapController extends Controller
             }
         }
 
-        // Total menit terlambat pada BULAN BERJALAN (dari presensi hadir-terlambat).
-        $now = Carbon::now('Asia/Jakarta');
-        $terlambatBulanIni = $all
-            ->filter(fn ($a) => $a->agenda?->tanggal
-                && (int) $a->agenda->tanggal->format('Y') === (int) $now->format('Y')
-                && (int) $a->agenda->tanggal->format('n') === (int) $now->format('n'))
-            ->sum(fn ($a) => (int) ($a->durasi_terlambat ?? 0));
-
         // 5 ketidakhadiran terbaru
         $recentAbsences = $all->whereNotIn('status.value', ['hadir'])
             ->sortByDesc(fn ($a) => $a->agenda?->tanggal)
@@ -135,10 +130,70 @@ class StudentRekapController extends Controller
             'izin' => $izin,
             'alpha' => $alpha,
             'max_alpha_streak' => $maxStreak,
-            'terlambat_menit_bulan_ini' => $terlambatBulanIni,
             'warning' => $score < 80,
             'recent_absences' => $recentAbsences,
         ];
+    }
+
+    // ── GET /students/{uuid}/kehadiran-bulanan?bulan=YYYY-MM ──────────────────
+    public function kehadiranBulanan(Request $request, string $uuid): JsonResponse
+    {
+        $student = Student::where('uuid', $uuid)->firstOrFail();
+        $this->authorizeAccess($request, $student);
+
+        $now = Carbon::now('Asia/Jakarta');
+        $bulan = (string) $request->query('bulan', '');
+        if (! preg_match('/^\d{4}-\d{2}$/', $bulan)) {
+            $bulan = $now->format('Y-m');
+        }
+        $start = Carbon::createFromFormat('Y-m-d', $bulan.'-01', 'Asia/Jakarta')->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+        $range = [$start->toDateString(), $end->toDateString()];
+
+        // Kehadiran (hadir/sakit/izin/alpha) dari presensi pada bulan itu.
+        $att = StudentAttendance::tahunAjaran()->where('student_id', $student->id)
+            ->whereHas('agenda', fn ($q) => $q->whereBetween('tanggal', $range))
+            ->with('agenda:id,tanggal')->get();
+        $c = fn ($st) => $att->where('status.value', $st)->count();
+
+        // Menit terlambat = dari KESIANGAN (datang terlambat ke sekolah) pada bulan itu.
+        $kesiangan = IzinKesiangan::tahunAjaran()->where('student_id', $student->id)
+            ->whereBetween('tanggal', $range)->get();
+
+        $recent = $att->whereNotIn('status.value', ['hadir'])
+            ->sortByDesc(fn ($a) => $a->agenda?->tanggal)
+            ->take(10)
+            ->map(fn ($a) => ['tanggal' => $a->agenda?->tanggal?->format('Y-m-d'), 'status' => $a->status->value])
+            ->values();
+
+        return response()->json(['data' => [
+            'bulan' => $bulan,
+            'bulan_label' => $start->locale('id')->isoFormat('MMMM YYYY'),
+            'hadir' => $c('hadir'), 'sakit' => $c('sakit'), 'izin' => $c('izin'), 'alpha' => $c('alpha'),
+            'total' => $att->count(),
+            'terlambat_menit' => (int) $kesiangan->sum('terlambat_menit'),
+            'kesiangan_count' => $kesiangan->count(),
+            'recent_absences' => $recent,
+            'bulan_options' => $this->bulanOptions(),
+        ]]);
+    }
+
+    /** Daftar bulan (Y-m + label Indonesia) dalam rentang tahun ajaran aktif untuk dropdown. */
+    private function bulanOptions(): array
+    {
+        $ay = AcademicYear::find(TahunAjaran::id());
+        if (! $ay) {
+            return [];
+        }
+        $cur = Carbon::parse($ay->tanggal_mulai)->startOfMonth();
+        $last = Carbon::parse($ay->tanggal_selesai)->startOfMonth();
+        $opts = [];
+        while ($cur->lessThanOrEqualTo($last)) {
+            $opts[] = ['value' => $cur->format('Y-m'), 'label' => $cur->locale('id')->isoFormat('MMMM YYYY')];
+            $cur->addMonth();
+        }
+
+        return $opts;
     }
 
     // ── Dimensi 2: Karakter ───────────────────────────────────────────────────
