@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\IzinKeluarStatus;
 use App\Enums\Semester;
 use App\Enums\Tingkat;
 use App\Enums\UserRole;
@@ -12,8 +13,10 @@ use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Notifications\IzinKeluarTerlambatNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Notification;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -26,7 +29,9 @@ class IzinKeluarTest extends TestCase
     use RefreshDatabase;
 
     private Student $siswa;
+
     private Teacher $piket;
+
     private User $sekuriti;
 
     protected function setUp(): void
@@ -55,6 +60,44 @@ class IzinKeluarTest extends TestCase
     {
         Carbon::setTestNow();
         parent::tearDown();
+    }
+
+    /** Siswa yang sudah keluar tapi lewat batas & belum masuk = terlambat kembali. */
+    private function izinTerlambat(): IzinKeluar
+    {
+        return IzinKeluar::create([
+            'student_id' => $this->siswa->id, 'tanggal' => '2026-03-09', 'keperluan' => 'Berobat',
+            'status' => IzinKeluarStatus::Keluar,
+            'berlaku_dari' => Carbon::parse('2026-03-09 07:00', 'Asia/Jakarta'),
+            'berlaku_sampai' => Carbon::parse('2026-03-09 08:00', 'Asia/Jakarta'),  // lewat (now 09:00)
+            'waktu_keluar' => Carbon::parse('2026-03-09 07:05', 'Asia/Jakarta'),
+        ]);
+    }
+
+    public function test_piket_lihat_penanda_terlambat_kembali(): void
+    {
+        $this->izinTerlambat();
+        Sanctum::actingAs($this->piket->user);
+
+        $this->getJson('/api/v1/piket/izin-keluar')
+            ->assertOk()
+            ->assertJsonPath('data.0.terlambat_kembali', true)
+            ->assertJsonPath('data.0.terlambat_menit', 60);
+    }
+
+    public function test_command_notifikasi_terlambat_sekali_saja(): void
+    {
+        Notification::fake();
+        $izin = $this->izinTerlambat();
+
+        $this->artisan('izin-keluar:terlambat')->assertExitCode(0);
+        Notification::assertSentTo($this->piket->user, IzinKeluarTerlambatNotification::class);
+        $this->assertTrue($izin->fresh()->terlambat_dinotifikasi);
+
+        // Jalan lagi -> tidak mengirim ulang (flag sudah ditandai).
+        Notification::fake();
+        $this->artisan('izin-keluar:terlambat')->assertExitCode(0);
+        Notification::assertNothingSent();
     }
 
     public function test_siklus_lengkap_ajukan_setujui_keluar_masuk(): void
@@ -167,6 +210,7 @@ class IzinKeluarTest extends TestCase
         $token = $this->aktifQr();
         Sanctum::actingAs($this->sekuriti);
         $this->postJson('/api/v1/sekuriti/scan', ['qr_token' => $token])->assertOk(); // keluar
+
         return $token;
     }
 }

@@ -18,6 +18,7 @@ class IzinKeluar extends Model
         'academic_year_id', 'student_id', 'tanggal', 'keperluan', 'alasan', 'status',
         'diproses_oleh', 'berlaku_dari', 'berlaku_sampai', 'qr_token',
         'waktu_keluar', 'scan_keluar_oleh', 'waktu_masuk', 'scan_masuk_oleh', 'catatan_piket',
+        'terlambat_dinotifikasi',
     ];
 
     protected function casts(): array
@@ -29,6 +30,7 @@ class IzinKeluar extends Model
             'berlaku_sampai' => 'datetime',
             'waktu_keluar' => 'datetime',
             'waktu_masuk' => 'datetime',
+            'terlambat_dinotifikasi' => 'boolean',
         ];
     }
 

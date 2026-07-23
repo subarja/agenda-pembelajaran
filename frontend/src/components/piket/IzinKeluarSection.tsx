@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { DoorOpen, Check, X, LogOut, LogIn } from 'lucide-react'
+import { DoorOpen, Check, X, LogOut, LogIn, AlertTriangle } from 'lucide-react'
 import api from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +11,7 @@ interface IzinRow {
   keperluan: string; alasan: string | null; status: string; status_label: string
   berlaku_dari: string | null; berlaku_sampai: string | null
   waktu_keluar: string | null; waktu_masuk: string | null; catatan_piket: string | null
+  terlambat_kembali: boolean; terlambat_menit: number
 }
 
 export default function IzinKeluarSection() {
@@ -29,7 +30,10 @@ export default function IzinKeluarSection() {
 
   const rows = data?.data ?? []
   const menunggu = rows.filter(r => r.status === 'diajukan')
+  // Terlambat kembali di atas, lalu sisanya.
   const berjalan = rows.filter(r => ['disetujui', 'keluar', 'kembali'].includes(r.status))
+    .sort((a, b) => Number(b.terlambat_kembali) - Number(a.terlambat_kembali))
+  const jmlTerlambat = berjalan.filter(r => r.terlambat_kembali).length
 
   return (
     <Card><CardContent className="p-4 space-y-4">
@@ -45,12 +49,26 @@ export default function IzinKeluarSection() {
 
       {berjalan.length > 0 && (
         <div>
-          <div className="text-xs text-muted-foreground mb-2">Berjalan hari ini</div>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="text-xs text-muted-foreground">Berjalan hari ini</div>
+            {jmlTerlambat > 0 && (
+              <Badge variant="destructive" className="text-[10px] flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" /> {jmlTerlambat} terlambat kembali
+              </Badge>
+            )}
+          </div>
           <div className="rounded-lg border divide-y">
             {berjalan.map(r => (
-              <div key={r.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                <span className="flex-1">{r.nama} <span className="text-muted-foreground text-xs">· {r.keperluan}</span></span>
-                <Badge variant="secondary" className="text-[10px]">{r.status_label}</Badge>
+              <div key={r.id} className={`flex items-center gap-3 px-3 py-2 text-sm ${r.terlambat_kembali ? 'bg-red-50 dark:bg-red-950/30' : ''}`}>
+                <span className="flex-1">
+                  {r.nama} <span className="text-muted-foreground text-xs">· {r.keperluan}</span>
+                  {r.terlambat_kembali && (
+                    <span className="ml-1.5 inline-flex items-center gap-0.5 text-[11px] font-medium text-red-600">
+                      <AlertTriangle className="h-3 w-3" /> telat {r.terlambat_menit}m (batas {r.berlaku_sampai})
+                    </span>
+                  )}
+                </span>
+                <Badge variant={r.terlambat_kembali ? 'destructive' : 'secondary'} className="text-[10px]">{r.status_label}</Badge>
                 {r.waktu_keluar && <span className="text-xs text-blue-600 flex items-center gap-0.5"><LogOut className="h-3 w-3" />{r.waktu_keluar}</span>}
                 {r.waktu_masuk && <span className="text-xs text-green-600 flex items-center gap-0.5"><LogIn className="h-3 w-3" />{r.waktu_masuk}</span>}
               </div>

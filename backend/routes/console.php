@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\Schedule;
  */
 Schedule::command('inval:kedaluwarsa')->everyFifteenMinutes()->withoutOverlapping();
 
+// Notifikasi piket bila ada siswa belum kembali melewati batas izin keluar (sekali per izin).
+Schedule::command('izin-keluar:terlambat')->everyFiveMinutes()->withoutOverlapping();
+
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
@@ -64,10 +67,11 @@ Artisan::command('clean:dummy {--force : Hapus tanpa konfirmasi}', function () {
         ->toArray();
 
     $allDummy = array_unique(array_merge($dummyEmails, $dummyStudentEmails));
-    $users    = User::whereIn('email', $allDummy)->get();
+    $users = User::whereIn('email', $allDummy)->get();
 
     if ($users->isEmpty()) {
         $this->info('Tidak ada data dummy yang ditemukan.');
+
         return;
     }
 
@@ -76,13 +80,14 @@ Artisan::command('clean:dummy {--force : Hapus tanpa konfirmasi}', function () {
 
     if (! $this->option('force') && ! $this->confirm('Hapus semua akun di atas?')) {
         $this->warn('Dibatalkan.');
+
         return;
     }
 
-    $userIds      = $users->pluck('id');
-    $teacherIds   = \App\Models\Teacher::whereIn('user_id', $userIds)->pluck('id');
-    $scheduleIds  = DB::table('schedules')->whereIn('teacher_id', $teacherIds)->pluck('id');
-    $agendaIds    = DB::table('agendas')->whereIn('schedule_id', $scheduleIds)->pluck('id');
+    $userIds = $users->pluck('id');
+    $teacherIds = Teacher::whereIn('user_id', $userIds)->pluck('id');
+    $scheduleIds = DB::table('schedules')->whereIn('teacher_id', $teacherIds)->pluck('id');
+    $agendaIds = DB::table('agendas')->whereIn('schedule_id', $scheduleIds)->pluck('id');
 
     DB::transaction(function () use ($userIds, $teacherIds, $agendaIds, $scheduleIds) {
         // Hapus referensi RESTRICT dari teachers terlebih dahulu
@@ -111,4 +116,3 @@ Artisan::command('clean:dummy {--force : Hapus tanpa konfirmasi}', function () {
 
     $this->info("Berhasil menghapus {$users->count()} akun dummy.");
 })->purpose('Hapus data guru & siswa fiktif hasil seeder (bukan dari import ASc XML / Dapodik)');
-

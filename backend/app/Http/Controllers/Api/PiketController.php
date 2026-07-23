@@ -565,6 +565,11 @@ class PiketController extends Controller
 
     private function presentIzin(IzinKeluar $i): array
     {
+        // Terlambat kembali = sudah keluar, lewat batas berlaku, belum terpindai masuk.
+        $now = Carbon::now('Asia/Jakarta');
+        $terlambat = $i->status === IzinKeluarStatus::Keluar
+            && $i->berlaku_sampai && $now->gt($i->berlaku_sampai);
+
         return [
             'id' => $i->uuid,
             'nama' => $i->student?->user?->nama,
@@ -579,6 +584,8 @@ class PiketController extends Controller
             'waktu_keluar' => $i->waktu_keluar?->format('H:i'),
             'waktu_masuk' => $i->waktu_masuk?->format('H:i'),
             'catatan_piket' => $i->catatan_piket,
+            'terlambat_kembali' => $terlambat,
+            'terlambat_menit' => $terlambat ? $i->berlaku_sampai->diffInMinutes($now) : 0,
         ];
     }
 
