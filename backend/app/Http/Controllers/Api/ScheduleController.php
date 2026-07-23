@@ -136,7 +136,8 @@ class ScheduleController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role->value === 'guru') {
+        // Kapabilitas, bukan role literal: akun guru (termasuk wali kelas/BK) punya record teacher.
+        if ($user->teacher) {
             $teacher = $user->teacher;
             if (! $teacher || ! $teacher->jadwal_pdf) {
                 return $this->jadwalBelumAda($request);
@@ -146,7 +147,7 @@ class ScheduleController extends Controller
             return $this->storedPdfResponse($teacher->jadwal_pdf, $filename, $request);
         }
 
-        if ($user->role->value === 'siswa') {
+        if ($user->student) {
             $student = $user->student;
             $class = $student?->schoolClass;
             if (! $class || ! $class->jadwal_pdf) {
@@ -274,11 +275,11 @@ class ScheduleController extends Controller
         $user = $request->user();
         $hariUrut = ['senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
 
-        if ($user->role->value === 'guru') {
+        // Akun berbasis guru = punya record teacher (role bisa 'guru'/'wali_kelas'/'bk' —
+        // import menaikkan role wali kelas). JANGAN gate pakai role literal 'guru' saja,
+        // itu memblokir jadwal wali kelas/BK (lihat isu kapabilitas-bukan-role).
+        if ($user->teacher) {
             $teacher = $user->teacher;
-            if (! $teacher) {
-                return $this->jadwalMingguKosongResponse('guru', $hariUrut, false);
-            }
             $schedules = $teacher->schedules()
                 ->tahunAjaran()
                 ->where('aktif', true)
@@ -293,7 +294,7 @@ class ScheduleController extends Controller
             ]);
         }
 
-        if ($user->role->value === 'siswa') {
+        if ($user->student) {
             $student = $user->student;
             $class = $student?->schoolClass;
             if (! $student || ! $student->class_id || ! $class) {

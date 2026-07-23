@@ -86,6 +86,19 @@ class ScheduleMyWeekTest extends TestCase
         $this->assertSame('Ruang E1', $res->json('data.senin.0.ruangan'));
     }
 
+    public function test_guru_role_wali_kelas_tetap_melihat_jadwalnya(): void
+    {
+        // Import menaikkan role guru wali kelas ke 'wali_kelas'. Endpoint TIDAK boleh
+        // menolaknya — jadwal ditentukan kapabilitas (punya record teacher), bukan role.
+        $this->guru->update(['role' => UserRole::WaliKelas]);
+        Sanctum::actingAs($this->guru->fresh());
+
+        $res = $this->getJson('/api/v1/schedules/my-week')->assertOk();
+        $res->assertJsonPath('role', 'guru');
+        $this->assertCount(1, $res->json('data.senin'));
+        $this->assertSame('Matematika', $res->json('data.senin.0.subject.nama'));
+    }
+
     public function test_admin_ditolak(): void
     {
         $admin = User::create(['nama' => 'Admin', 'email' => 'admin@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Admin]);
