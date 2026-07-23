@@ -102,31 +102,53 @@ class PiketAbsensiResumeTest extends TestCase
         $this->assertSame(1, PiketResume::count());
     }
 
-    public function test_rekap_melanjutkan_per_window_shift(): void
+    public function test_rekap_melanjutkan_dari_waktu_resume_shift_sebelumnya_tanpa_jeda(): void
     {
-        // Absensi harian dicatat pukul 08:00 (masuk window shift Pagi). now saat ini = 08:00 (setUp).
-        DailyAttendance::create(['student_id' => $this->siswa->id, 'class_id' => $this->kelas->id, 'tanggal' => '2026-03-09', 'status' => 'hadir', 'recorded_by' => $this->piket->user->id]);
-
-        // Pagi 06:00–11:00, Siang 11:00–15:00 (kontigu, tak tumpang tindih), petugas sama.
+        // Pagi 06:00–11:00, Siang 11:00–15:00, petugas sama.
         PiketShift::where('nama_shift', 'Pagi')->update(['jam_selesai' => '11:00']);
         $siang = PiketShift::create(['hari' => 'senin', 'nama_shift' => 'Siang', 'jam_mulai' => '11:00', 'jam_selesai' => '15:00']);
         $siang->teachers()->attach($this->piket->id);
 
         Sanctum::actingAs($this->piket->user);
 
-        // 09:00 → shift aktif Pagi, window 06:00–09:00: absensi 08:00 MASUK.
-        Carbon::setTestNow('2026-03-09 09:00:00');
-        $this->getJson('/api/v1/piket/resume')
-            ->assertJsonPath('data.shift.nama', 'Pagi')
-            ->assertJsonPath('data.rekap.mulai', '06:00')
-            ->assertJsonPath('data.rekap.kehadiran_total.total', 1);
+        // Pagi menyimpan resume LEBIH AWAL (10:00, sebelum shiftnya habis 11:00).
+        Carbon::setTestNow('2026-03-09 10:00:00');
+        $this->postJson('/api/v1/piket/resume', ['ringkasan' => 'Pagi aman'])->assertOk();
 
-        // 12:00 → shift aktif Siang, window 11:00–12:00: absensi 08:00 TIDAK masuk (melanjutkan, bukan kumulatif).
+        // Aktivitas terjadi 10:30 — di "jeda" antara resume Pagi (10:00) & jam mulai Siang (11:00).
+        Carbon::setTestNow('2026-03-09 10:30:00');
+        DailyAttendance::create(['student_id' => $this->siswa->id, 'class_id' => $this->kelas->id, 'tanggal' => '2026-03-09', 'status' => 'hadir', 'recorded_by' => $this->piket->user->id]);
+
+        // Siang buka resume 12:00 → window MULAI dari akhir resume Pagi (10:00), bukan 11:00.
         Carbon::setTestNow('2026-03-09 12:00:00');
         $this->getJson('/api/v1/piket/resume')
             ->assertJsonPath('data.shift.nama', 'Siang')
-            ->assertJsonPath('data.rekap.mulai', '11:00')
-            ->assertJsonPath('data.rekap.kehadiran_total.total', 0);
+            ->assertJsonPath('data.rekap.mulai', '10:00')            // melanjutkan dari resume Pagi
+            ->assertJsonPath('data.rekap.kehadiran_total.total', 1); // aktivitas 10:30 TIDAK hilang (tak ada jeda kosong)
+    }
+
+    public function test_periode_mulai_immutable_saat_disimpan_ulang(): void
+    {
+        // Pagi 06:00–11:00, Siang 11:00–15:00 supaya shift aktif tak ambigu.
+        PiketShift::where('nama_shift', 'Pagi')->update(['jam_selesai' => '11:00']);
+        $siang = PiketShift::create(['hari' => 'senin', 'nama_shift' => 'Siang', 'jam_mulai' => '11:00', 'jam_selesai' => '15:00']);
+        $siang->teachers()->attach($this->piket->id);
+        Sanctum::actingAs($this->piket->user);
+
+        // Pagi simpan 10:00 → jadi cutoff untuk shift berikutnya.
+        Carbon::setTestNow('2026-03-09 10:00:00');
+        $this->postJson('/api/v1/piket/resume', ['ringkasan' => 'Pagi'])->assertOk();
+
+        // Siang simpan pertama 12:00 → periode_mulai = 10:00 (cutoff Pagi).
+        Carbon::setTestNow('2026-03-09 12:00:00');
+        $this->postJson('/api/v1/piket/resume', ['ringkasan' => 'Siang v1'])->assertOk();
+        $siangResume = PiketResume::where('piket_shift_id', $siang->id)->first();
+        $this->assertSame('10:00', $siangResume->periode_mulai->format('H:i'));
+
+        // Siang simpan ulang 13:00 → periode_mulai TETAP 10:00 (immutable), bukan bergeser.
+        Carbon::setTestNow('2026-03-09 13:00:00');
+        $this->postJson('/api/v1/piket/resume', ['ringkasan' => 'Siang v2'])->assertOk();
+        $this->assertSame('10:00', $siangResume->fresh()->periode_mulai->format('H:i'));
     }
 
     public function test_export_pdf_preview_base64(): void

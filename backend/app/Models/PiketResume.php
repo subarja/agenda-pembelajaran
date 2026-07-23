@@ -14,11 +14,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class PiketResume extends Model
 {
-    protected $fillable = ['academic_year_id', 'tanggal', 'piket_shift_id', 'teacher_id', 'ringkasan', 'kejadian_penting', 'rekap'];
+    protected $fillable = ['academic_year_id', 'tanggal', 'piket_shift_id', 'periode_mulai', 'teacher_id', 'ringkasan', 'kejadian_penting', 'rekap'];
 
     protected function casts(): array
     {
-        return ['tanggal' => 'date', 'rekap' => 'array'];
+        return ['tanggal' => 'date', 'periode_mulai' => 'datetime', 'rekap' => 'array'];
     }
 
     protected static function booted(): void

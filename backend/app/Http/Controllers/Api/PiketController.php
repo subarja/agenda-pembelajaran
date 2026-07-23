@@ -330,6 +330,9 @@ class PiketController extends Controller
             ->where('tanggal', $tanggal)->where('piket_shift_id', $shift->id)
             ->with('teacher.user')->first();
 
+        $now = Carbon::now('Asia/Jakarta');
+        $mulai = $this->periodeMulai($tanggal, $shift, $now);
+
         return response()->json(['data' => [
             'tanggal' => $tanggal,
             'shift' => $this->presentShift($shift),
@@ -337,8 +340,8 @@ class PiketController extends Controller
             'kejadian_penting' => $resume?->kejadian_penting,
             'penyunting' => $resume?->teacher?->user?->nama,
             'diperbarui' => $resume?->updated_at?->toIso8601String(),
-            // Rekap LIVE (sampai sekarang) untuk ditampilkan di editor. Snapshot disimpan saat simpan.
-            'rekap' => $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta'), $shift),
+            // Rekap LIVE (dari akhir resume shift sebelumnya s.d. sekarang). Snapshot dibekukan saat simpan.
+            'rekap' => $this->hitungRekap($tanggal, $now, $mulai),
         ]]);
     }
 
@@ -355,14 +358,18 @@ class PiketController extends Controller
             'kejadian_penting' => ['nullable', 'string', 'max:5000'],
         ]);
 
+        $now = Carbon::now('Asia/Jakarta');
+        $mulai = $this->periodeMulai($tanggal, $shift, $now);   // = akhir resume shift sebelumnya (immutable)
+
         PiketResume::updateOrCreate(
             ['tanggal' => $tanggal, 'piket_shift_id' => $shift->id],
             [
+                'periode_mulai' => $mulai,
                 'ringkasan' => $data['ringkasan'],
                 'kejadian_penting' => $data['kejadian_penting'] ?? null,
                 'teacher_id' => $request->user()->teacher?->id,
-                // Snapshot rekap "sampai waktu resume dibuat".
-                'rekap' => $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta'), $shift),
+                // Snapshot rekap periode [akhir resume shift sebelumnya, waktu simpan].
+                'rekap' => $this->hitungRekap($tanggal, $now, $mulai),
             ],
         );
 
@@ -495,7 +502,8 @@ class PiketController extends Controller
             ->where('tanggal', $tanggal)->where('piket_shift_id', $shift->id)->first();
         $petugas = $shift->teachers->map(fn ($t) => $t->user?->nama)->filter()->unique()->values();
         // Rekap yang tercetak = snapshot saat resume disimpan; fallback rekap live bila belum disimpan.
-        $rekap = $resume?->rekap ?? $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta'), $shift);
+        $now = Carbon::now('Asia/Jakarta');
+        $rekap = $resume?->rekap ?? $this->hitungRekap($tanggal, $now, $this->periodeMulai($tanggal, $shift, $now));
         $tglLabel = Carbon::parse($tanggal)->locale('id')->isoFormat('dddd, D MMMM YYYY');
         $tanggalTtd = Carbon::parse($tanggal)->locale('id')->isoFormat('D MMMM YYYY');
         $shiftLabel = $shift->nama_shift.' ('.substr($shift->jam_mulai, 0, 5).'–'.substr($shift->jam_selesai, 0, 5).')';
@@ -718,10 +726,35 @@ class PiketController extends Controller
      * (shift kontigu: mulai shift ini = selesai shift sebelumnya), bukan kumulatif sejak 00:00.
      * Mencakup absensi harian yang dicatat + sesi yang berlangsung dalam window itu.
      */
-    private function hitungRekap(string $tanggal, Carbon $now, ?PiketShift $shift = null): array
+    /**
+     * Awal periode rekap resume shift ini = waktu resume shift SEBELUMNYA dibuat (melanjutkan
+     * tanpa jeda), bukan jam mulai shift. Diambil dari resume tersimpan (immutable) bila resume
+     * shift ini sudah ada; kalau belum, dari cutoff (updated_at) resume terakhir hari itu; kalau
+     * belum ada resume sama sekali → awal hari (agar tak ada aktivitas awal yang terlewat).
+     */
+    private function periodeMulai(string $tanggal, PiketShift $shift, Carbon $now): Carbon
+    {
+        $self = PiketResume::tahunAjaran()
+            ->where('tanggal', $tanggal)->where('piket_shift_id', $shift->id)->first();
+        if ($self && $self->periode_mulai) {
+            return $self->periode_mulai->copy()->setTimezone('Asia/Jakarta');
+        }
+
+        $prevCutoff = PiketResume::tahunAjaran()
+            ->where('tanggal', $tanggal)
+            ->where('piket_shift_id', '!=', $shift->id)
+            ->where('updated_at', '<=', $now)
+            ->max('updated_at');
+
+        return $prevCutoff
+            ? Carbon::parse($prevCutoff)->setTimezone('Asia/Jakarta')
+            : Carbon::parse($tanggal.' 00:00:00', 'Asia/Jakarta');
+    }
+
+    private function hitungRekap(string $tanggal, Carbon $now, Carbon $mulai): array
     {
         $jamNow = $now->format('H:i:s');
-        $mulaiJam = $shift ? Carbon::parse($shift->jam_mulai)->format('H:i:s') : '00:00:00';
+        $mulaiJam = $mulai->format('H:i:s');
 
         // Kehadiran per kelas dari absensi harian yang DICATAT dalam window shift ini.
         $daily = DailyAttendance::where('tanggal', $tanggal)->get(['class_id', 'status', 'created_at'])

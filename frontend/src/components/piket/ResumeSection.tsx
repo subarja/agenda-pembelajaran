@@ -70,7 +70,7 @@ export default function ResumeSection() {
       {rekap && (
         <Card><CardContent className="p-4 space-y-3">
           <div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4" /> Rekap Otomatis (periode {rekap.mulai}–{rekap.waktu})</div>
-          <p className="text-[11px] text-muted-foreground -mt-1">Melanjutkan dari shift sebelumnya — hanya aktivitas sejak jam mulai shift Anda.</p>
+          <p className="text-[11px] text-muted-foreground -mt-1">Melanjutkan dari resume shift sebelumnya (sejak resume terakhir dibuat) sampai sekarang — tanpa jeda antar-shift.</p>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div className="rounded-lg border p-2.5">
               <div className="text-xs text-muted-foreground">Agenda guru terisi</div>
