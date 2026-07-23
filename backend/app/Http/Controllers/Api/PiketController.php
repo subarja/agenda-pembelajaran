@@ -728,9 +728,15 @@ class PiketController extends Controller
      */
     /**
      * Awal periode rekap resume shift ini = waktu resume shift SEBELUMNYA dibuat (melanjutkan
-     * tanpa jeda), bukan jam mulai shift. Diambil dari resume tersimpan (immutable) bila resume
-     * shift ini sudah ada; kalau belum, dari cutoff (updated_at) resume terakhir hari itu; kalau
-     * belum ada resume sama sekali → awal hari (agar tak ada aktivitas awal yang terlewat).
+     * tanpa jeda), bukan jam mulai shift.
+     *
+     * Anti-anomali: "sebelumnya" ditentukan oleh URUTAN SHIFT (jam_mulai), BUKAN waktu simpan.
+     * Jadi urutan simpan yang tidak wajar (shift akhir menyimpan lebih dulu) tak pernah membuat
+     * window mundur. Diambil dari resume shift berurutan-sebelumnya yang paling dekat & sudah
+     * punya resume (rantai melompati shift yang belum bikin resume); kalau tak ada → awal hari
+     * (agar tak ada aktivitas awal yang terlewat).
+     *
+     * Immutable: bila resume shift ini sudah ada, pakai periode_mulai tersimpan apa adanya.
      */
     private function periodeMulai(string $tanggal, PiketShift $shift, Carbon $now): Carbon
     {
@@ -740,14 +746,18 @@ class PiketController extends Controller
             return $self->periode_mulai->copy()->setTimezone('Asia/Jakarta');
         }
 
-        $prevCutoff = PiketResume::tahunAjaran()
+        $shiftMulai = Carbon::parse($shift->jam_mulai)->format('H:i:s');
+        $prev = PiketResume::tahunAjaran()
             ->where('tanggal', $tanggal)
             ->where('piket_shift_id', '!=', $shift->id)
-            ->where('updated_at', '<=', $now)
-            ->max('updated_at');
+            ->with('shift')
+            ->get()
+            ->filter(fn ($r) => $r->shift && Carbon::parse($r->shift->jam_mulai)->format('H:i:s') < $shiftMulai)
+            ->sortByDesc(fn ($r) => Carbon::parse($r->shift->jam_mulai)->format('H:i:s'))
+            ->first();
 
-        return $prevCutoff
-            ? Carbon::parse($prevCutoff)->setTimezone('Asia/Jakarta')
+        return $prev
+            ? $prev->updated_at->copy()->setTimezone('Asia/Jakarta')
             : Carbon::parse($tanggal.' 00:00:00', 'Asia/Jakarta');
     }
 

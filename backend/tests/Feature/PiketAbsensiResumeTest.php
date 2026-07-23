@@ -127,6 +127,28 @@ class PiketAbsensiResumeTest extends TestCase
             ->assertJsonPath('data.rekap.kehadiran_total.total', 1); // aktivitas 10:30 TIDAK hilang (tak ada jeda kosong)
     }
 
+    public function test_rantai_berdasar_urutan_shift_melompati_yang_tanpa_resume(): void
+    {
+        // Pagi 06–10, Siang 10–13, Sore 13–16. Petugas sama.
+        PiketShift::where('nama_shift', 'Pagi')->update(['jam_selesai' => '10:00']);
+        foreach ([['Siang', '10:00', '13:00'], ['Sore', '13:00', '16:00']] as [$n, $m, $s]) {
+            PiketShift::create(['hari' => 'senin', 'nama_shift' => $n, 'jam_mulai' => $m, 'jam_selesai' => $s])
+                ->teachers()->attach($this->piket->id);
+        }
+        Sanctum::actingAs($this->piket->user);
+
+        // Pagi simpan 09:00. Siang TIDAK simpan resume.
+        Carbon::setTestNow('2026-03-09 09:00:00');
+        $this->postJson('/api/v1/piket/resume', ['ringkasan' => 'Pagi'])->assertOk();
+
+        // Sore buka 14:00 → rantai berdasar URUTAN shift, melompati Siang (tanpa resume)
+        // ke Pagi (09:00). Bukan jam mulai Sore (13:00).
+        Carbon::setTestNow('2026-03-09 14:00:00');
+        $this->getJson('/api/v1/piket/resume')
+            ->assertJsonPath('data.shift.nama', 'Sore')
+            ->assertJsonPath('data.rekap.mulai', '09:00');
+    }
+
     public function test_periode_mulai_immutable_saat_disimpan_ulang(): void
     {
         // Pagi 06:00–11:00, Siang 11:00–15:00 supaya shift aktif tak ambigu.
