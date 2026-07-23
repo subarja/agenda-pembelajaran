@@ -59,18 +59,27 @@ export default function IzinKeluarSection() {
           </div>
           <div className="rounded-lg border divide-y">
             {berjalan.map(r => (
-              <div key={r.id} className={`flex items-center gap-3 px-3 py-2 text-sm ${r.terlambat_kembali ? 'bg-red-50 dark:bg-red-950/30' : ''}`}>
-                <span className="flex-1">
-                  {r.nama} <span className="text-muted-foreground text-xs">· {r.keperluan}</span>
+              <div key={r.id} className={`px-3 py-2 text-sm ${r.terlambat_kembali ? 'bg-red-50 dark:bg-red-950/30' : ''}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium">{r.nama}</span>
+                  {r.kelas && <span className="text-xs text-muted-foreground">{r.kelas}</span>}
+                  <Badge variant={r.terlambat_kembali ? 'destructive' : 'secondary'} className="text-[10px]">{r.status_label}</Badge>
                   {r.terlambat_kembali && (
-                    <span className="ml-1.5 inline-flex items-center gap-0.5 text-[11px] font-medium text-red-600">
-                      <AlertTriangle className="h-3 w-3" /> telat {r.terlambat_menit}m (batas {r.berlaku_sampai})
+                    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-red-600">
+                      <AlertTriangle className="h-3 w-3" /> telat {r.terlambat_menit}m
                     </span>
                   )}
-                </span>
-                <Badge variant={r.terlambat_kembali ? 'destructive' : 'secondary'} className="text-[10px]">{r.status_label}</Badge>
-                {r.waktu_keluar && <span className="text-xs text-blue-600 flex items-center gap-0.5"><LogOut className="h-3 w-3" />{r.waktu_keluar}</span>}
-                {r.waktu_masuk && <span className="text-xs text-green-600 flex items-center gap-0.5"><LogIn className="h-3 w-3" />{r.waktu_masuk}</span>}
+                  <span className="ml-auto flex items-center gap-2">
+                    {r.waktu_keluar && <span className="text-xs text-blue-600 flex items-center gap-0.5"><LogOut className="h-3 w-3" />{r.waktu_keluar}</span>}
+                    {r.waktu_masuk && <span className="text-xs text-green-600 flex items-center gap-0.5"><LogIn className="h-3 w-3" />{r.waktu_masuk}</span>}
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
+                  <span>{r.keperluan}{r.alasan ? ` — ${r.alasan}` : ''}</span>
+                  {r.berlaku_sampai && (
+                    <span className={r.terlambat_kembali ? 'text-red-600 font-medium' : ''}>· berlaku s.d. {r.berlaku_sampai}</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
