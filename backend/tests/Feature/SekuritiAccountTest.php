@@ -34,14 +34,17 @@ class SekuritiAccountTest extends TestCase
         Sanctum::actingAs($admin);
 
         $this->postJson('/api/v1/admin/users', [
-            'nama' => 'Pak Satpam', 'email' => 'satpam@test.sch.id', 'role' => 'sekuriti',
+            'nama' => 'Pak Satpam', 'email' => 'satpam@test.sch.id', 'role' => 'sekuriti', 'nip' => '198012',
         ])->assertCreated();
 
         $u = User::where('email', 'satpam@test.sch.id')->first();
         $this->assertSame('sekuriti', $u->role->value);
+        $this->assertSame('198012', $u->nip);
 
-        // Muncul di daftar pengguna terkelola (Admin/BK/Orang Tua/Sekuriti).
+        // Tab Sekuriti (role=sekuriti) menampilkannya; tab Administrator (default) TIDAK.
+        $this->getJson('/api/v1/admin/users?role=sekuriti')->assertOk()
+            ->assertJsonFragment(['email' => 'satpam@test.sch.id', 'nip' => '198012']);
         $this->getJson('/api/v1/admin/users')->assertOk()
-            ->assertJsonFragment(['email' => 'satpam@test.sch.id']);
+            ->assertJsonMissing(['email' => 'satpam@test.sch.id']);
     }
 }

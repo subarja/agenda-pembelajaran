@@ -2495,10 +2495,10 @@ function PasswordDefaultPanel() {
 // ─────────────────────────────────────────────────────────────────────────────
 function PenggunaTab() {
   const qc = useQueryClient()
-  const [subTab, setSubTab] = useState<'admin' | 'guru' | 'siswa'>('admin')
+  const [subTab, setSubTab] = useState<'admin' | 'sekuriti' | 'guru' | 'siswa'>('admin')
   const [modal, setModal] = useState<'add' | 'edit' | 'reset-pw' | null>(null)
   const [selected, setSelected] = useState<AdminUser | null>(null)
-  const [form, setForm] = useState({ nama: '', email: '', role: 'admin', nomor_hp: '', password: '', student_id: '' })
+  const [form, setForm] = useState({ nama: '', email: '', role: 'admin', nomor_hp: '', nip: '', password: '', student_id: '' })
   const [resetPw, setResetPw] = useState('')
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
@@ -2510,6 +2510,19 @@ function PenggunaTab() {
 
   // ── Admin/BK/OrangTua query ────────────────────────────────────────────────
   const { data, isLoading } = useQuery({ queryKey: ['admin-users'], queryFn: () => adminApi.getAdminUsers() })
+
+  // ── Sekuriti query (tab terpisah) ──────────────────────────────────────────
+  const { data: sekuritiData, isLoading: sekuritiLoading } = useQuery({
+    queryKey: ['admin-users', 'sekuriti'],
+    queryFn: () => adminApi.getAdminUsers({ role: 'sekuriti' }),
+    enabled: subTab === 'sekuriti',
+  })
+  const sekuritiRows = useMemo(() => {
+    const list = [...(sekuritiData?.data ?? [])]
+    if (!q) return list
+    const l = q.toLowerCase()
+    return list.filter(u => [u.nama, u.email, (u as any).nip].some(v => v?.toLowerCase().includes(l)))
+  }, [sekuritiData?.data, q])
 
   // ── Guru/Siswa detail queries ──────────────────────────────────────────────
   const { data: guruDetailData, isLoading: guruLoading, refetch: refetchGuru } = useQuery({
@@ -2565,12 +2578,12 @@ function PenggunaTab() {
 
   function openAdd() {
     setSelected(null); setErr('')
-    setForm({ nama: '', email: '', role: 'admin', nomor_hp: '', password: '', student_id: '' })
+    setForm({ nama: '', email: '', role: subTab === 'sekuriti' ? 'sekuriti' : 'admin', nomor_hp: '', nip: '', password: '', student_id: '' })
     setModal('add')
   }
   function openEdit(u: AdminUser) {
     setSelected(u); setErr('')
-    setForm({ nama: u.nama, email: u.email, role: u.role, nomor_hp: u.nomor_hp || '', password: '', student_id: u.linked_student?.id || '' })
+    setForm({ nama: u.nama, email: u.email, role: u.role, nomor_hp: u.nomor_hp || '', nip: (u as any).nip || '', password: '', student_id: u.linked_student?.id || '' })
     setModal('edit')
   }
   function openResetPw(u: any) { setSelected(u); setResetPw(''); setErr(''); setModal('reset-pw') }
@@ -2579,6 +2592,7 @@ function PenggunaTab() {
     if (!payload.password) delete payload.password
     if (!payload.nomor_hp) delete payload.nomor_hp
     if (payload.role !== 'orang_tua') delete payload.student_id
+    if (payload.role !== 'sekuriti') delete payload.nip
     save.mutate(payload)
   }
 
@@ -2613,11 +2627,11 @@ function PenggunaTab() {
     <div className="space-y-3">
       {/* Sub-tab switcher */}
       <div className="flex rounded-md border border-input overflow-hidden w-fit">
-        {(['admin', 'guru', 'siswa'] as const).map(t => (
+        {(['admin', 'sekuriti', 'guru', 'siswa'] as const).map(t => (
           <button key={t} onClick={() => { setSubTab(t); setQ('') }}
             className={cn('px-4 py-1.5 text-xs capitalize transition-colors',
               subTab === t ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
-            {t === 'admin' ? 'Administrator' : t === 'guru' ? 'Guru / Staf' : 'Siswa'}
+            {t === 'admin' ? 'Administrator' : t === 'sekuriti' ? 'Sekuriti' : t === 'guru' ? 'Guru / Staf' : 'Siswa'}
           </button>
         ))}
       </div>
@@ -2627,6 +2641,9 @@ function PenggunaTab() {
         <SearchBar value={q} onChange={setQ} placeholder={`Cari ${subTab === 'siswa' ? 'nama siswa...' : 'nama / email / NIP...'}`} />
         {subTab === 'admin' && (
           <Button size="sm" onClick={openAdd}><Plus className="mr-1 h-4 w-4" />Tambah Pengguna</Button>
+        )}
+        {subTab === 'sekuriti' && (
+          <Button size="sm" onClick={openAdd}><Plus className="mr-1 h-4 w-4" />Tambah Sekuriti</Button>
         )}
         {(subTab === 'guru' || subTab === 'siswa') && (
           <Button size="sm" variant="outline" disabled={genLoading}
@@ -2666,6 +2683,42 @@ function PenggunaTab() {
                     </tr>
                   ))}
                   {rows.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">Tidak ada data</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Sekuriti sub-tab (staf ber-NIP, pemindai QR) ─────────────────────── */}
+      {subTab === 'sekuriti' && (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Akun <strong>Sekuriti</strong> (satpam) memindai QR izin keluar siswa. Login → langsung ke halaman <em>Pindai QR</em>.
+            Password kosong = default <code>password</code> (sarankan set sendiri atau reset).
+          </p>
+          {sekuritiLoading ? <TableSkeleton cols={[160, 200, 120, 80, 40]} rows={5} /> : (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-muted/50">
+                  <tr><Th label="Nama" /><Th label="Email" /><Th label="NIP" /><Th label="Status" /><Th label="" /></tr>
+                </thead>
+                <tbody>
+                  {sekuritiRows.map(u => (
+                    <tr key={u.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-2 font-medium">{u.nama}</td>
+                      <td className="px-3 py-2 text-muted-foreground text-xs">{u.email}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{(u as any).nip || '—'}</td>
+                      <td className="px-3 py-2"><Badge className={u.status === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{u.status}</Badge></td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-1">
+                          <button onClick={() => openEdit(u)} className="rounded p-1 hover:bg-accent"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => window.confirm('Nonaktifkan akun sekuriti ini?') && del.mutate(u.id)} className="rounded p-1 hover:bg-red-100 text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {sekuritiRows.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-sm text-muted-foreground">Belum ada akun sekuriti. Klik "Tambah Sekuriti".</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -2742,17 +2795,24 @@ function PenggunaTab() {
 
       {/* ── Modal Tambah/Edit Pengguna (admin tab) ───────────────────────────── */}
       {modal === 'add' || modal === 'edit' ? (
-        <Modal title={modal === 'add' ? 'Tambah Pengguna' : 'Edit Pengguna'} onClose={() => setModal(null)}>
+        <Modal title={modal === 'add' ? (form.role === 'sekuriti' ? 'Tambah Sekuriti' : 'Tambah Pengguna') : (form.role === 'sekuriti' ? 'Edit Sekuriti' : 'Edit Pengguna')} onClose={() => setModal(null)}>
           <Field label="Nama Lengkap"><input className={inputCls} value={form.nama} onChange={e => setForm(f => ({ ...f, nama: e.target.value }))} /></Field>
           <Field label="Email"><input className={inputCls} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></Field>
+          {form.role === 'sekuriti' ? (
+            <>
+              <Field label="Peran"><div className={`${inputCls} bg-muted/40 text-muted-foreground`}>Sekuriti (Pemindai QR)</div></Field>
+              <Field label="NIP"><input className={inputCls} value={form.nip} onChange={e => setForm(f => ({ ...f, nip: e.target.value }))} placeholder="opsional" /></Field>
+              <Field label="Nomor HP"><input className={inputCls} value={form.nomor_hp} onChange={e => setForm(f => ({ ...f, nomor_hp: e.target.value }))} placeholder="opsional" /></Field>
+            </>
+          ) : (
           <Field label="Peran">
             <select className={selectCls} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value, student_id: '' }))}>
               <option value="admin">Admin</option>
               <option value="bk">BK (Bimbingan Konseling)</option>
               <option value="orang_tua">Orang Tua</option>
-              <option value="sekuriti">Sekuriti (Pemindai QR)</option>
             </select>
           </Field>
+          )}
           {form.role === 'orang_tua' && (
             <Field label="Siswa yang Dipantau">
               <select className={selectCls} value={form.student_id} onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))}>

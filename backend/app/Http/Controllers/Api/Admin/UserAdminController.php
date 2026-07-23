@@ -22,7 +22,12 @@ class UserAdminController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $users = User::whereIn('role', self::MANAGED_ROLES)
+        // Sekuriti dipisah ke tab sendiri; tab "Administrator" tetap admin/BK/orang tua.
+        $roles = $request->query('role') === 'sekuriti'
+            ? [UserRole::Sekuriti]
+            : [UserRole::Admin, UserRole::BK, UserRole::OrangTua];
+
+        $users = User::whereIn('role', $roles)
             ->with(['linkedStudent.user:id,nama', 'linkedStudent.schoolClass'])
             ->when($request->search, fn ($q, $s) => $q->where(fn ($inner) => $inner->whereLikeCi('nama', $s)
                 ->orWhereLikeCi('email', $s)
@@ -44,6 +49,7 @@ class UserAdminController extends Controller
             'email' => ['required', 'email', 'unique:users,email'],
             'role' => ['required', 'in:admin,bk,orang_tua,sekuriti'],
             'nomor_hp' => ['nullable', 'string', 'max:20'],
+            'nip' => ['nullable', 'string', 'max:30'],
             'password' => ['nullable', 'string', 'min:8'],
             'student_id' => ['nullable', 'string'],  // UUID siswa, hanya untuk orang_tua
         ]);
@@ -61,6 +67,7 @@ class UserAdminController extends Controller
             'role' => UserRole::from($data['role']),
             'status' => UserStatus::Aktif,
             'nomor_hp' => $data['nomor_hp'] ?? null,
+            'nip' => $data['nip'] ?? null,
             'linked_student_id' => $studentDbId,
         ]);
 
@@ -76,6 +83,7 @@ class UserAdminController extends Controller
             'email' => ['sometimes', 'email', 'unique:users,email,'.$user->id],
             'role' => ['sometimes', 'in:admin,bk,orang_tua,sekuriti'],
             'nomor_hp' => ['nullable', 'string', 'max:20'],
+            'nip' => ['nullable', 'string', 'max:30'],
             'status' => ['sometimes', 'in:aktif,nonaktif'],
             'password' => ['nullable', 'string', 'min:8'],
             'student_id' => ['nullable', 'string'],
@@ -96,6 +104,9 @@ class UserAdminController extends Controller
         }
         if (array_key_exists('nomor_hp', $data)) {
             $fields['nomor_hp'] = $data['nomor_hp'];
+        }
+        if (array_key_exists('nip', $data)) {
+            $fields['nip'] = $data['nip'];
         }
         if (isset($data['password'])) {
             $fields['password'] = $data['password'];
@@ -341,6 +352,7 @@ class UserAdminController extends Controller
             'role' => $u->role->value,
             'status' => $u->status->value,
             'nomor_hp' => $u->nomor_hp,
+            'nip' => $u->nip,
         ];
 
         if ($u->role === UserRole::OrangTua && $u->relationLoaded('linkedStudent') && $u->linkedStudent) {
