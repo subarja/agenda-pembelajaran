@@ -313,9 +313,16 @@ class PiketController extends Controller
         ]);
 
         // Poin negatif otomatis dikenakan baik disetujui maupun ditolak (keputusan user).
-        app(KesianganService::class)->terapkanPoin($izin->fresh());
+        $status = app(KesianganService::class)->terapkanPoin($izin->fresh());
 
-        return response()->json(['message' => 'Kesiangan diverifikasi. Poin keterlambatan tercatat otomatis.']);
+        $pesan = match ($status) {
+            'applied' => 'Kesiangan diverifikasi. Poin keterlambatan tercatat otomatis.',
+            'not_configured' => 'Kesiangan diverifikasi, TAPI poin belum tercatat — sub-karakter kesiangan belum dipilih. Atur di Panel Admin › Piket › Poin Kesiangan Otomatis.',
+            'no_tier' => 'Kesiangan diverifikasi. Poin tidak tercatat: tidak ada tier poin untuk durasi keterlambatan ini.',
+            default => 'Kesiangan diverifikasi.',
+        };
+
+        return response()->json(['message' => $pesan, 'poin_status' => $status]);
     }
 
     // ── GET /piket/resume — resume PER SHIFT petugas hari ini ────────────────

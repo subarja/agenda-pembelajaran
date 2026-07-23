@@ -19,12 +19,17 @@ use Illuminate\Support\Facades\Log;
  */
 class KesianganService
 {
-    public function terapkanPoin(IzinKesiangan $izin): void
+    /**
+     * @return 'applied'|'no_verifier'|'not_configured'|'no_tier' — supaya pemanggil bisa
+     *                                                            memberi tahu bila poin TIDAK tercatat (mis. sub-karakter belum dipilih admin),
+     *                                                            bukan gagal diam-diam.
+     */
+    public function terapkanPoin(IzinKesiangan $izin): string
     {
         // teacher_id character_inputs NOT NULL; verifikator wajib ada saat status final.
         $teacherId = $izin->diverifikasi_oleh;
         if (! $teacherId) {
-            return;
+            return 'no_verifier';
         }
 
         // Sub-karakter terlambat DIPILIH admin (kode beda tiap sekolah), bukan hardcode 'KD-04'.
@@ -35,12 +40,12 @@ class KesianganService
                 'izin_kesiangan_id' => $izin->id,
             ]);
 
-            return; // belum dikonfigurasi -> tidak membuat poin (tidak diam-diam salah)
+            return 'not_configured'; // belum dikonfigurasi -> tidak membuat poin (tidak diam-diam salah)
         }
 
         $poin = KesianganPointTier::poinUntuk($izin->terlambat_menit);
         if ($poin === 0) {
-            return; // tidak terlambat / tak ada tier -> tak ada poin
+            return 'no_tier'; // tidak terlambat / tak ada tier -> tak ada poin
         }
 
         $input = CharacterInput::updateOrCreate(
@@ -61,5 +66,7 @@ class KesianganService
         $izin->forceFill(['character_input_id' => $input->id])->saveQuietly();
 
         app(CharacterService::class)->processAfterInput($izin->student->load('schoolClass'));
+
+        return 'applied';
     }
 }

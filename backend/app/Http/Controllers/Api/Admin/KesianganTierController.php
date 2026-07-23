@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\CharacterSubitem;
+use App\Models\IzinKesiangan;
 use App\Models\KesianganPointTier;
 use App\Models\KesianganSetting;
+use App\Services\KesianganService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -53,10 +55,31 @@ class KesianganTierController extends Controller
             ]);
         }
 
+        $backfilled = 0;
         if (array_key_exists('subitem_id', $data)) {
             KesianganSetting::instance()->update(['subitem_id' => $data['subitem_id']]);
+
+            // Backfill: kesiangan yang SUDAH diverifikasi TA aktif tapi belum berpoin
+            // (mis. diverifikasi saat sub-karakter belum dipilih) kini dikenakan poin.
+            if ($data['subitem_id']) {
+                $svc = app(KesianganService::class);
+                IzinKesiangan::tahunAjaran()
+                    ->whereNotNull('diverifikasi_oleh')
+                    ->whereNull('character_input_id')
+                    ->get()
+                    ->each(function ($iz) use ($svc, &$backfilled) {
+                        if ($svc->terapkanPoin($iz) === 'applied') {
+                            $backfilled++;
+                        }
+                    });
+            }
         }
 
-        return response()->json(['message' => 'Pengaturan kesiangan disimpan.']);
+        $pesan = 'Pengaturan kesiangan disimpan.';
+        if ($backfilled > 0) {
+            $pesan .= " {$backfilled} kesiangan lama kini dikenakan poin otomatis.";
+        }
+
+        return response()->json(['message' => $pesan]);
     }
 }

@@ -3,20 +3,29 @@
 namespace Tests\Feature;
 
 use App\Enums\CharacterSifat;
+use App\Enums\IzinKesianganStatus;
 use App\Enums\Semester;
 use App\Enums\Tingkat;
 use App\Enums\UserRole;
 use App\Models\AcademicYear;
+use App\Models\Agenda;
+use App\Models\BellPeriod;
 use App\Models\CharacterCategory;
 use App\Models\CharacterInput;
 use App\Models\CharacterSubitem;
 use App\Models\IzinKesiangan;
+use App\Models\KesianganPointTier;
+use App\Models\KesianganSetting;
 use App\Models\PiketShift;
+use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Models\StudentAttendance;
+use App\Models\Subject;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Services\CharacterService;
+use App\Services\KesianganService;
 use App\Support\BellSchedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -32,7 +41,9 @@ class IzinKesianganTest extends TestCase
     use RefreshDatabase;
 
     private Student $siswa;
+
     private Teacher $piket;
+
     private CharacterSubitem $kd04;
 
     protected function setUp(): void
@@ -48,12 +59,12 @@ class IzinKesianganTest extends TestCase
         $kelas = SchoolClass::create(['tingkat' => Tingkat::X, 'jurusan' => 'Mekatronika', 'rombel' => 'A', 'academic_year_id' => $ay->id]);
 
         // Bel Senin jam ke-1 mulai 07:00 -> jam masuk sekolah 07:00.
-        \App\Models\BellPeriod::create(['hari' => 'senin', 'jam_ke' => 1, 'jam_mulai' => '07:00', 'jam_selesai' => '07:45']);
+        BellPeriod::create(['hari' => 'senin', 'jam_ke' => 1, 'jam_mulai' => '07:00', 'jam_selesai' => '07:45']);
 
         $cat = CharacterCategory::create(['nama' => 'Kedisiplinan', 'aktif' => true]);
         // Kode SENGAJA bukan 'KD-04' — membuktikan poin kesiangan pakai setting admin, bukan hardcode.
         $this->kd04 = CharacterSubitem::create(['category_id' => $cat->id, 'kode' => 'KD-99', 'deskripsi' => 'Terlambat masuk kelas', 'bobot' => -5, 'sifat' => CharacterSifat::Negatif, 'aktif' => true]);
-        \App\Models\KesianganSetting::instance()->update(['subitem_id' => $this->kd04->id]);
+        KesianganSetting::instance()->update(['subitem_id' => $this->kd04->id]);
 
         $su = User::create(['nama' => 'Andi Siswa', 'email' => 'andi@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Siswa]);
         $this->siswa = Student::create(['user_id' => $su->id, 'nis' => '12345', 'class_id' => $kelas->id]);
@@ -68,6 +79,33 @@ class IzinKesianganTest extends TestCase
     {
         Carbon::setTestNow();
         parent::tearDown();
+    }
+
+    public function test_backfill_poin_saat_sub_karakter_baru_dipilih_admin(): void
+    {
+        // Sub-karakter belum dipilih saat kesiangan diverifikasi → belum berpoin (kasus user).
+        KesianganSetting::instance()->update(['subitem_id' => null]);
+        KesianganPointTier::create(['menit_min' => 1, 'menit_max' => null, 'poin' => -5, 'aktif' => true]);
+
+        $izin = IzinKesiangan::create([
+            'student_id' => $this->siswa->id, 'tanggal' => '2026-03-09',
+            'status' => IzinKesianganStatus::Disetujui,
+            'waktu_tiba' => Carbon::now(), 'terlambat_menit' => 20,
+            'diverifikasi_oleh' => $this->piket->id,
+        ]);
+        $this->assertNull($izin->character_input_id);
+        $this->assertSame(0, CharacterInput::where('student_id', $this->siswa->id)->count());
+
+        // Admin memilih sub-karakter → poin kesiangan lama otomatis di-backfill.
+        $admin = User::create(['nama' => 'Admin', 'email' => 'admin@test.sch.id', 'password' => 'secret123', 'role' => UserRole::Admin]);
+        Sanctum::actingAs($admin);
+        $this->putJson('/api/v1/admin/kesiangan-tiers', [
+            'tiers' => [['menit_min' => 1, 'menit_max' => null, 'poin' => -5]],
+            'subitem_id' => $this->kd04->id,
+        ])->assertOk();
+
+        $this->assertSame(1, CharacterInput::where('student_id', $this->siswa->id)->count());
+        $this->assertNotNull($izin->fresh()->character_input_id);
     }
 
     public function test_ajukan_menghitung_keterlambatan_dari_jam_masuk(): void
@@ -104,7 +142,7 @@ class IzinKesianganTest extends TestCase
 
     public function test_tanpa_subitem_terkonfigurasi_tak_ada_poin(): void
     {
-        \App\Models\KesianganSetting::instance()->update(['subitem_id' => null]);
+        KesianganSetting::instance()->update(['subitem_id' => null]);
 
         Sanctum::actingAs($this->siswa->user);
         $this->postJson('/api/v1/izin-kesiangan', [])->assertCreated();
@@ -142,12 +180,12 @@ class IzinKesianganTest extends TestCase
         // Kesiangan tercatat (20 menit) untuk siswa hari ini.
         IzinKesiangan::create(['student_id' => $this->siswa->id, 'tanggal' => '2026-03-09', 'status' => 'diajukan', 'waktu_tiba' => now(), 'terlambat_menit' => 20]);
 
-        $subject = \App\Models\Subject::create(['kode' => 'IND', 'nama' => 'B.Indonesia', 'aktif' => true]);
-        $schedule = \App\Models\Schedule::create([
+        $subject = Subject::create(['kode' => 'IND', 'nama' => 'B.Indonesia', 'aktif' => true]);
+        $schedule = Schedule::create([
             'class_id' => $this->siswa->class_id, 'subject_id' => $subject->id, 'teacher_id' => $this->piket->id,
             'hari' => 'senin', 'jam_mulai' => '07:00', 'jam_selesai' => '08:30', 'aktif' => true,
         ]);
-        $agenda = \App\Models\Agenda::create(['schedule_id' => $schedule->id, 'tanggal' => '2026-03-09', 'status' => 'submitted']);
+        $agenda = Agenda::create(['schedule_id' => $schedule->id, 'tanggal' => '2026-03-09', 'status' => 'submitted']);
 
         Sanctum::actingAs($this->piket->user);
 
@@ -162,15 +200,15 @@ class IzinKesianganTest extends TestCase
             'records' => [['student_id' => $this->siswa->uuid, 'status' => 'hadir', 'durasi_terlambat' => 0]],
         ])->assertOk();
 
-        $this->assertSame(20, \App\Models\StudentAttendance::first()->durasi_terlambat);
-        $this->assertSame('hadir', \App\Models\StudentAttendance::first()->status->value);
+        $this->assertSame(20, StudentAttendance::first()->durasi_terlambat);
+        $this->assertSame('hadir', StudentAttendance::first()->status->value);
     }
 
     public function test_poin_manual_guru_tetap_terhitung_terpisah(): void
     {
         // Poin sistem KD-04 + poin guru manual subitem lain harus dijumlah, tak saling timpa.
         IzinKesiangan::create(['student_id' => $this->siswa->id, 'tanggal' => '2026-03-09', 'status' => 'disetujui', 'waktu_tiba' => now(), 'terlambat_menit' => 20, 'diverifikasi_oleh' => $this->piket->id]);
-        app(\App\Services\KesianganService::class)->terapkanPoin(IzinKesiangan::first());
+        app(KesianganService::class)->terapkanPoin(IzinKesiangan::first());
 
         // Guru beri pelanggaran lain (bobot -3) manual, tanggal_kejadian NULL.
         CharacterInput::create(['student_id' => $this->siswa->id, 'subitem_id' => $this->kd04->id, 'teacher_id' => $this->piket->id, 'sign' => 'negatif', 'sumber' => 'guru']);

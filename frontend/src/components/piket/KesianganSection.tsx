@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlarmClock, Check, X } from 'lucide-react'
+import { AlarmClock, Check, X, AlertTriangle } from 'lucide-react'
 import api from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +14,7 @@ interface KesianganRow {
 
 export default function KesianganSection() {
   const qc = useQueryClient()
+  const [msg, setMsg] = useState<{ text: string; warn: boolean } | null>(null)
   const { data } = useQuery<{ data: KesianganRow[] }>({
     queryKey: ['piket-kesiangan'],
     queryFn: () => api.get('/piket/kesiangan').then(r => r.data),
@@ -20,7 +22,7 @@ export default function KesianganSection() {
   })
   const verif = useMutation({
     mutationFn: (p: { id: string; aksi: 'setujui' | 'tolak' }) => api.post(`/piket/kesiangan/${p.id}/verifikasi`, { aksi: p.aksi }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['piket-kesiangan'] }),
+    onSuccess: (d) => { setMsg({ text: d.message, warn: d.poin_status && d.poin_status !== 'applied' }); qc.invalidateQueries({ queryKey: ['piket-kesiangan'] }) },
   })
 
   const rows = data?.data ?? []
@@ -50,6 +52,12 @@ export default function KesianganSection() {
           </div>
         ))}
       </div>
+      {msg && (
+        <div className={`rounded-md border p-2 text-xs flex items-start gap-1.5 ${msg.warn ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-green-200 bg-green-50 text-green-700'}`}>
+          {msg.warn && <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
+          <span>{msg.text}</span>
+        </div>
+      )}
       <p className="text-[11px] text-muted-foreground">Poin keterlambatan tercatat otomatis (baik disetujui maupun ditolak); persetujuan hanya menandai berizin.</p>
     </CardContent></Card>
   )
