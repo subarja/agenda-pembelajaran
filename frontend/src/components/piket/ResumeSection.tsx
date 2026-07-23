@@ -9,6 +9,7 @@ import { usePdfPreview } from '@/hooks/usePdfPreview'
 
 interface KehadiranKelas { kelas: string; hadir: number; sakit: number; izin: number; alpha: number; total: number }
 interface Rekap {
+  mulai: string
   waktu: string
   kehadiran_kelas: KehadiranKelas[]
   kehadiran_total: { hadir: number; sakit: number; izin: number; alpha: number; total: number }
@@ -60,7 +61,7 @@ export default function ResumeSection() {
               <div className="text-sm font-semibold">Resume Shift {shift.nama} <span className="text-muted-foreground font-normal">{shift.jam_mulai}–{shift.jam_selesai}</span></div>
               <div className="text-xs text-muted-foreground">Petugas: {shift.petugas.length ? shift.petugas.join(', ') : '—'}</div>
             </div>
-            {rekap && <Badge variant="secondary">Rekap s.d. {rekap.waktu}</Badge>}
+            {rekap && <Badge variant="secondary">Rekap {rekap.mulai}–{rekap.waktu}</Badge>}
           </div>
         </CardContent></Card>
       )}
@@ -68,15 +69,16 @@ export default function ResumeSection() {
       {/* Rekap otomatis */}
       {rekap && (
         <Card><CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4" /> Rekap Otomatis (sampai pukul {rekap.waktu})</div>
+          <div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="h-4 w-4" /> Rekap Otomatis (periode {rekap.mulai}–{rekap.waktu})</div>
+          <p className="text-[11px] text-muted-foreground -mt-1">Melanjutkan dari shift sebelumnya — hanya aktivitas sejak jam mulai shift Anda.</p>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div className="rounded-lg border p-2.5">
               <div className="text-xs text-muted-foreground">Agenda guru terisi</div>
-              <div className="font-semibold">{rekap.agenda.terisi}/{rekap.agenda.berlangsung} <span className="text-xs font-normal text-muted-foreground">sesi berlangsung</span></div>
+              <div className="font-semibold">{rekap.agenda.terisi}/{rekap.agenda.berlangsung} <span className="text-xs font-normal text-muted-foreground">sesi periode ini</span></div>
             </div>
             <div className="rounded-lg border p-2.5">
               <div className="text-xs text-muted-foreground">Presensi siswa terisi</div>
-              <div className="font-semibold">{rekap.presensi.terisi}/{rekap.presensi.berlangsung} <span className="text-xs font-normal text-muted-foreground">sesi berlangsung</span></div>
+              <div className="font-semibold">{rekap.presensi.terisi}/{rekap.presensi.berlangsung} <span className="text-xs font-normal text-muted-foreground">sesi periode ini</span></div>
             </div>
           </div>
 

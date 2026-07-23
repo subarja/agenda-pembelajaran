@@ -37,9 +37,11 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
 .rekap-table td.center { text-align: center; }
 .rekap-list { font-size: 10pt; }
 .rekap-list li { margin-left: 16px; }
-.ttd-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 10.5pt; }
-.ttd-cell { text-align: center; padding: 0 8px; vertical-align: top; }
-.ttd-cell .ttd-nama { display: inline-block; font-weight: bold; border-top: 1px solid #000; padding-top: 3px; margin-top: 55px; min-width: 150px; }
+.ttd-table { width: 100%; border-collapse: collapse; margin-top: 28px; font-size: 10.5pt; }
+.ttd-cell { text-align: center; padding: 0 10px; vertical-align: top; }
+.ttd-cell .ttd-tgl { min-height: 16px; }
+.ttd-cell .ttd-role { margin-bottom: 58px; }
+.ttd-cell .ttd-nama { display: inline-block; font-weight: bold; border-top: 1px solid #000; padding-top: 3px; min-width: 170px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -56,7 +58,7 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
     <tr><td>Tanggal</td><td>:</td><td>{{ $tanggalLabel }}</td></tr>
     <tr><td>Shift</td><td>:</td><td>{{ $shiftLabel }}</td></tr>
     <tr><td>Petugas Piket</td><td>:</td><td>{{ count($petugas) ? implode(', ', $petugas) : '-' }}</td></tr>
-    <tr><td>Rekap s.d. pukul</td><td>:</td><td>{{ $rekap['waktu'] ?? '-' }}</td></tr>
+    <tr><td>Periode rekap</td><td>:</td><td>pukul {{ $rekap['mulai'] ?? '-' }} – {{ $rekap['waktu'] ?? '-' }}</td></tr>
   </table>
 </div>
 
@@ -73,9 +75,9 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
 @endif
 
 <div class="blok">
-  <h3>Rekap Pengisian (s.d. pukul {{ $rekap['waktu'] ?? '-' }})</h3>
+  <h3>Rekap Pengisian (periode pukul {{ $rekap['mulai'] ?? '-' }} – {{ $rekap['waktu'] ?? '-' }})</h3>
   <ul class="rekap-list">
-    <li>Agenda guru terisi: <strong>{{ $agendaRekap['terisi'] ?? 0 }}</strong> dari {{ $agendaRekap['berlangsung'] ?? 0 }} sesi yang sudah berlangsung
+    <li>Agenda guru terisi: <strong>{{ $agendaRekap['terisi'] ?? 0 }}</strong> dari {{ $agendaRekap['berlangsung'] ?? 0 }} sesi pada periode ini
         ({{ $agendaRekap['belum'] ?? 0 }} belum).</li>
     <li>Presensi siswa terisi: <strong>{{ $presensiRekap['terisi'] ?? 0 }}</strong> dari {{ $presensiRekap['berlangsung'] ?? 0 }} sesi
         ({{ $presensiRekap['belum'] ?? 0 }} belum).</li>
@@ -107,18 +109,16 @@ body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; margin: 
   @endif
 </div>
 
+@php $ttd = count($petugas) ? $petugas : ['Petugas Piket']; @endphp
 <table class="ttd-table">
   <tr>
-    @php $ttd = count($petugas) ? $petugas : ['Petugas Piket']; @endphp
+    {{-- Satu petugas: dorong tanda tangan ke kanan (rapi, tidak melayang di tengah). --}}
+    @if(count($ttd) === 1)<td style="width: 55%;"></td>@endif
     @foreach($ttd as $nama)
-      <td class="ttd-cell" style="width: {{ 100 / max(1, count($ttd)) }}%;">
-        @if($loop->first)
-          Cimahi, {{ $tanggalTtd }}<br>
-        @else
-          &nbsp;<br>
-        @endif
-        Petugas Piket,
-        <div class="ttd-nama">{{ $nama }}</div>
+      <td class="ttd-cell" style="width: {{ count($ttd) === 1 ? 45 : (100 / count($ttd)) }}%;">
+        <div class="ttd-tgl">@if($loop->first)Cimahi, {{ $tanggalTtd }}@else&nbsp;@endif</div>
+        <div class="ttd-role">Petugas Piket,</div>
+        <span class="ttd-nama">{{ $nama }}</span>
       </td>
     @endforeach
   </tr>

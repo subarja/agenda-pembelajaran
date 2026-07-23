@@ -102,6 +102,33 @@ class PiketAbsensiResumeTest extends TestCase
         $this->assertSame(1, PiketResume::count());
     }
 
+    public function test_rekap_melanjutkan_per_window_shift(): void
+    {
+        // Absensi harian dicatat pukul 08:00 (masuk window shift Pagi). now saat ini = 08:00 (setUp).
+        DailyAttendance::create(['student_id' => $this->siswa->id, 'class_id' => $this->kelas->id, 'tanggal' => '2026-03-09', 'status' => 'hadir', 'recorded_by' => $this->piket->user->id]);
+
+        // Pagi 06:00–11:00, Siang 11:00–15:00 (kontigu, tak tumpang tindih), petugas sama.
+        PiketShift::where('nama_shift', 'Pagi')->update(['jam_selesai' => '11:00']);
+        $siang = PiketShift::create(['hari' => 'senin', 'nama_shift' => 'Siang', 'jam_mulai' => '11:00', 'jam_selesai' => '15:00']);
+        $siang->teachers()->attach($this->piket->id);
+
+        Sanctum::actingAs($this->piket->user);
+
+        // 09:00 → shift aktif Pagi, window 06:00–09:00: absensi 08:00 MASUK.
+        Carbon::setTestNow('2026-03-09 09:00:00');
+        $this->getJson('/api/v1/piket/resume')
+            ->assertJsonPath('data.shift.nama', 'Pagi')
+            ->assertJsonPath('data.rekap.mulai', '06:00')
+            ->assertJsonPath('data.rekap.kehadiran_total.total', 1);
+
+        // 12:00 → shift aktif Siang, window 11:00–12:00: absensi 08:00 TIDAK masuk (melanjutkan, bukan kumulatif).
+        Carbon::setTestNow('2026-03-09 12:00:00');
+        $this->getJson('/api/v1/piket/resume')
+            ->assertJsonPath('data.shift.nama', 'Siang')
+            ->assertJsonPath('data.rekap.mulai', '11:00')
+            ->assertJsonPath('data.rekap.kehadiran_total.total', 0);
+    }
+
     public function test_export_pdf_preview_base64(): void
     {
         PiketResume::create(['tanggal' => '2026-03-09', 'piket_shift_id' => $this->shiftId, 'ringkasan' => 'Ringkasan uji', 'teacher_id' => $this->piket->id]);
@@ -110,6 +137,16 @@ class PiketAbsensiResumeTest extends TestCase
         $this->getJson('/api/v1/piket/resume/export?format=pdf&preview=1')
             ->assertOk()
             ->assertJsonStructure(['filename', 'base64']);
+    }
+
+    public function test_export_xlsx_dengan_blok_ttd_tidak_error(): void
+    {
+        PiketResume::create(['tanggal' => '2026-03-09', 'piket_shift_id' => $this->shiftId, 'ringkasan' => 'Uji', 'teacher_id' => $this->piket->id]);
+        Sanctum::actingAs($this->piket->user);
+
+        $this->get('/api/v1/piket/resume/export?format=xlsx')
+            ->assertOk()
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     }
 
     public function test_cek_kehadiran_cari_kelas_dan_nama(): void

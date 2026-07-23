@@ -40,6 +40,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
+use OpenSpout\Common\Entity\Style\CellAlignment;
+use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Writer;
 
 /**
@@ -336,7 +338,7 @@ class PiketController extends Controller
             'penyunting' => $resume?->teacher?->user?->nama,
             'diperbarui' => $resume?->updated_at?->toIso8601String(),
             // Rekap LIVE (sampai sekarang) untuk ditampilkan di editor. Snapshot disimpan saat simpan.
-            'rekap' => $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta')),
+            'rekap' => $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta'), $shift),
         ]]);
     }
 
@@ -360,7 +362,7 @@ class PiketController extends Controller
                 'kejadian_penting' => $data['kejadian_penting'] ?? null,
                 'teacher_id' => $request->user()->teacher?->id,
                 // Snapshot rekap "sampai waktu resume dibuat".
-                'rekap' => $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta')),
+                'rekap' => $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta'), $shift),
             ],
         );
 
@@ -493,13 +495,14 @@ class PiketController extends Controller
             ->where('tanggal', $tanggal)->where('piket_shift_id', $shift->id)->first();
         $petugas = $shift->teachers->map(fn ($t) => $t->user?->nama)->filter()->unique()->values();
         // Rekap yang tercetak = snapshot saat resume disimpan; fallback rekap live bila belum disimpan.
-        $rekap = $resume?->rekap ?? $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta'));
+        $rekap = $resume?->rekap ?? $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta'), $shift);
         $tglLabel = Carbon::parse($tanggal)->locale('id')->isoFormat('dddd, D MMMM YYYY');
+        $tanggalTtd = Carbon::parse($tanggal)->locale('id')->isoFormat('D MMMM YYYY');
         $shiftLabel = $shift->nama_shift.' ('.substr($shift->jam_mulai, 0, 5).'–'.substr($shift->jam_selesai, 0, 5).')';
         $filename = 'Resume_Piket_'.$tanggal.'_'.str_replace(' ', '', $shift->nama_shift);
 
         if ($request->format === 'xlsx') {
-            return $this->exportResumeXlsx($filename, $tglLabel, $shiftLabel, $petugas->all(), $resume, $rekap);
+            return $this->exportResumeXlsx($filename, $tglLabel, $shiftLabel, $petugas->all(), $resume, $rekap, $tanggalTtd);
         }
 
         $printSettings = PrintSetting::instance($request->user()->id);
@@ -512,24 +515,25 @@ class PiketController extends Controller
             'rekap' => $rekap,
             'kopSuratPath' => 'file://'.public_path('images/kop_surat.jpg'),
             'printSettings' => $printSettings,
-            'tanggalTtd' => Carbon::parse($tanggal)->locale('id')->isoFormat('D MMMM YYYY'),
+            'tanggalTtd' => $tanggalTtd,
         ])->setPaper($printSettings->paperDimensionsPt(), 'portrait');
 
         return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
     }
 
-    private function exportResumeXlsx(string $filename, string $tglLabel, string $shiftLabel, array $petugas, ?PiketResume $resume, array $rekap)
+    private function exportResumeXlsx(string $filename, string $tglLabel, string $shiftLabel, array $petugas, ?PiketResume $resume, array $rekap, string $tanggalTtd)
     {
-        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($tglLabel, $shiftLabel, $petugas, $resume, $rekap) {
+        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($tglLabel, $shiftLabel, $petugas, $resume, $rekap, $tanggalTtd) {
             $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 24, 3 => 60]);
             $label = $this->xlsxLabelStyle();
+            $periode = ($rekap['mulai'] ?? '-').' – '.($rekap['waktu'] ?? '-');
 
             $w->addRow(Row::fromValuesWithStyle(['RESUME PIKET'], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(new Row([new StringCell(''), new StringCell('Tanggal', $label), new StringCell(": {$tglLabel}")]));
             $w->addRow(new Row([new StringCell(''), new StringCell('Shift', $label), new StringCell(": {$shiftLabel}")]));
             $w->addRow(new Row([new StringCell(''), new StringCell('Petugas Piket', $label), new StringCell(': '.(empty($petugas) ? '-' : implode(', ', $petugas)))]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Rekap s.d.', $label), new StringCell(': '.($rekap['waktu'] ?? '-'))]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Periode rekap', $label), new StringCell(": {$periode}")]));
             $w->addRow(Row::fromValues(['']));
 
             $w->addRow(new Row([new StringCell(''), new StringCell('Ringkasan', $label), new StringCell(': '.($resume?->ringkasan ?? '-'), $this->xlsxCellStyle())]));
@@ -538,8 +542,8 @@ class PiketController extends Controller
 
             $ag = $rekap['agenda'] ?? [];
             $pr = $rekap['presensi'] ?? [];
-            $w->addRow(new Row([new StringCell(''), new StringCell('Agenda guru terisi', $label), new StringCell(': '.($ag['terisi'] ?? 0).' dari '.($ag['berlangsung'] ?? 0).' sesi berlangsung')]));
-            $w->addRow(new Row([new StringCell(''), new StringCell('Presensi siswa terisi', $label), new StringCell(': '.($pr['terisi'] ?? 0).' dari '.($pr['berlangsung'] ?? 0).' sesi berlangsung')]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Agenda guru terisi', $label), new StringCell(': '.($ag['terisi'] ?? 0).' dari '.($ag['berlangsung'] ?? 0).' sesi (periode ini)')]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Presensi siswa terisi', $label), new StringCell(': '.($pr['terisi'] ?? 0).' dari '.($pr['berlangsung'] ?? 0).' sesi (periode ini)')]));
             $w->addRow(Row::fromValues(['']));
 
             $w->addRow(Row::fromValuesWithStyle(['', 'Rekap Kehadiran per Kelas'], $this->xlsxLabelStyle()));
@@ -548,9 +552,37 @@ class PiketController extends Controller
                 $w->addRow(Row::fromValuesWithStyle(['', $k['kelas'] ?? '-', $k['hadir'] ?? 0, $k['sakit'] ?? 0, $k['izin'] ?? 0, $k['alpha'] ?? 0, $k['total'] ?? 0], $this->xlsxCellStyle()));
             }
             if (empty($rekap['kehadiran_kelas'])) {
-                $w->addRow(new Row([new StringCell(''), new StringCell('(belum ada absensi harian tercatat)')]));
+                $w->addRow(new Row([new StringCell(''), new StringCell('(belum ada absensi harian tercatat pada periode ini)')]));
+            }
+
+            // ── Blok tanda tangan petugas (kolom kanan, rapi) ────────────────────
+            $ttd = empty($petugas) ? ['Petugas Piket'] : $petugas;
+            $boldRight = $this->xlsxSignNameStyle();
+            $right = $this->xlsxRightStyle();
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(Row::fromValues(['']));
+            $w->addRow(new Row([new StringCell(''), new StringCell(''), new StringCell("Cimahi, {$tanggalTtd}", $right)]));
+            foreach ($ttd as $nama) {
+                $w->addRow(new Row([new StringCell(''), new StringCell(''), new StringCell('Petugas Piket,', $right)]));
+                $w->addRow(Row::fromValues(['']));
+                $w->addRow(Row::fromValues(['']));
+                $w->addRow(new Row([new StringCell(''), new StringCell(''), new StringCell($nama, $boldRight)]));
+                $w->addRow(Row::fromValues(['']));
             }
         });
+    }
+
+    private function xlsxSignNameStyle(): Style
+    {
+        return (new Style)
+            ->withFontBold(true)
+            ->withCellAlignment(CellAlignment::RIGHT);
+    }
+
+    private function xlsxRightStyle(): Style
+    {
+        return (new Style)
+            ->withCellAlignment(CellAlignment::RIGHT);
     }
 
     /** Kelas mana pun di TA aktif (piket bertugas lintas kelas), diresolve dari uuid. */
@@ -681,12 +713,24 @@ class PiketController extends Controller
      * Rekap "sampai waktu $now": kehadiran per kelas (absensi harian piket), serta pengisian
      * agenda guru & presensi siswa untuk sesi yang SUDAH berlangsung (jam mulai <= sekarang).
      */
-    private function hitungRekap(string $tanggal, Carbon $now): array
+    /**
+     * Rekap untuk WINDOW shift ini: [jam_mulai shift, $now] — MELANJUTKAN dari shift sebelumnya
+     * (shift kontigu: mulai shift ini = selesai shift sebelumnya), bukan kumulatif sejak 00:00.
+     * Mencakup absensi harian yang dicatat + sesi yang berlangsung dalam window itu.
+     */
+    private function hitungRekap(string $tanggal, Carbon $now, ?PiketShift $shift = null): array
     {
         $jamNow = $now->format('H:i:s');
+        $mulaiJam = $shift ? Carbon::parse($shift->jam_mulai)->format('H:i:s') : '00:00:00';
 
-        // Kehadiran per kelas dari absensi harian (daily_attendances).
-        $daily = DailyAttendance::where('tanggal', $tanggal)->get(['class_id', 'status']);
+        // Kehadiran per kelas dari absensi harian yang DICATAT dalam window shift ini.
+        $daily = DailyAttendance::where('tanggal', $tanggal)->get(['class_id', 'status', 'created_at'])
+            ->filter(function ($d) use ($mulaiJam, $jamNow) {
+                $t = $d->created_at?->copy()->setTimezone('Asia/Jakarta')->format('H:i:s');
+
+                return $t !== null && $t >= $mulaiJam && $t <= $jamNow;
+            })->values();
+
         $labels = SchoolClass::whereIn('id', $daily->pluck('class_id')->unique()->all())->get()->keyBy('id');
         $kehadiranKelas = $daily->groupBy('class_id')->map(function ($rows, $classId) use ($labels) {
             $c = fn ($st) => $rows->where('status', $st)->count();
@@ -706,9 +750,13 @@ class PiketController extends Controller
             'total' => $daily->count(),
         ];
 
-        // Agenda & presensi untuk sesi yang sudah berlangsung sampai sekarang.
+        // Agenda & presensi untuk sesi yang MULAI dalam window shift ini.
         $berlangsung = $this->jadwalHariIni($tanggal)
-            ->filter(fn ($s) => BellSchedule::resolve($s, $tanggal)['jam_mulai'] <= $jamNow)
+            ->filter(function ($s) use ($tanggal, $mulaiJam, $jamNow) {
+                $jm = BellSchedule::resolve($s, $tanggal)['jam_mulai'];
+
+                return $jm >= $mulaiJam && $jm <= $jamNow;
+            })
             ->values();
         $ids = $berlangsung->pluck('id')->all();
         $agendas = Agenda::whereIn('schedule_id', $ids)->whereDate('tanggal', $tanggal)
@@ -728,6 +776,7 @@ class PiketController extends Controller
         $totalSesi = $berlangsung->count();
 
         return [
+            'mulai' => substr($mulaiJam, 0, 5),
             'waktu' => $now->format('H:i'),
             'kehadiran_kelas' => $kehadiranKelas,
             'kehadiran_total' => $total,
