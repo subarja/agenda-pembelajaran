@@ -8,16 +8,17 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Resume Piket harian (gabungan per tanggal). Petugas jamak menyunting bersama;
- * teacher_id menandai penyunting terakhir.
+ * Resume Piket PER SHIFT (sesi petugas), unik per (tanggal, piket_shift_id). Petugas satu
+ * shift menyunting bersama; teacher_id = penyunting terakhir. `rekap` = snapshot JSON rekap
+ * kehadiran/agenda/presensi sampai waktu resume dibuat.
  */
 class PiketResume extends Model
 {
-    protected $fillable = ['academic_year_id', 'tanggal', 'teacher_id', 'ringkasan', 'kejadian_penting'];
+    protected $fillable = ['academic_year_id', 'tanggal', 'piket_shift_id', 'teacher_id', 'ringkasan', 'kejadian_penting', 'rekap'];
 
     protected function casts(): array
     {
-        return ['tanggal' => 'date'];
+        return ['tanggal' => 'date', 'rekap' => 'array'];
     }
 
     protected static function booted(): void
@@ -35,5 +36,10 @@ class PiketResume extends Model
     public function teacher(): BelongsTo
     {
         return $this->belongsTo(Teacher::class);
+    }
+
+    public function shift(): BelongsTo
+    {
+        return $this->belongsTo(PiketShift::class, 'piket_shift_id');
     }
 }

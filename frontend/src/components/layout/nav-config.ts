@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookOpen, Users, ClipboardCheck, CalendarCheck,
   Star, AlertTriangle, FileBarChart, Settings, User, Target, ShieldCheck, UserCog,
   MessageSquare, Calendar, BarChart3, TrendingUp, FileText, BookOpenCheck, PlusCircle,
-  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles, Clock, Siren, DoorOpen, ScanLine, AlarmClock,
+  FolderOpen, BellRing, UserPlus, Briefcase, Sparkles, Clock, Siren, DoorOpen, ScanLine, AlarmClock, UserSearch,
 } from 'lucide-react'
 import type { User as UserType } from '@/types'
 
@@ -39,6 +39,7 @@ const allNav: Record<string, NavItem> = {
   inval:         { label: 'Guru Inval',      path: '/inval',           icon: UserPlus },
   pkl:           { label: 'PKL',             path: '/pkl',             icon: Briefcase },
   piketPantau:   { label: 'Pantau Harian',   path: '/piket/pantau',        icon: Siren },
+  piketCekHadir: { label: 'Cek Kehadiran',   path: '/piket/cek-kehadiran', icon: UserSearch },
   piketIzinKeluar: { label: 'Izin Keluar',   path: '/piket/izin-keluar',   icon: DoorOpen },
   piketKesiangan:{ label: 'Kesiangan',       path: '/piket/kesiangan',     icon: AlarmClock },
   piketAbsensi:  { label: 'Absensi Harian',  path: '/piket/absensi',       icon: ClipboardCheck },
@@ -126,6 +127,7 @@ export function getNavForUser(user: UserType): NavItem[] {
   if (user.piket?.is_petugas_hari_ini) {
     items.push(
       withSection(allNav.piketPantau, 'Menu Piket'),
+      allNav.piketCekHadir,
       allNav.piketIzinKeluar,
       allNav.piketKesiangan,
       allNav.piketAbsensi,

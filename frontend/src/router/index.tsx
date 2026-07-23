@@ -9,6 +9,7 @@ import PiketIzinKeluarPage from '@/pages/piket/IzinKeluarPage'
 import PiketKesianganPage from '@/pages/piket/KesianganPage'
 import PiketAbsensiPage from '@/pages/piket/AbsensiPage'
 import PiketResumePage from '@/pages/piket/ResumePage'
+import PiketCekKehadiranPage from '@/pages/piket/CekKehadiranPage'
 import IzinKeluarSiswaPage from '@/pages/IzinKeluarSiswaPage'
 import IzinKesianganSiswaPage from '@/pages/IzinKesianganSiswaPage'
 import SekuritiScanPage from '@/pages/SekuritiScanPage'
@@ -157,6 +158,7 @@ export default function AppRouter() {
         <Route path="kokurikuler"               element={<KokurikulerPage />} />
         <Route path="piket"                     element={<Navigate to="/piket/pantau" replace />} />
         <Route path="piket/pantau"              element={<PantauHarianPage />} />
+        <Route path="piket/cek-kehadiran"       element={<PiketCekKehadiranPage />} />
         <Route path="piket/izin-keluar"         element={<PiketIzinKeluarPage />} />
         <Route path="piket/kesiangan"           element={<PiketKesianganPage />} />
         <Route path="piket/absensi"             element={<PiketAbsensiPage />} />

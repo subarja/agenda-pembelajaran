@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\AgendaStatus;
 use App\Enums\AttendanceStatus;
 use App\Enums\IzinKeluarStatus;
 use App\Enums\IzinKesianganStatus;
@@ -17,6 +18,7 @@ use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Teacher;
+use App\Models\User;
 use App\Services\KesianganService;
 use App\Support\BellRingPlan;
 use App\Support\BellSchedule;
@@ -86,22 +88,10 @@ class PiketController extends Controller
         $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
         $this->pastikanPetugas($request, $tanggal);
 
-        $iso = Carbon::parse($tanggal)->dayOfWeekIso;   // 1=Senin .. 7=Minggu
-        $hari = [1 => 'senin', 2 => 'selasa', 3 => 'rabu', 4 => 'kamis', 5 => 'jumat', 6 => 'sabtu'][$iso] ?? null;
+        $schedules = $this->jadwalHariIni($tanggal);
 
         $sesi = collect();
-        if ($hari) {
-            $schedules = Schedule::tahunAjaran()
-                ->where('hari', $hari)
-                ->where('aktif', true)
-                ->with(['subject', 'schoolClass', 'teacher.user'])
-                ->get()
-                // Kelas yang hari ini PKL/Kokurikuler tidak wajib agenda reguler → jangan
-                // ditandai "belum isi agenda" yang menyesatkan.
-                ->reject(fn ($s) => PklMode::isAgendaExempt($s->class_id, $tanggal) || KokurikulerMode::isAgendaExempt($s->class_id, $tanggal))
-                ->sortBy(fn ($s) => BellSchedule::resolve($s, $tanggal)['jam_mulai'])
-                ->values();
-
+        if ($schedules->isNotEmpty()) {
             $scheduleIds = $schedules->pluck('id')->all();
 
             $agendas = Agenda::whereIn('schedule_id', $scheduleIds)
@@ -326,28 +316,37 @@ class PiketController extends Controller
         return response()->json(['message' => 'Kesiangan diverifikasi. Poin keterlambatan tercatat otomatis.']);
     }
 
-    // ── GET /piket/resume — resume gabungan hari ini ─────────────────────────
+    // ── GET /piket/resume — resume PER SHIFT petugas hari ini ────────────────
     public function resume(Request $request): JsonResponse
     {
         $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
         $this->pastikanPetugas($request, $tanggal);
+        $shift = $this->shiftPetugas($request->user(), $tanggal);
+        abort_if(! $shift, 422, 'Shift piket Anda hari ini tidak ditemukan.');
 
-        $resume = PiketResume::tahunAjaran()->where('tanggal', $tanggal)->with('teacher.user')->first();
+        $resume = PiketResume::tahunAjaran()
+            ->where('tanggal', $tanggal)->where('piket_shift_id', $shift->id)
+            ->with('teacher.user')->first();
 
         return response()->json(['data' => [
             'tanggal' => $tanggal,
+            'shift' => $this->presentShift($shift),
             'ringkasan' => $resume?->ringkasan,
             'kejadian_penting' => $resume?->kejadian_penting,
             'penyunting' => $resume?->teacher?->user?->nama,
             'diperbarui' => $resume?->updated_at?->toIso8601String(),
+            // Rekap LIVE (sampai sekarang) untuk ditampilkan di editor. Snapshot disimpan saat simpan.
+            'rekap' => $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta')),
         ]]);
     }
 
-    // ── POST /piket/resume — simpan resume gabungan (upsert per tanggal) ─────
+    // ── POST /piket/resume — simpan resume shift (upsert per tanggal+shift) ──
     public function simpanResume(Request $request): JsonResponse
     {
         $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
         $this->pastikanPetugas($request, $tanggal);
+        $shift = $this->shiftPetugas($request->user(), $tanggal);
+        abort_if(! $shift, 422, 'Shift piket Anda hari ini tidak ditemukan.');
 
         $data = $request->validate([
             'ringkasan' => ['required', 'string', 'max:5000'],
@@ -355,15 +354,65 @@ class PiketController extends Controller
         ]);
 
         PiketResume::updateOrCreate(
-            ['tanggal' => $tanggal],
+            ['tanggal' => $tanggal, 'piket_shift_id' => $shift->id],
             [
                 'ringkasan' => $data['ringkasan'],
                 'kejadian_penting' => $data['kejadian_penting'] ?? null,
                 'teacher_id' => $request->user()->teacher?->id,
+                // Snapshot rekap "sampai waktu resume dibuat".
+                'rekap' => $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta')),
             ],
         );
 
         return response()->json(['message' => 'Resume piket disimpan.']);
+    }
+
+    // ── GET /piket/cek-kehadiran?class_id=&nama= — cek kehadiran murid hari ini ──
+    public function cekKehadiran(Request $request): JsonResponse
+    {
+        $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
+        $this->pastikanPetugas($request, $tanggal);
+
+        $data = $request->validate([
+            'class_id' => ['nullable', 'string'],
+            'nama' => ['nullable', 'string', 'max:100'],
+        ]);
+        $nama = trim($data['nama'] ?? '');
+        $classUuid = $data['class_id'] ?? null;
+
+        if (! $classUuid && mb_strlen($nama) < 2) {
+            return response()->json(['data' => [], 'tanggal' => $tanggal, 'message' => 'Pilih kelas atau ketik minimal 2 huruf nama.']);
+        }
+
+        $query = Student::query()
+            ->whereHas('schoolClass', fn ($c) => $c->where('academic_year_id', TahunAjaran::id()))
+            ->with('user:id,nama', 'schoolClass');
+
+        if ($classUuid) {
+            $kelas = $this->resolveKelas($classUuid);
+            abort_if(! $kelas, 404, 'Kelas tidak ditemukan.');
+            $query->where('class_id', $kelas->id);
+        }
+        if (mb_strlen($nama) >= 2) {
+            $query->whereHas('user', fn ($u) => $u->whereRaw('LOWER(nama) LIKE ?', ['%'.mb_strtolower($nama).'%']));
+        }
+
+        $students = $query->limit(200)->get()->sortBy(fn ($s) => $s->user?->nama)->values();
+        $ids = $students->pluck('id')->all();
+
+        $daily = DailyAttendance::where('tanggal', $tanggal)->whereIn('student_id', $ids)->get()->keyBy('student_id');
+        $kesiangan = IzinKesiangan::tahunAjaran()->where('tanggal', $tanggal)->whereIn('student_id', $ids)->get()->keyBy('student_id');
+
+        $rows = $students->map(fn ($s) => [
+            'nama' => $s->user?->nama,
+            'nis' => $s->nis,
+            'kelas' => $s->schoolClass?->label(),
+            'status' => $daily->get($s->id)?->status ?? 'belum',
+            'catatan' => $daily->get($s->id)?->catatan,
+            'kesiangan_menit' => $kesiangan->get($s->id)?->terlambat_menit,
+        ]);
+
+        return response()->json(['data' => $rows, 'tanggal' => $tanggal]);
     }
 
     // ── GET /piket/absensi?class_id= — roster + status harian satu kelas ─────
@@ -437,24 +486,30 @@ class PiketController extends Controller
         $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
         $this->pastikanPetugas($request, $tanggal);
         $request->validate(['format' => ['required', Rule::in(['pdf', 'xlsx'])]]);
+        $shift = $this->shiftPetugas($request->user(), $tanggal);
+        abort_if(! $shift, 422, 'Shift piket Anda hari ini tidak ditemukan.');
 
-        $resume = PiketResume::tahunAjaran()->where('tanggal', $tanggal)->first();
-        $petugas = $this->shiftsHariIni($tanggal)
-            ->flatMap(fn ($s) => $s->teachers->map(fn ($t) => $t->user?->nama))
-            ->filter()->unique()->values();
+        $resume = PiketResume::tahunAjaran()
+            ->where('tanggal', $tanggal)->where('piket_shift_id', $shift->id)->first();
+        $petugas = $shift->teachers->map(fn ($t) => $t->user?->nama)->filter()->unique()->values();
+        // Rekap yang tercetak = snapshot saat resume disimpan; fallback rekap live bila belum disimpan.
+        $rekap = $resume?->rekap ?? $this->hitungRekap($tanggal, Carbon::now('Asia/Jakarta'));
         $tglLabel = Carbon::parse($tanggal)->locale('id')->isoFormat('dddd, D MMMM YYYY');
-        $filename = 'Resume_Piket_'.$tanggal;
+        $shiftLabel = $shift->nama_shift.' ('.substr($shift->jam_mulai, 0, 5).'–'.substr($shift->jam_selesai, 0, 5).')';
+        $filename = 'Resume_Piket_'.$tanggal.'_'.str_replace(' ', '', $shift->nama_shift);
 
         if ($request->format === 'xlsx') {
-            return $this->exportResumeXlsx($filename, $tglLabel, $petugas->all(), $resume);
+            return $this->exportResumeXlsx($filename, $tglLabel, $shiftLabel, $petugas->all(), $resume, $rekap);
         }
 
         $printSettings = PrintSetting::instance($request->user()->id);
         $pdf = Pdf::loadView('reports.resume_piket', [
             'tanggalLabel' => $tglLabel,
+            'shiftLabel' => $shiftLabel,
             'petugas' => $petugas->all(),
             'ringkasan' => $resume?->ringkasan ?? '(belum diisi)',
             'kejadianPenting' => $resume?->kejadian_penting,
+            'rekap' => $rekap,
             'kopSuratPath' => 'file://'.public_path('images/kop_surat.jpg'),
             'printSettings' => $printSettings,
             'tanggalTtd' => Carbon::parse($tanggal)->locale('id')->isoFormat('D MMMM YYYY'),
@@ -463,19 +518,38 @@ class PiketController extends Controller
         return $this->pdfResponse($pdf, "{$filename}.pdf", $request);
     }
 
-    private function exportResumeXlsx(string $filename, string $tglLabel, array $petugas, ?PiketResume $resume)
+    private function exportResumeXlsx(string $filename, string $tglLabel, string $shiftLabel, array $petugas, ?PiketResume $resume, array $rekap)
     {
-        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($tglLabel, $petugas, $resume) {
-            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 22, 3 => 70]);
+        return $this->streamXlsx("{$filename}.xlsx", function (Writer $w) use ($tglLabel, $shiftLabel, $petugas, $resume, $rekap) {
+            $this->xlsxSetColumnWidths($w, [1 => 5, 2 => 24, 3 => 60]);
             $label = $this->xlsxLabelStyle();
 
-            $w->addRow(Row::fromValuesWithStyle(['RESUME PIKET HARIAN'], $this->xlsxTitleStyle()));
+            $w->addRow(Row::fromValuesWithStyle(['RESUME PIKET'], $this->xlsxTitleStyle()));
             $w->addRow(Row::fromValues(['']));
             $w->addRow(new Row([new StringCell(''), new StringCell('Tanggal', $label), new StringCell(": {$tglLabel}")]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Shift', $label), new StringCell(": {$shiftLabel}")]));
             $w->addRow(new Row([new StringCell(''), new StringCell('Petugas Piket', $label), new StringCell(': '.(empty($petugas) ? '-' : implode(', ', $petugas)))]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Rekap s.d.', $label), new StringCell(': '.($rekap['waktu'] ?? '-'))]));
             $w->addRow(Row::fromValues(['']));
+
             $w->addRow(new Row([new StringCell(''), new StringCell('Ringkasan', $label), new StringCell(': '.($resume?->ringkasan ?? '-'), $this->xlsxCellStyle())]));
             $w->addRow(new Row([new StringCell(''), new StringCell('Kejadian Penting', $label), new StringCell(': '.($resume?->kejadian_penting ?? '-'), $this->xlsxCellStyle())]));
+            $w->addRow(Row::fromValues(['']));
+
+            $ag = $rekap['agenda'] ?? [];
+            $pr = $rekap['presensi'] ?? [];
+            $w->addRow(new Row([new StringCell(''), new StringCell('Agenda guru terisi', $label), new StringCell(': '.($ag['terisi'] ?? 0).' dari '.($ag['berlangsung'] ?? 0).' sesi berlangsung')]));
+            $w->addRow(new Row([new StringCell(''), new StringCell('Presensi siswa terisi', $label), new StringCell(': '.($pr['terisi'] ?? 0).' dari '.($pr['berlangsung'] ?? 0).' sesi berlangsung')]));
+            $w->addRow(Row::fromValues(['']));
+
+            $w->addRow(Row::fromValuesWithStyle(['', 'Rekap Kehadiran per Kelas'], $this->xlsxLabelStyle()));
+            $w->addRow(Row::fromValuesWithStyle(['', 'Kelas', 'Hadir', 'Sakit', 'Izin', 'Alpha', 'Total'], $this->xlsxHeaderStyle()));
+            foreach (($rekap['kehadiran_kelas'] ?? []) as $k) {
+                $w->addRow(Row::fromValuesWithStyle(['', $k['kelas'] ?? '-', $k['hadir'] ?? 0, $k['sakit'] ?? 0, $k['izin'] ?? 0, $k['alpha'] ?? 0, $k['total'] ?? 0], $this->xlsxCellStyle()));
+            }
+            if (empty($rekap['kehadiran_kelas'])) {
+                $w->addRow(new Row([new StringCell(''), new StringCell('(belum ada absensi harian tercatat)')]));
+            }
         });
     }
 
@@ -514,11 +588,18 @@ class PiketController extends Controller
         abort_unless(PiketAccess::isPetugas($request->user(), $tanggal), 403, 'Anda tidak bertugas piket hari ini.');
     }
 
+    /** Nama hari (senin..sabtu) dari tanggal; null utk Minggu/tanggal invalid. */
+    private function hariDari(string $tanggal): ?string
+    {
+        $iso = Carbon::parse($tanggal)->dayOfWeekIso;   // 1=Senin .. 7=Minggu
+
+        return [1 => 'senin', 2 => 'selasa', 3 => 'rabu', 4 => 'kamis', 5 => 'jumat', 6 => 'sabtu'][$iso] ?? null;
+    }
+
     /** Shift piket pada hari-dalam-seminggu dari tanggal (dengan petugas). Kosong bila Sabtu/Minggu. */
     private function shiftsHariIni(string $tanggal): Collection
     {
-        $iso = Carbon::parse($tanggal)->dayOfWeekIso;   // 1=Senin .. 7=Minggu
-        $hari = [1 => 'senin', 2 => 'selasa', 3 => 'rabu', 4 => 'kamis', 5 => 'jumat', 6 => 'sabtu'][$iso] ?? null;
+        $hari = $this->hariDari($tanggal);
         if (! $hari) {
             return collect();
         }
@@ -529,5 +610,122 @@ class PiketController extends Controller
             ->orderBy('urutan')
             ->orderBy('jam_mulai')
             ->get();
+    }
+
+    /** Sesi jadwal reguler hari itu (kelas PKL/Kokurikuler dikecualikan), terurut jam mulai. */
+    private function jadwalHariIni(string $tanggal): Collection
+    {
+        $hari = $this->hariDari($tanggal);
+        if (! $hari) {
+            return collect();
+        }
+
+        return Schedule::tahunAjaran()
+            ->where('hari', $hari)
+            ->where('aktif', true)
+            ->with(['subject', 'schoolClass', 'teacher.user'])
+            ->get()
+            ->reject(fn ($s) => PklMode::isAgendaExempt($s->class_id, $tanggal) || KokurikulerMode::isAgendaExempt($s->class_id, $tanggal))
+            ->sortBy(fn ($s) => BellSchedule::resolve($s, $tanggal)['jam_mulai'])
+            ->values();
+    }
+
+    /** Shift petugas untuk resume: shift aktif sekarang di antara shift-nya hari itu; else pertama. */
+    private function shiftPetugas(User $user, string $tanggal): ?PiketShift
+    {
+        $teacher = $user->teacher ?? Teacher::where('user_id', $user->id)->first();
+        if (! $teacher) {
+            return null;
+        }
+        $hari = $this->hariDari($tanggal);
+        if (! $hari) {
+            return null;
+        }
+
+        $shifts = PiketShift::tahunAjaran()
+            ->where('hari', $hari)
+            ->whereHas('teachers', fn ($q) => $q->where('teachers.id', $teacher->id))
+            ->with('teachers.user')
+            ->orderBy('urutan')->orderBy('jam_mulai')
+            ->get();
+        if ($shifts->isEmpty()) {
+            return null;
+        }
+
+        $jamNow = Carbon::now('Asia/Jakarta')->format('H:i:s');
+        $aktif = $shifts->first(fn ($s) => Carbon::parse($s->jam_mulai)->format('H:i:s') <= $jamNow
+            && $jamNow < Carbon::parse($s->jam_selesai)->format('H:i:s'));
+
+        return $aktif ?? $shifts->first();
+    }
+
+    private function presentShift(PiketShift $shift): array
+    {
+        return [
+            'id' => $shift->id,
+            'nama' => $shift->nama_shift,
+            'jam_mulai' => substr($shift->jam_mulai, 0, 5),
+            'jam_selesai' => substr($shift->jam_selesai, 0, 5),
+            'petugas' => $shift->teachers->map(fn ($t) => $t->user?->nama)->filter()->values(),
+        ];
+    }
+
+    /**
+     * Rekap "sampai waktu $now": kehadiran per kelas (absensi harian piket), serta pengisian
+     * agenda guru & presensi siswa untuk sesi yang SUDAH berlangsung (jam mulai <= sekarang).
+     */
+    private function hitungRekap(string $tanggal, Carbon $now): array
+    {
+        $jamNow = $now->format('H:i:s');
+
+        // Kehadiran per kelas dari absensi harian (daily_attendances).
+        $daily = DailyAttendance::where('tanggal', $tanggal)->get(['class_id', 'status']);
+        $labels = SchoolClass::whereIn('id', $daily->pluck('class_id')->unique()->all())->get()->keyBy('id');
+        $kehadiranKelas = $daily->groupBy('class_id')->map(function ($rows, $classId) use ($labels) {
+            $c = fn ($st) => $rows->where('status', $st)->count();
+
+            return [
+                'kelas' => $labels->get($classId)?->label() ?? '-',
+                'hadir' => $c('hadir'), 'sakit' => $c('sakit'), 'izin' => $c('izin'), 'alpha' => $c('alpha'),
+                'total' => $rows->count(),
+            ];
+        })->sortBy('kelas')->values();
+
+        $total = [
+            'hadir' => $daily->where('status', 'hadir')->count(),
+            'sakit' => $daily->where('status', 'sakit')->count(),
+            'izin' => $daily->where('status', 'izin')->count(),
+            'alpha' => $daily->where('status', 'alpha')->count(),
+            'total' => $daily->count(),
+        ];
+
+        // Agenda & presensi untuk sesi yang sudah berlangsung sampai sekarang.
+        $berlangsung = $this->jadwalHariIni($tanggal)
+            ->filter(fn ($s) => BellSchedule::resolve($s, $tanggal)['jam_mulai'] <= $jamNow)
+            ->values();
+        $ids = $berlangsung->pluck('id')->all();
+        $agendas = Agenda::whereIn('schedule_id', $ids)->whereDate('tanggal', $tanggal)
+            ->withCount('studentAttendances')->get()->keyBy('schedule_id');
+
+        $agendaTerisi = 0;
+        $presensiTerisi = 0;
+        foreach ($berlangsung as $s) {
+            $a = $agendas->get($s->id);
+            if ($a && $a->status === AgendaStatus::Submitted) {
+                $agendaTerisi++;
+            }
+            if ($a && $a->student_attendances_count > 0) {
+                $presensiTerisi++;
+            }
+        }
+        $totalSesi = $berlangsung->count();
+
+        return [
+            'waktu' => $now->format('H:i'),
+            'kehadiran_kelas' => $kehadiranKelas,
+            'kehadiran_total' => $total,
+            'agenda' => ['berlangsung' => $totalSesi, 'terisi' => $agendaTerisi, 'belum' => $totalSesi - $agendaTerisi],
+            'presensi' => ['berlangsung' => $totalSesi, 'terisi' => $presensiTerisi, 'belum' => $totalSesi - $presensiTerisi],
+        ];
     }
 }
