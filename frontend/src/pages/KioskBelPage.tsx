@@ -194,33 +194,65 @@ export default function KioskBelPage() {
 }
 
 // ── Panel uji: putar sekarang + jadwal uji relatif (menit dari sekarang) ──────
+interface Jadwal { id: string; audioId: number; nama: string; target: number; status: 'menunggu' | 'diputar' | 'gagal' | 'dibatalkan' }
+
 function TestPanel({ audios, enabled, onPlay }: {
   audios: KioskAudio[]; enabled: boolean; onPlay: (a: KioskAudio, konfirmasi?: boolean) => Promise<boolean | undefined>
 }) {
   const [rows, setRows] = useState<{ menit: number; audioId: number }[]>([{ menit: 1, audioId: 0 }])
-  const [running, setRunning] = useState(false)
-  const [log, setLog] = useState<string[]>([])
+  const [jadwal, setJadwal] = useState<Jadwal[]>([])
+  const [nowTs, setNowTs] = useState(() => Date.now())
   const timers = useRef<number[]>([])
+
+  // Pra-pilih audio pertama supaya "Mulai Uji" tak jadi no-op karena lupa pilih audio.
+  useEffect(() => {
+    if (audios.length) setRows(rs => rs.map(r => (r.audioId ? r : { ...r, audioId: audios[0].id })))
+  }, [audios])
+
+  const running = jadwal.some(j => j.status === 'menunggu')
+
+  // Tick 1 dtk untuk hitung mundur — hanya aktif selama ada jadwal menunggu.
+  useEffect(() => {
+    if (!running) return
+    const id = setInterval(() => setNowTs(Date.now()), 500)
+    return () => clearInterval(id)
+  }, [running])
 
   useEffect(() => () => { timers.current.forEach(t => clearTimeout(t)) }, [])
   if (audios.length === 0) return null
 
   const mulaiUji = () => {
     timers.current.forEach(t => clearTimeout(t)); timers.current = []
-    setLog([]); setRunning(true)
     const valid = rows.filter(r => r.audioId)
-    valid.forEach(r => {
+    if (valid.length === 0) { window.alert('Pilih audio dulu pada tiap baris uji.'); return }
+
+    const base = Date.now()
+    const items: Jadwal[] = valid.map((r, i) => ({
+      id: `${base}-${i}`,
+      audioId: r.audioId,
+      nama: audios.find(a => a.id === r.audioId)?.nama ?? '—',
+      target: base + Math.max(0, r.menit) * 60_000,
+      status: 'menunggu',
+    }))
+    setJadwal(items)
+    setNowTs(base)
+
+    items.forEach(it => {
       const t = window.setTimeout(async () => {
-        const a = audios.find(x => x.id === r.audioId)
-        if (a) { await onPlay(a, false); setLog(l => [...l, `${nowLabelNow()} ▶ ${a.nama}`]) }
-      }, r.menit * 60_000)
+        const a = audios.find(x => x.id === it.audioId)
+        const ok = a ? await onPlay(a, false) : false
+        setJadwal(js => js.map(x => x.id === it.id ? { ...x, status: ok ? 'diputar' : 'gagal' } : x))
+      }, Math.max(0, it.target - base))
       timers.current.push(t)
     })
-    const maxMenit = Math.max(...valid.map(r => r.menit), 0)
-    timers.current.push(window.setTimeout(() => setRunning(false), maxMenit * 60_000 + 1000))
   }
-  const nowLabelNow = () => new Date().toLocaleTimeString('id-ID')
-  const stop = () => { timers.current.forEach(t => clearTimeout(t)); timers.current = []; setRunning(false) }
+
+  const stop = () => {
+    timers.current.forEach(t => clearTimeout(t)); timers.current = []
+    setJadwal(js => js.map(x => x.status === 'menunggu' ? { ...x, status: 'dibatalkan' } : x))
+  }
+
+  const fmtSisa = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${pad(Math.floor(s / 60))}:${pad(s % 60)}` }
 
   return (
     <div className="rounded-xl border border-sky-900/50 bg-sky-950/20 p-4 space-y-3">
@@ -245,28 +277,45 @@ function TestPanel({ audios, enabled, onPlay }: {
         <div className="space-y-1.5">
           {rows.map((r, i) => (
             <div key={i} className="flex items-center gap-2 text-xs">
-              <input type="number" min={0} step={0.5} value={r.menit}
+              <input type="number" min={0} step={0.5} value={r.menit} disabled={running}
                 onChange={e => setRows(rs => rs.map((x, idx) => idx === i ? { ...x, menit: Number(e.target.value) } : x))}
-                className="w-16 rounded bg-slate-800 px-2 py-1" />
+                className="w-16 rounded bg-slate-800 px-2 py-1 disabled:opacity-50" />
               <span className="text-slate-500">menit →</span>
-              <select value={r.audioId} onChange={e => setRows(rs => rs.map((x, idx) => idx === i ? { ...x, audioId: Number(e.target.value) } : x))}
-                className="rounded bg-slate-800 px-2 py-1 flex-1">
+              <select value={r.audioId} disabled={running} onChange={e => setRows(rs => rs.map((x, idx) => idx === i ? { ...x, audioId: Number(e.target.value) } : x))}
+                className="rounded bg-slate-800 px-2 py-1 flex-1 disabled:opacity-50">
                 <option value={0}>— pilih audio —</option>
                 {audios.map(a => <option key={a.id} value={a.id}>{a.nama}</option>)}
               </select>
-              <button onClick={() => setRows(rs => rs.filter((_, idx) => idx !== i))} className="text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+              <button onClick={() => setRows(rs => rs.filter((_, idx) => idx !== i))} disabled={running || rows.length === 1} className="text-red-400 disabled:opacity-30"><Trash2 className="h-3.5 w-3.5" /></button>
             </div>
           ))}
         </div>
         <div className="flex items-center gap-2 mt-2">
-          <button onClick={() => setRows(rs => [...rs, { menit: (rs[rs.length - 1]?.menit ?? 0) + 1, audioId: 0 }])}
-            className="rounded bg-slate-800 hover:bg-slate-700 px-2 py-1 text-xs flex items-center gap-1"><Plus className="h-3 w-3" /> Tambah</button>
+          <button onClick={() => setRows(rs => [...rs, { menit: (rs[rs.length - 1]?.menit ?? 0) + 1, audioId: audios[0]?.id ?? 0 }])} disabled={running}
+            className="rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 px-2 py-1 text-xs flex items-center gap-1"><Plus className="h-3 w-3" /> Tambah</button>
           {!running
             ? <button onClick={mulaiUji} disabled={!enabled} className="rounded bg-sky-700 hover:bg-sky-600 disabled:opacity-40 px-3 py-1 text-xs font-medium">Mulai Uji</button>
             : <button onClick={stop} className="rounded bg-red-700 hover:bg-red-600 px-3 py-1 text-xs font-medium">Hentikan</button>}
           {!enabled && <span className="text-xs text-amber-400/80">Tekan "Aktifkan Suara" dulu.</span>}
         </div>
-        {log.length > 0 && <div className="mt-2 text-xs text-slate-400 space-y-0.5">{log.map((l, i) => <div key={i}>{l}</div>)}</div>}
+
+        {/* Hitung mundur + status tiap jadwal uji */}
+        {jadwal.length > 0 && (
+          <div className="mt-3 rounded-lg bg-slate-900/60 divide-y divide-slate-800">
+            {jadwal.map(j => {
+              const sisa = j.target - nowTs
+              return (
+                <div key={j.id} className="flex items-center gap-3 px-3 py-2 text-xs">
+                  <span className="flex-1 truncate">{j.nama}</span>
+                  {j.status === 'menunggu' && <span className="font-mono tabular-nums text-emerald-400">⏳ {fmtSisa(sisa)}</span>}
+                  {j.status === 'diputar' && <span className="text-emerald-400">▶ diputar</span>}
+                  {j.status === 'gagal' && <span className="text-red-400">✕ gagal diputar</span>}
+                  {j.status === 'dibatalkan' && <span className="text-slate-500">dibatalkan</span>}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
