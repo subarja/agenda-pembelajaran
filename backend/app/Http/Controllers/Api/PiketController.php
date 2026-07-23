@@ -2,21 +2,29 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\AttendanceStatus;
 use App\Enums\IzinKeluarStatus;
 use App\Enums\IzinKesianganStatus;
 use App\Http\Controllers\Controller;
+use App\Models\Agenda;
 use App\Models\DailyAttendance;
 use App\Models\IzinKeluar;
 use App\Models\IzinKesiangan;
 use App\Models\PiketResume;
 use App\Models\PiketShift;
 use App\Models\PrintSetting;
+use App\Models\Schedule;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Models\Teacher;
 use App\Services\KesianganService;
 use App\Support\BellRingPlan;
+use App\Support\BellSchedule;
+use App\Support\KokurikulerMode;
 use App\Support\PiketAccess;
+use App\Support\PklMode;
 use App\Support\SemesterLock;
+use App\Support\SessionTeacher;
 use App\Support\TahunAjaran;
 use App\Traits\BuildsXlsxReports;
 use App\Traits\HandlesPdfPreview;
@@ -69,6 +77,114 @@ class PiketController extends Controller
             'petugas' => $petugas,
             'shifts' => $shifts,
             'events' => BellRingPlan::forDate($tanggal),
+        ]]);
+    }
+
+    // ── GET /piket/pantau — pantau jadwal harian + status agenda/presensi ────
+    public function pantau(Request $request): JsonResponse
+    {
+        $tanggal = Carbon::now('Asia/Jakarta')->toDateString();
+        $this->pastikanPetugas($request, $tanggal);
+
+        $iso = Carbon::parse($tanggal)->dayOfWeekIso;   // 1=Senin .. 7=Minggu
+        $hari = [1 => 'senin', 2 => 'selasa', 3 => 'rabu', 4 => 'kamis', 5 => 'jumat', 6 => 'sabtu'][$iso] ?? null;
+
+        $sesi = collect();
+        if ($hari) {
+            $schedules = Schedule::tahunAjaran()
+                ->where('hari', $hari)
+                ->where('aktif', true)
+                ->with(['subject', 'schoolClass', 'teacher.user'])
+                ->get()
+                // Kelas yang hari ini PKL/Kokurikuler tidak wajib agenda reguler → jangan
+                // ditandai "belum isi agenda" yang menyesatkan.
+                ->reject(fn ($s) => PklMode::isAgendaExempt($s->class_id, $tanggal) || KokurikulerMode::isAgendaExempt($s->class_id, $tanggal))
+                ->sortBy(fn ($s) => BellSchedule::resolve($s, $tanggal)['jam_mulai'])
+                ->values();
+
+            $scheduleIds = $schedules->pluck('id')->all();
+
+            $agendas = Agenda::whereIn('schedule_id', $scheduleIds)
+                ->whereDate('tanggal', $tanggal)
+                ->with('studentAttendances.student.user')
+                ->get()->keyBy('schedule_id');
+
+            $rosterCount = Student::whereIn('class_id', $schedules->pluck('class_id')->unique()->all())
+                ->selectRaw('class_id, count(*) as c')->groupBy('class_id')->pluck('c', 'class_id');
+
+            // Guru efektif (memperhitungkan inval/pengganti yang disetujui) — batch, anti N+1.
+            $overrides = SessionTeacher::overridesForDate($scheduleIds, $tanggal);
+            $effTeacherIds = [];
+            foreach ($schedules as $s) {
+                $effTeacherIds[$s->id] = $overrides[$s->id] ?? $s->teacher_id;
+            }
+            $teacherNames = Teacher::with('user')->whereIn('id', array_values(array_unique($effTeacherIds)))
+                ->get()->mapWithKeys(fn ($t) => [$t->id => $t->user?->nama]);
+
+            $sesi = $schedules->map(function ($s) use ($tanggal, $agendas, $rosterCount, $effTeacherIds, $teacherNames) {
+                $jam = BellSchedule::resolve($s, $tanggal);
+                $agenda = $agendas->get($s->id);
+                $eff = $effTeacherIds[$s->id];
+                $isInval = $eff !== $s->teacher_id;
+
+                $att = $agenda?->studentAttendances ?? collect();
+                $presensiTerisi = $att->isNotEmpty();
+                $tidakHadir = $att
+                    ->filter(fn ($a) => $a->status !== AttendanceStatus::Hadir)
+                    ->map(fn ($a) => [
+                        'nama' => $a->student?->user?->nama,
+                        'status' => $a->status->value,
+                        'alasan' => $a->catatan,
+                        'terlambat_menit' => $a->durasi_terlambat,
+                    ])->values();
+
+                return [
+                    'id' => $s->uuid,
+                    'jam_ke' => $s->jam_ke_selesai && $s->jam_ke_selesai !== $s->jam_ke_mulai
+                        ? "{$s->jam_ke_mulai}–{$s->jam_ke_selesai}"
+                        : (string) $s->jam_ke_mulai,
+                    'jam_mulai' => substr($jam['jam_mulai'], 0, 5),
+                    'jam_selesai' => substr($jam['jam_selesai'], 0, 5),
+                    'kelas' => $s->schoolClass?->label(),
+                    'mapel' => PklMode::subjectLabelFor($s),
+                    'ruangan' => $s->ruangan,
+                    'guru' => $teacherNames[$eff] ?? '—',
+                    'guru_terjadwal' => $isInval ? $s->teacher?->user?->nama : null,
+                    'is_inval' => $isInval,
+                    'agenda_status' => $agenda ? $agenda->status->value : 'kosong',
+                    'presensi_terisi' => $presensiTerisi,
+                    'hadir' => $presensiTerisi ? $att->filter(fn ($a) => $a->status === AttendanceStatus::Hadir)->count() : null,
+                    'total' => $presensiTerisi ? $att->count() : ($rosterCount[$s->class_id] ?? null),
+                    'tidak_hadir' => $tidakHadir,
+                ];
+            })->values();
+        }
+
+        $kesiangan = IzinKesiangan::tahunAjaran()
+            ->with('student.user', 'student.schoolClass')
+            ->where('tanggal', $tanggal)
+            ->orderByDesc('id')->get()
+            ->map(fn ($i) => [
+                'nama' => $i->student?->user?->nama,
+                'kelas' => $i->student?->schoolClass?->label(),
+                'waktu_tiba' => $i->waktu_tiba?->format('H:i'),
+                'terlambat_menit' => $i->terlambat_menit,
+                'alasan' => $i->alasan,
+                'status_label' => $i->status->label(),
+            ]);
+
+        return response()->json(['data' => [
+            'tanggal' => $tanggal,
+            'server_time' => Carbon::now('Asia/Jakarta')->format('H:i:s'),
+            'sesi' => $sesi,
+            'kesiangan' => $kesiangan,
+            'ringkasan' => [
+                'total_sesi' => $sesi->count(),
+                'agenda_terisi' => $sesi->where('agenda_status', 'submitted')->count(),
+                'agenda_kosong' => $sesi->where('agenda_status', 'kosong')->count(),
+                'presensi_terisi' => $sesi->where('presensi_terisi', true)->count(),
+                'kesiangan_count' => $kesiangan->count(),
+            ],
         ]]);
     }
 

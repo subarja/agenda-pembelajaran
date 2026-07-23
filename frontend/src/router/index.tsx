@@ -4,7 +4,11 @@ import { useAuthStore } from '@/store/auth'
 import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/LoginPage'
 import KioskBelPage from '@/pages/KioskBelPage'
-import PiketPage from '@/pages/PiketPage'
+import PantauHarianPage from '@/pages/piket/PantauHarianPage'
+import PiketIzinKeluarPage from '@/pages/piket/IzinKeluarPage'
+import PiketKesianganPage from '@/pages/piket/KesianganPage'
+import PiketAbsensiPage from '@/pages/piket/AbsensiPage'
+import PiketResumePage from '@/pages/piket/ResumePage'
 import IzinKeluarSiswaPage from '@/pages/IzinKeluarSiswaPage'
 import IzinKesianganSiswaPage from '@/pages/IzinKesianganSiswaPage'
 import SekuritiScanPage from '@/pages/SekuritiScanPage'
@@ -151,7 +155,12 @@ export default function AppRouter() {
         <Route path="pkl"                       element={<PklPage />} />
         <Route path="pkl/agenda"                element={<PklAgendaFormPage />} />
         <Route path="kokurikuler"               element={<KokurikulerPage />} />
-        <Route path="piket"                     element={<PiketPage />} />
+        <Route path="piket"                     element={<Navigate to="/piket/pantau" replace />} />
+        <Route path="piket/pantau"              element={<PantauHarianPage />} />
+        <Route path="piket/izin-keluar"         element={<PiketIzinKeluarPage />} />
+        <Route path="piket/kesiangan"           element={<PiketKesianganPage />} />
+        <Route path="piket/absensi"             element={<PiketAbsensiPage />} />
+        <Route path="piket/resume"              element={<PiketResumePage />} />
         <Route path="izin-keluar"               element={<IzinKeluarSiswaPage />} />
         <Route path="izin-kesiangan"            element={<IzinKesianganSiswaPage />} />
         <Route path="sekuriti/scan"             element={<SekuritiScanPage />} />

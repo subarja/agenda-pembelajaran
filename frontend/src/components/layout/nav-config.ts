@@ -38,7 +38,11 @@ const allNav: Record<string, NavItem> = {
   bebanMengajar: { label: 'Beban Mengajar',  path: '/beban-mengajar',  icon: Clock },
   inval:         { label: 'Guru Inval',      path: '/inval',           icon: UserPlus },
   pkl:           { label: 'PKL',             path: '/pkl',             icon: Briefcase },
-  piket:         { label: 'Piket',           path: '/piket',           icon: Siren },
+  piketPantau:   { label: 'Pantau Harian',   path: '/piket/pantau',        icon: Siren },
+  piketIzinKeluar: { label: 'Izin Keluar',   path: '/piket/izin-keluar',   icon: DoorOpen },
+  piketKesiangan:{ label: 'Kesiangan',       path: '/piket/kesiangan',     icon: AlarmClock },
+  piketAbsensi:  { label: 'Absensi Harian',  path: '/piket/absensi',       icon: ClipboardCheck },
+  piketResume:   { label: 'Resume Piket',    path: '/piket/resume',        icon: FileText },
   izinKeluar:    { label: 'Izin Keluar',     path: '/izin-keluar',     icon: DoorOpen },
   izinKesiangan: { label: 'Izin Kesiangan',  path: '/izin-kesiangan',  icon: AlarmClock },
   sekuritiScan:  { label: 'Pindai QR',       path: '/sekuriti/scan',   icon: ScanLine },
@@ -116,10 +120,17 @@ export function getNavForUser(user: UserType): NavItem[] {
     // minimal — hanya dashboard + profil
   }
 
-  // Menu Piket muncul HANYA bila user bertugas piket HARI INI (kapabilitas, bukan role) —
-  // berlaku untuk semua akun berbasis guru. Guru yang tidak bertugas tidak melihatnya.
+  // Menu Piket = GRUP tersendiri ("Menu Piket"), muncul HANYA bila user bertugas piket
+  // HARI INI (kapabilitas, bukan role). Terpisah dari menu guru/wali karena tidak semua
+  // guru/wali kelas jadi piket. Beberapa submenu agar tiap fungsi fokus & mudah.
   if (user.piket?.is_petugas_hari_ini) {
-    items.push(allNav.piket)
+    items.push(
+      withSection(allNav.piketPantau, 'Menu Piket'),
+      allNav.piketIzinKeluar,
+      allNav.piketKesiangan,
+      allNav.piketAbsensi,
+      allNav.piketResume,
+    )
   }
 
   // Deduplikasi (is_bk dan is_wali_kelas bisa punya item yang sama)

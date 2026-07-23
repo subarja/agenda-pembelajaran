@@ -313,6 +313,7 @@ Route::middleware(['auth:sanctum', 'password.changed'])->group(function () {
 
     // ── Piket (guru piket hari itu; guard PiketAccess di dalam controller) ─────
     Route::get('piket/ringkasan', [PiketController::class, 'ringkasan']);
+    Route::get('piket/pantau', [PiketController::class, 'pantau']);
     Route::get('piket/izin-keluar', [PiketController::class, 'izinKeluar']);
     Route::get('piket/izin-keluar/log', [PiketController::class, 'izinKeluarLog']);
     Route::post('piket/izin-keluar/{uuid}/proses', [PiketController::class, 'prosesIzinKeluar']);

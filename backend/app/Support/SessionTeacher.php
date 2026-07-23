@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Agenda;
 use App\Models\AgendaFillSetting;
 use App\Models\SubstitutionSession;
 use Illuminate\Support\Carbon;
@@ -37,6 +38,30 @@ class SessionTeacher
         return $sesi?->request?->substitute_teacher_id ?? $scheduleTeacherId;
     }
 
+    /**
+     * Versi batch dari effectiveTeacherId untuk satu tanggal & banyak jadwal. Mengembalikan
+     * HANYA sesi yang DIALIHKAN (schedule_id => substitute_teacher_id); jadwal tanpa entri =
+     * tetap guru terjadwal (pemanggil beri fallback `?? $schedule->teacher_id`). Menghindari
+     * N+1 saat memindai puluhan sesi hari yang sama (mis. dashboard pantau piket).
+     *
+     * @param  int[]  $scheduleIds
+     * @return array<int,int> schedule_id => substitute_teacher_id
+     */
+    public static function overridesForDate(array $scheduleIds, string $tanggal): array
+    {
+        if (empty($scheduleIds)) {
+            return [];
+        }
+
+        return static::approvedQuery()
+            ->whereIn('schedule_id', $scheduleIds)
+            ->where('tanggal', $tanggal)
+            ->get()
+            ->mapWithKeys(fn (SubstitutionSession $s) => [$s->schedule_id => $s->request?->substitute_teacher_id])
+            ->filter()
+            ->all();
+    }
+
     /** Apakah $teacherId berhak mengisi agenda sesi ini? (guru terjadwal ATAU pengganti resmi) */
     public static function isResponsible(int $teacherId, int $scheduleId, string $tanggal, int $scheduleTeacherId): bool
     {
@@ -48,7 +73,7 @@ class SessionTeacher
      * Dipisah supaya pemanggil tidak perlu mengurai sendiri (schedule_id, tanggal) dari
      * relasi, dan tidak ada yang lupa memakai tanggal AGENDA (bukan tanggal hari ini).
      */
-    public static function isResponsibleForAgenda(int $teacherId, \App\Models\Agenda $agenda): bool
+    public static function isResponsibleForAgenda(int $teacherId, Agenda $agenda): bool
     {
         return static::isResponsible(
             $teacherId,
@@ -101,11 +126,11 @@ class SessionTeacher
             ->get();
 
         $away = [];
-        $to   = [];
+        $to = [];
 
         foreach ($sesi as $s) {
-            $away[$s->request->requester_teacher_id][]  = $s->key();
-            $to[$s->request->substitute_teacher_id][]   = $s->key();
+            $away[$s->request->requester_teacher_id][] = $s->key();
+            $to[$s->request->substitute_teacher_id][] = $s->key();
         }
 
         return ['away' => $away, 'to' => $to];
@@ -142,8 +167,8 @@ class SessionTeacher
     public static function activeInvalClassMap(int $teacherId): array
     {
         $setting = AgendaFillSetting::instance();
-        $tz      = config('app.school_timezone');
-        $now     = Carbon::now($tz);
+        $tz = config('app.school_timezone');
+        $now = Carbon::now($tz);
 
         $sesi = static::approvedQuery()
             ->whereHas('request', fn ($q) => $q->where('substitute_teacher_id', $teacherId))
